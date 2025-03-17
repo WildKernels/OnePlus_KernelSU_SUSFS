@@ -41,6 +41,9 @@ jobs:
   build-kernel-opace5:
     uses: ./.github/workflows/opace5.yml
     secrets: inherit
+  build-kernel-oppad2:
+    uses: ./.github/workflows/oppad2.yml
+    secrets: inherit
 
   trigger-release:
     runs-on: ubuntu-latest
@@ -54,6 +57,7 @@ jobs:
         - build-kernel-opace2
         - build-kernel-opace2pro
         - build-kernel-opace5
+        - build-kernel-oppad2
     if: ${{ inputs.make_release }}
     env:
       REPO_OWNER: TheWildJames
