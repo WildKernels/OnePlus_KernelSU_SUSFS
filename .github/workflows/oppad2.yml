@@ -14,6 +14,6 @@ jobs:
       model: "OPPad2"
       soc: "pineapple"
       branch: "oneplus/sm8650"
-      manifest: "oneplus12_v.xml"
+      manifest: "oneplus_pad2_v.xml"
       android_version: "android14"
       kernel_version: "6.1"
