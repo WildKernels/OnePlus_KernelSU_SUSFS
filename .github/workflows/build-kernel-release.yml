@@ -14,33 +14,6 @@ on:
         default: true
 
 jobs:
-  build-kernel-op11:
-    uses: ./.github/workflows/op11.yml
-    secrets: inherit
-  build-kernel-op11r:
-    uses: ./.github/workflows/op11r.yml
-    secrets: inherit
-  build-kernel-op12:
-    uses: ./.github/workflows/op12.yml
-    secrets: inherit
-  build-kernel-op13r:
-    uses: ./.github/workflows/op13r.yml
-    secrets: inherit
-  build-kernel-opnord4:
-    uses: ./.github/workflows/opnord4.yml
-    secrets: inherit
-  build-kernel-opopen:
-    uses: ./.github/workflows/opopen.yml
-    secrets: inherit
-  build-kernel-opace2:
-    uses: ./.github/workflows/opace2.yml
-    secrets: inherit
-  build-kernel-opace2pro:
-    uses: ./.github/workflows/opace2pro.yml
-    secrets: inherit
-  build-kernel-opace5:
-    uses: ./.github/workflows/opace5.yml
-    secrets: inherit
   build-kernel-oppad2:
     uses: ./.github/workflows/oppad2.yml
     secrets: inherit
@@ -48,15 +21,6 @@ jobs:
   trigger-release:
     runs-on: ubuntu-latest
     needs:
-        - build-kernel-op11
-        - build-kernel-op11r
-        - build-kernel-op12
-        - build-kernel-op13r
-        - build-kernel-opnord4
-        - build-kernel-opopen
-        - build-kernel-opace2
-        - build-kernel-opace2pro
-        - build-kernel-opace5
         - build-kernel-oppad2
     if: ${{ inputs.make_release }}
     env:
