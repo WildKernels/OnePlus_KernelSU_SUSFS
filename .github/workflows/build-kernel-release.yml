@@ -1,230 +1,250 @@
-name: Build and Release OnePlus Kernels
-
+name: Build
 permissions:
   contents: write  # Allow writing to repository contents (for pushing tags)
   actions: write   # Allows triggering actions
-  
+
 on:
-  workflow_dispatch:
+  workflow_call: # This allows this workflow to be called from another workflow
     inputs:
-      make_release:
-        description: 'Do you want to create a release?'
+      model:
         required: true
-        type: boolean
-        default: true
-
+        type: string
+      soc:
+        required: true
+        type: string
+      branch:
+        required: true
+        type: string
+      manifest:
+        required: true
+        type: string
+      android_version:
+        required: true
+        type: string
+      kernel_version:
+        required: true
+        type: string
+  
 jobs:
-  build-kernel-op11:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP11"
-      soc: "kalama"
-      branch: "oneplus/sm8550"
-      manifest: "oneplus_11_v.xml"
-      android_version: "android13"
-      kernel_version: "5.15"
-  build-kernel-op11r:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP11r"
-      soc: "waipio"
-      branch: "oneplus/sm8475"
-      manifest: "oneplus_11r_v.xml"
-      android_version: "android13"
-      kernel_version: "5.10"
-  build-kernel-op12:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP12"
-      soc: "pineapple"
-      branch: "oneplus/sm8650"
-      manifest: "oneplus12_v.xml"
-      android_version: "android14"
-      kernel_version: "6.1"
-  build-kernel-op13r:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP13r"
-      soc: "pineapple"
-      branch: "oneplus/sm8650"
-      manifest: "oneplus_13r.xml"
-      android_version: "android14"
-      kernel_version: "6.1"
-  build-kernel-opnord4:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP-NORD-4"
-      soc: "pineapple"
-      branch: "oneplus/sm7675"
-      manifest: "oneplus_nord_4_v.xml"
-      android_version: "android14"
-      kernel_version: "6.1"
-  build-kernel-opopen:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP-OPEN"
-      soc: "kalama"
-      branch: "oneplus/sm8550"
-      manifest: "oneplus_open_v.xml"
-      android_version: "android13"
-      kernel_version: "5.15"
-  build-kernel-opace2:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP-ACE-2"
-      soc: "waipio"
-      branch: "oneplus/sm8475"
-      manifest: "oneplus_ace2_v.xml"
-      android_version: "android13"
-      kernel_version: "5.10"
-  build-kernel-opace2pro:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP-ACE-2-PRO"
-      soc: "kalama"
-      branch: "oneplus/sm8550"
-      manifest: "oneplus_ace2pro_v.xml"
-      android_version: "android13"
-      kernel_version: "5.15"
-  build-kernel-opace5:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP-ACE-5"
-      soc: "pineapple"
-      branch: "oneplus/sm8650"
-      manifest: "oneplus_ace5.xml"
-      android_version: "android14"
-      kernel_version: "6.1"
-  build-kernel-op10t:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP10t"
-      soc: "waipio"
-      branch: "oneplus/sm8475"
-      manifest: "oneplus_10t_v.xml"
-      android_version: "android12"
-      kernel_version: "5.10"
-  build-kernel-op10pro:
-    uses: ./.github/workflows/build.yml
-    secrets: inherit
-    with:
-      model: "OP10pro"
-      soc: "waipio"
-      branch: "oneplus/sm8450"
-      manifest: "oneplus_10_pro_v.xml"
-      android_version: "android12"
-      kernel_version: "5.10"
-
-  trigger-release:
+  build-kernel-oneplus-kernelsu-susfs:
     runs-on: ubuntu-latest
-    needs:
-        - build-kernel-op11
-        - build-kernel-op11r
-        - build-kernel-op12
-        - build-kernel-op13r
-        - build-kernel-opnord4
-        - build-kernel-opopen
-        - build-kernel-opace2
-        - build-kernel-opace2pro
-        - build-kernel-opace5
-        - build-kernel-op10t
-        - build-kernel-op10pro
-    if: ${{ inputs.make_release }}
-    env:
-      REPO_OWNER: TheWildJames
-      REPO_NAME: OnePlus_KernelSU_SUSFS
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: "*TEST BUILD* OnePlus Kernels With KernelSU Next & SUSFS v1.5.5 *TEST BUILD*"
-      RELEASE_NOTES: |
-        This release contains KernelSU Next and SUSFS v1.5.5
-        
-        Module: 
-        -> https://github.com/sidex15/ksu_module_susfs
-        
-        Non-Official Managers:
-        -> https://github.com/KernelSU-Next/KernelSU-Next
-        
-        Features:
-        [+] KernelSU-Next
-        [+] SUSFS v1.5.5
-        [+] Wireguard Support
-        [+] Maphide LineageOS Detections
-        [+] Futile Maphide for jit-zygote-cache Detections
-        [+] Magic Mount Support
 
     steps:
-      # Checkout the code
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      # Get the Latest Tag from GitHub
-      - name: Generate and Create New Tag
-        run: |
-            # Fetch the latest tag from GitHub (this is the latest tag based on the GitHub API)
-            LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
-            if [ -z "$LATEST_TAG" ]; then
-              LATEST_TAG="v1.5.5-r0"  # Default to v1.5.3-0 if no tag exists
-            fi
-            
-            # Increment the suffix (e.g., v1.5.3-0 becomes v1.5.3-1)
-            NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
-            
-            # Output the new tag to be used
-            echo "New tag: $NEW_TAG"
-            
-            # Set the new tag as an environment variable to be used in later steps
-            echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
-            
-            # Create the tag in the repository
-            git tag $NEW_TAG
-            git push origin $NEW_TAG
-            
-      # Download Artifacts for A12 (Only if A12 Build is successful or input is true or empty)
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
         with:
-          path: ./downloaded-artifacts
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          swap-size-mb: 8192
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
 
-      # Create GitHub Release and upload files if make_release is true
-      - name: Create GitHub Release
-        uses: actions/create-release@v1
+      - name: Install Repo and Python
+        run: |
+          # Install dependencies
+          sudo apt update
+          sudo apt install repo python3 python-is-python3
+
+      - name: Set CONFIG Environment Variable
+        run: |
+          CONFIG="${{ inputs.model }}"
+          
+          # Set CONFIG as an environment variable for future steps
+          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+          
+          echo "CONFIG set to: $CONFIG"
+
+      - name: Clone AnyKernel3 and Other Dependencies
+        run: |
+          echo "Cloning AnyKernel3 and other dependencies..."
+          
+          ANYKERNEL_BRANCH="gki-2.0"
+          SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
+
+          # Debug print the branches
+          echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
+          echo "Using branch for SUSFS: $SUSFS_BRANCH"
+
+          # Clone repositories using the branch names
+          git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
+          git clone https://github.com/TheWildJames/kernel_patches.git
+
+      - name: Initialize and Sync Kernel Source
+        run: |
+          echo "Creating folder for configuration: $CONFIG..."
+          mkdir -p "$CONFIG"
+          cd "$CONFIG"
+          
+          # Initialize and sync kernel source
+          echo "Initializing and syncing kernel source..."
+          repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b ${{ inputs.branch }} -m ${{ inputs.manifest }} --repo-rev=v2.16 --depth=1
+          
+          # Sync repo and apply patches
+          repo --version
+          repo --trace sync -c -j$(nproc --all) --no-tags --fail-fast
+          
+      - name: Add KernelSU
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform"
+          echo "Adding KernelSU..."
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          git submodule update --init --recursive
+          cd KernelSU-Next/kernel
+          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10200)
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
+
+      - name: Apply SUSFS Patches
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform"
+          
+          echo "Applying SUSFS patches..."
+          
+          # Copy SUSFS patches
+          cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
+          cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
+          cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+
+          cd ./KernelSU-Next
+          
+          echo "Applying next SUSFS patches..."
+          cp ../../../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./
+          patch -p1 --forward < 0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch || true
+          
+          # Change to common directory and apply SUSFS patch
+          cd ../common
+          patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
+
+      - name: Apply KSU Hooks
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform/common"
+          # Apply additional patch
+          cp ../../../kernel_patches/next/next_hooks.patch ./
+          patch -p1 --fuzz=3 < ./next_hooks.patch
+          
+      - name: Apply Hide Stuff Patches
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform/common"
+          # Apply additional patch
+          cp ../../../kernel_patches/69_hide_stuff.patch ./
+          patch -p1 -F 3 < 69_hide_stuff.patch
+
+      - name: Add SUSFS Configuration Settings
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform"
+          
+          echo "Adding configuration settings to gki_defconfig..."
+
+          # Add KSU configuration settings
+          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_WITH_KPROBES=n" >> ./common/arch/arm64/configs/gki_defconfig
+          
+          # Add SUSFS configuration settings
+          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+          
+          # Add additional tmpfs config setting
+          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
+
+      - name: Run sed and perl Commands
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform"
+          
+          echo "Running sed commands..."
+
+          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+          
+          # Run sed commands for modifications
+          sed -i 's/check_defconfig//' ./common/build.config.gki
+          sed -i '$s|echo "\$res"|echo "\$res-Wild+"|' ./common/scripts/setlocalversion
+          sed -i '$s|echo "\$res"|echo "\$res-Wild+"|' ./msm-kernel/scripts/setlocalversion
+          sed -i '$s|echo "\$res"|echo "\$res-Wild+"|' ./external/dtc/scripts/setlocalversion
+          sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
+          sed -i 's/-dirty//' ./common/scripts/setlocalversion
+          sed -i 's/-dirty//' ./msm-kernel/scripts/setlocalversion
+          sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion
+          sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
+
+          sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh
+          sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/g' ./oplus/build/oplus_setup.sh
+         
+          # Run perl command to modify UTS_VERSION
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Apr 20 04:20:00 UTC 2024"}' ./common/scripts/mkcompile_h
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Apr 20 04:20:00 UTC 2024"}' ./msm-kernel/scripts/mkcompile_h
+
+      - name: Build the Kernel
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG"
+          
+          echo "Building the kernel..."
+          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          #git config --global user.email "bins4us@hotmail.com"
+          #git config --global user.name "TheWildJames"
+          #git add *
+          #git commit -s -a -m "getting rid of -dirty"
+          if [ -f ./kernel_platform/build_with_bazel.py ]; then
+            ./kernel_platform/build_with_bazel.py \
+              -t ${{ inputs.soc }} \
+              gki \
+              --jobs=$(nproc --all) \
+              --verbose_failures \
+              --config=stamp \
+              --user_kmi_symbol_lists=//msm-kernel:android/abi_gki_aarch64_qcom \
+              --ignore_missing_projects \
+              -o "$(pwd)/out"
+          else
+            ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} gki
+          fi
+
+      - name: Copy Images
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG"
+
+          echo "Copying Image"
+          cp ./out/dist/Image ../AnyKernel3/Image
+
+      - name: Create ZIP Files for Different Formats
+        run: |
+          echo "Navigating to AnyKernel3 directory..."
+          cd ./AnyKernel3
+
+          # Zip the files in the AnyKernel3 directory with a new naming convention
+          ZIP_NAME="${{ inputs.model }}_${{ inputs.android_version }}_${{ inputs.kernel_version }}_Next_SUSFS_AnyKernel3.zip"
+          echo "Creating zip file $ZIP_NAME..."
+          zip -r "../$ZIP_NAME" ./*
+          
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ env.NEW_TAG }}  # Use the generated tag for the release
-          prerelease: true  # Mark the release as a pre-release
-          release_name: ${{ env.RELEASE_NAME }}  # Pass the RELEASE_NAME to the action
-          body: ${{ env.RELEASE_NOTES }}  # Pass the RELEASE_NOTES to the action
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Release Assets Dynamically
-        run: |
-          # Loop through all files in the downloaded-artifacts directory
-          for file in ./downloaded-artifacts/kernel-*/*; do
-              # Skip directories
-              if [ -d "$file" ]; then
-                  continue
-              fi
-
-              # Upload the file to the GitHub release
-              echo "Uploading $file..."
-              gh release upload ${{ env.NEW_TAG }} "$file"
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NEW_TAG: ${{ env.NEW_TAG }}
-
-      # Display Files Uploaded
-      - name: Display Files Uploaded
-        run: |
-          echo "GitHub release created with the following files:"
-          ls ./downloaded-artifacts/**/*
+          name: kernel-${{ env.CONFIG }}
+          path: |
+            *.zip
