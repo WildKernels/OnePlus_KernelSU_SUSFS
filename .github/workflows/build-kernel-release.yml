@@ -172,7 +172,6 @@ jobs:
         - build-kernel-op13 # Added
         - build-kernel-opace5pro # Added
         - build-kernel-oppad2 # Added
-        - build-kernel-oppad2
     if: ${{ inputs.make_release }}
     env:
       REPO_OWNER: TheWildJames
