@@ -154,10 +154,21 @@ jobs:
       manifest: "oneplus_pad2_v.xml"
       android_version: "android14"
       kernel_version: "6.1"
+  build-kernel-oppad2:
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      model: "OP-PAD-2"
+      soc: "pineapple"
+      branch: "oneplus/sm8650"
+      manifest: "oneplus_pad2_v.xml"
+      android_version: "android14"
+      kernel_version: "6.1"
 
   trigger-release:
     runs-on: ubuntu-latest
     needs:
+        - build-kernel-oppad2
         - build-kernel-op11
         - build-kernel-op11r
         - build-kernel-op12
