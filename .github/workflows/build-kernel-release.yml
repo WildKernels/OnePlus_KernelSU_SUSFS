@@ -72,6 +72,12 @@ jobs:
             manifest: oneplus_ace2pro_v.xml
             android_version: android13
             kernel_version: "5.15"
+          - model: OP12r
+            soc: kalama
+            branch: oneplus/sm8550
+            manifest: oneplus_12r_v.xml
+            android_version: android13
+            kernel_version: "5.15"
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
