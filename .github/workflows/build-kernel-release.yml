@@ -188,11 +188,6 @@ jobs:
         [+] Maphide LineageOS Detections
         [+] Futile Maphide for jit-zygote-cache Detections
         [+] Magic Mount Support
-        [+] Ptrace message leak fix for kernels < 5.16
-        [+] CMD_SUSFS_HIDE_SUS_MNTS_FOR_ALL_PROCS Support for all kernels.
-        [+] Manual Hooks [scope_min_manual_hooks_v1.4]
-        [+] CONFIG_TMPFS_XATTR Support [Mountify Support]
-        [+] BBR v1 Support.
 
     steps:
       - name: Checkout code
