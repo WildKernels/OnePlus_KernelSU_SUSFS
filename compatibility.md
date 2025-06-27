@@ -32,8 +32,8 @@
 	</tr>
 	<tr> 
 		<td align="center"> Poco X7 Pro </td>
-		<td align="center"> OnePlus 13 </td>
-		<td align="center"> android15-6.6.30 </td>
+		<td align="center"> OnePlus 13<br>OnePlus Ace 5 Pro </td>
+		<td align="center"> android15-6.6.30<br>android15-6.6.30 </td>
 	</tr>
 	<tr> 
 		<td align="center"> Realme GT Neo 5SE<br>Realme GT Neo 5 </td>
