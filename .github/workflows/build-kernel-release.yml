@@ -277,9 +277,9 @@ jobs:
       REPO_OWNER: ${{ github.repository_owner }}
       REPO_NAME: ${{ github.event.repository.name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: "*TEST BUILD* OnePlus Kernels With KernelSU Next & SUSFS v1.5.7 *TEST BUILD*"
+      RELEASE_NAME: "*TEST BUILD* OnePlus Kernels With KernelSU Next & SUSFS v1.5.8 *TEST BUILD*"
       RELEASE_NOTES: |
-        This release contains KernelSU Next and SUSFS v1.5.7
+        This release contains KernelSU Next and SUSFS v1.5.8
         
         Module: 
         -> https://github.com/sidex15/ksu_module_susfs
@@ -289,16 +289,16 @@ jobs:
 
         Features:
         [+] KernelSU-Next
-        [+] SUSFS v1.5.7
+        [+] SUSFS v1.5.8
         [+] Wireguard Support
         [+] Maphide LineageOS Detections
         [+] Futile Maphide for jit-zygote-cache Detections
         [+] Magic Mount Support
         [+] Ptrace message leak fix for kernels < 5.16
-        [+] CMD_SUSFS_HIDE_SUS_MNTS_FOR_ALL_PROCS Support for all kernels.
         [+] Manual Hooks [scope_min_manual_hooks_v1.4]
         [+] CONFIG_TMPFS_XATTR Support [Mountify Support]
         [+] BBR v1 Support.
+        [+] HMBIRD scx support for OnePlus 13 & OnePlus Ace 5 Pro.
 
     steps:
       - name: Checkout code
@@ -306,7 +306,7 @@ jobs:
 
       - name: Generate and Create New Tag
         run: |
-            BASE_TAG="v1.5.7-r0"
+            BASE_TAG="v1.5.8-r0"
             LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
             if [ -z "$LATEST_TAG" ]; then
               LATEST_TAG="$BASE_TAG"
