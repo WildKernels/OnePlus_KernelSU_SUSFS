@@ -100,7 +100,7 @@ jobs:
             manifest: oneplus_12r_v.xml
             android_version: android13
             kernel_version: "5.15"
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository_owner == 'WildKernels' && 'BigBoi' || 'ubuntu-latest' }}
     steps:
       - name: Select Appropriate SusFS Branch
         id: get-susfs-branch
@@ -271,7 +271,7 @@ jobs:
     needs:
       - build-batch-1
       - build-batch-2
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository_owner == 'WildKernels' && 'BigBoi' || 'ubuntu-latest' }}
     if: ${{ inputs.make_release }}
     env:
       REPO_OWNER: ${{ github.repository_owner }}
