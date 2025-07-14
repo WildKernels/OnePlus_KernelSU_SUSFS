@@ -215,6 +215,11 @@ runs:
           
           # Change to common directory and apply SUSFS patch
           cd ../common
+          
+          # SusFS Experimental Patches
+          echo "Patching susfs_dentry_null_checks!"
+          patch -p1 -F 3 < "../../../kernel_patches/experimental/susfs/susfs_dentry_checks.patch"
+          
           if [ "${{ inputs.android_version }}" = "android15" ] && [ "${{ inputs.kernel_version }}" = "6.6" ]; then
               if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
                   sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
