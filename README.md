@@ -12,6 +12,13 @@ By flashing this kernel, **YOU** are choosing to make these modifications. If so
 
 ### Proceed at your own risk!
 
+<table>
+  <tr>
+    <th> :warning: </th>
+    <th> Verify <a href="https://github.com/WildKernels/OnePlus_KernelSU_SUSFS/blob/main/compatibility.md">Compatibility</a> of kernels before flashing. </th>
+  </tr>
+</table>
+
 ---
 
 # Kernels:
@@ -27,6 +34,7 @@ By flashing this kernel, **YOU** are choosing to make these modifications. If so
 
 [Kernel Patches](https://github.com/WildKernels/kernel_patches)  
 [Old Build Scripts](https://github.com/TheWildJames/kernel_build_scripts)  
+[Kernel Flasher - fatalcoder524 fork](https://github.com/fatalcoder524/KernelFlasher)  
 [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher)  
 
 ---
