@@ -191,19 +191,15 @@ runs:
               ;;
             "v1.5.9")
               cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch  || true
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_apk_sign.c.patch" ./
-              patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_core_hook.c.patch" ./
-              patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_selinux.c.patch" ./
-              patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_ksud.c.patch" ./
-              patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_rules.c.patch" ./
-              patch -p1 --forward --fuzz=3 < fix_rules.c.patch
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_sucompat.c.patch" ./
-              patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch
+              patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
+              
+              for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
+                  echo "Patching file: $file.c with fix_$file.c.patch"
+                  patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch"
+              done
+              
+              # Fix build errors (no rejects; Still giving errors)
+              patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
               ;;
             *)
               echo "Invalid version: $susfs_version"
@@ -215,10 +211,6 @@ runs:
           
           # Change to common directory and apply SUSFS patch
           cd ../common
-          
-          # SusFS Experimental Patches
-          echo "Patching susfs_dentry_null_checks!"
-          patch -p1 -F 3 < "../../../kernel_patches/experimental/susfs/susfs_dentry_checks.patch"
           
           if [ "${{ inputs.android_version }}" = "android15" ] && [ "${{ inputs.kernel_version }}" = "6.6" ]; then
               if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
@@ -258,7 +250,7 @@ runs:
           cd "$CONFIG/kernel_platform/common"
           echo "Applying KSUN Hooks..."
           cp ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./manual_hooks.patch
-          patch -p1 --fuzz=3 < ./manual_hooks.patch
+          patch -p1 < ./manual_hooks.patch
           
       - name: Apply Hide Stuff Patches
         shell: bash
