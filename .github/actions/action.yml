@@ -410,6 +410,7 @@ runs:
           fi
 
       - name: Create ZIP Files for Different Formats
+        id: create_zip
         shell: bash
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -431,9 +432,65 @@ runs:
           echo "Creating zip file $ZIP_NAME..."
           zip -r "../$ZIP_NAME" ./*
 
+      - name: Save Build Metadata
+        shell: bash
+        if: success() && steps.create_zip.conclusion == 'success'
+        id: save_metadata
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          if [ -z "$(ls *.zip 2>/dev/null)" ]; then
+            echo "No kernel zip found! Artifact upload might be fake."
+            exit 1
+          fi
+          
+          cd "$CONFIG/kernel_platform/common"
+          CONFIG_FILES=("build.config.common" "build.config.constants")
+          BRANCH_LINE=""
+          
+          for file in "${CONFIG_FILES[@]}"; do
+            if [ -f "$file" ]; then
+              line=$(grep '^[[:space:]]*BRANCH=' "$file" | head -n1 || true)
+              if [ -n "$line" ]; then
+                BRANCH_LINE="$line"
+                echo "Found BRANCH in: $file"
+                break  # Found it — exit loop
+              else
+                echo "File exists but no BRANCH= found: $file"
+              fi
+            else
+              echo "File not found: $file"
+            fi
+          done
+          
+          if [ -z "$BRANCH_LINE" ]; then
+            echo "Error: No BRANCH= found in any of: ${CONFIG_FILES[*]}"
+            exit 1
+          fi
+          
+          BRANCH_VALUE="${BRANCH_LINE#*=}"
+          ANDROID_VERSION="${BRANCH_VALUE%-*}"
+          
+          if [ -z "$ANDROID_VERSION" ]; then
+            echo "Error: Could not extract 'androidXX' from BRANCH='$BRANCH_VALUE'"
+            exit 1
+          fi
+          
+          # Extract values using grep and awk
+          VERSION=$(grep '^VERSION *=' Makefile | awk '{print $3}')
+          PATCHLEVEL=$(grep '^PATCHLEVEL *=' Makefile | awk '{print $3}')
+          SUBLEVEL=$(grep '^SUBLEVEL *=' Makefile | awk '{print $3}')
+          FULL_VERSION="$VERSION.$PATCHLEVEL.$SUBLEVEL"
+          
+          echo "Kernel Version: $ANDROID_VERSION-$FULL_VERSION"
+          
+          cd "$GITHUB_WORKSPACE"
+          echo "$ANDROID_VERSION-$FULL_VERSION" > ${{ inputs.model }}.txt
+
       - name: Upload Build Artifacts
+        id: upload_ak3_zip
         uses: actions/upload-artifact@v4
         with:
           name: kernel-${{ env.CONFIG }}
           path: |
+            ${{ inputs.model }}.txt
             *.zip
