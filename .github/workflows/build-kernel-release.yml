@@ -20,6 +20,11 @@ on:
           - stable
           - next
         default: next
+      zram:
+        description: "Whether to enable additional ZRAM algorithms"
+        required: true
+        type: boolean
+        default: true
       android12-5_10_susfs_branch:
         description: "Choose SusFS Branch for android12-5.10"
         type: string
@@ -46,7 +51,7 @@ on:
         default: "gki-android15-6.6"
 
 jobs:
-  build-batch-1: # Non Bazel Builds
+  build-batch-1:
     name: build-batch-1 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }})
     strategy:
       fail-fast: false
@@ -106,7 +111,6 @@ jobs:
         id: get-susfs-branch
         run: |
           KERNEL_STRING="${{ matrix.android_version }}-${{ matrix.kernel_version }}"
-          
           case "$KERNEL_STRING" in
             "android12-5.10")
               SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch }}"
@@ -131,18 +135,18 @@ jobs:
               exit 1
               ;;
           esac
-          
           if [[ -z "$SUSFS_BRANCH" ]]; then
             SUSFS_BRANCH="gki-${{ matrix.android_version }}-${{ matrix.kernel_version }}"
           fi
-          
           echo "susfs_branch=$SUSFS_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Build Kernel
-        uses: ./.github/actions/
+        uses: ./.github/actions
         with:
           model: ${{ matrix.model }}
           soc: ${{ matrix.soc }}
@@ -152,9 +156,9 @@ jobs:
           kernel_version: ${{ matrix.kernel_version }}
           ksun_branch: ${{ inputs.ksun_branch }}
           susfs_branch: ${{ steps.get-susfs-branch.outputs.susfs_branch }}
+          zram: ${{ inputs.zram }}
 
   build-batch-2:
-    # needs: build-batch-1
     name: build-batch-2 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }})
     strategy:
       fail-fast: false
@@ -226,7 +230,6 @@ jobs:
         id: get-susfs-branch
         run: |
           KERNEL_STRING="${{ matrix.android_version }}-${{ matrix.kernel_version }}"
-          
           case "$KERNEL_STRING" in
             "android12-5.10")
               SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch }}"
@@ -251,15 +254,15 @@ jobs:
               exit 1
               ;;
           esac
-          
           if [[ -z "$SUSFS_BRANCH" ]]; then
             SUSFS_BRANCH="gki-${{ matrix.android_version }}-${{ matrix.kernel_version }}"
           fi
-          
           echo "susfs_branch=$SUSFS_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Build Kernel
         uses: ./.github/actions
@@ -272,6 +275,7 @@ jobs:
           kernel_version: ${{ matrix.kernel_version }}
           ksun_branch: ${{ inputs.ksun_branch }}
           susfs_branch: ${{ steps.get-susfs-branch.outputs.susfs_branch }}
+          zram: ${{ inputs.zram }}
 
   trigger-release:
     needs:
@@ -287,23 +291,24 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Generate and Create New Tag
         run: |
-            BASE_TAG="v1.5.9-r0"
-            LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
-            if [ -z "$LATEST_TAG" ]; then
-              LATEST_TAG="$BASE_TAG"
-            else
-              LATEST_TAG=$(printf "%s\n%s\n" "$LATEST_TAG" "$BASE_TAG" | sort -rV | head -n1)
-            fi
-            NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
-            echo "New tag: $NEW_TAG"
-            echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
-            git tag $NEW_TAG
-            git push origin $NEW_TAG
-
+          BASE_TAG="v1.5.9-r0"
+          LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="$BASE_TAG"
+          else
+            LATEST_TAG=$(printf "%s\n%s\n" "$LATEST_TAG" "$BASE_TAG" | sort -rV | head -n1)
+          fi
+          NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
+          echo "New tag: $NEW_TAG"
+          echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
+          git tag $NEW_TAG
+          git push origin $NEW_TAG
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -314,7 +319,7 @@ jobs:
         run: |
           echo "=== Start building the release notes ==="
           cat << EOF > release_notes.md
-          This release contains KernelSU Next and SUSFS v1.5.9
+          This release contains KernelSU Next and SUSFS v1.5.9 with ZRAM support (LZ4KD) enabled by default.
           
           Module: 
           -> https://github.com/sidex15/ksu_module_susfs  
@@ -328,21 +333,25 @@ jobs:
           |-------|----------------|
           EOF
           
-          # === Generate table rows ===
-          while IFS= read -r file; do
+          # Generate table rows
+          for file in $(find downloaded-artifacts -name "AnyKernel3_*.zip" -type f | sort); do
             if [ -f "$file" ]; then
-              model=$(basename "$file" .txt)
-              version=$(cat "$file")
-              printf "| %-7s | %-16s |\n" "$model" "$version" >> release_notes.md
+              model=$(basename "$(dirname "$file")" | sed 's/-kernel$//')
+              kernel_version=$(echo "$file" | grep -oP 'android\d+-\d+\.\d+')
+              if [ -z "$kernel_version" ]; then
+                kernel_version="Unknown"
+              fi
+              printf "| %-12s | %-16s |\n" "$model" "$kernel_version" >> release_notes.md
             fi
-          done < <(find downloaded-artifacts -name "*.txt" -type f | sort)
+          done
           
-          # === Add features and finalize ===
+          # Add features and finalize
           cat << 'EOF' >> release_notes.md
           
           ### Features
           - [+] KernelSU-Next
           - [+] SUSFS v1.5.9
+          - [+] ZRAM Support (LZ4KD)
           - [+] Wireguard Support
           - [+] Maphide LineageOS Detections
           - [+] Futile Maphide for jit-zygote-cache Detections
@@ -350,14 +359,13 @@ jobs:
           - [+] Ptrace message leak fix for kernels < 5.16
           - [+] Manual Hooks [scope_min_manual_hooks_v1.4]
           - [+] CONFIG_TMPFS_XATTR Support [Mountify Support]
-          - [+] BBR v1 Support.
-          - [+] HMBIRD scx support for OnePlus 13 & OnePlus Ace 5 Pro.
+          - [+] BBR v1 Support
+          - [+] HMBIRD scx support for OnePlus 13 & OnePlus Ace 5 Pro
           EOF
           
-          # === Output for debugging ===
+          # Output for debugging
           echo "--- Final Release Notes ---"
           cat release_notes.md
-
       - name: Create GitHub Release
         run: |
           gh release create "${{ env.NEW_TAG }}" \
@@ -365,23 +373,11 @@ jobs:
             --title "${{ env.RELEASE_NAME }}" \
             --notes-file release_notes.md \
             --prerelease
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Upload Release Assets Dynamically
         run: |
-          for file in ./downloaded-artifacts/kernel-*/*.zip; do
-              if [ -d "$file" ]; then
-                  continue
-              fi
+          for file in ./downloaded-artifacts/*/kernel-*.zip; do
+            if [ -f "$file" ]; then
               echo "Uploading $file..."
-              gh release upload ${{ env.NEW_TAG }} "$file"
+              gh release upload "${{ env.NEW_TAG }}" "$file" --clobber
+            fi
           done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NEW_TAG: ${{ env.NEW_TAG }}
-
-      - name: Display Files Uploaded
-        run: |
-          echo "GitHub release created with the following files:"
-          ls ./downloaded-artifacts/**/*
