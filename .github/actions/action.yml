@@ -370,8 +370,7 @@ runs:
         else
           echo "No workspace_status_stamp.py!"
         fi
-        sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh
-        sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/g' ./oplus/build/oplus_setup.sh
+        
         DATESTR=$(date -u)
         perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT '"$DATESTR"'"}' ./common/scripts/mkcompile_h
         perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT '"$DATESTR"'"}' ./msm-kernel/scripts/mkcompile_h
@@ -430,6 +429,7 @@ runs:
         elif command -v clang >/dev/null 2>&1; then
           SELECTED_CLANG="$(command -v clang)"
           echo "Using system Clang: $SELECTED_CLANG"
+          exit 1
         else
           echo "Error: No valid Clang binary found"
           exit 1
