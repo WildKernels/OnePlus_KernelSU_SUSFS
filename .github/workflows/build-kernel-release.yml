@@ -22,6 +22,9 @@ on:
         default: next
       zram:
         description: "Whether to enable additional ZRAM algorithms"
+        required: true
+        type: boolean
+        
       android12-5_10_susfs_branch:
         description: "Choose SusFS Branch for android12-5.10"
         type: string
