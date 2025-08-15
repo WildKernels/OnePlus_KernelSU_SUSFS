@@ -348,11 +348,11 @@ jobs:
           EOF
           
           # Generate table rows
-          for file in $(find downloaded-artifacts -name "*.zip" -type f | sort); do
+          for file in $(find downloaded-artifacts -name "*.txt" -type f | sort); do
             if [ -f "$file" ]; then
-              model=$(basename "$(dirname "$file")" | sed 's/-kernel$//')
-              kernel_version=$(grep -oP 'android\d+-\d+\.\d+' "$file" || echo "${{ matrix.android_version }}-${{ matrix.kernel_version }}")
-              printf "| %-12s | %-16s |\n" "$model" "$kernel_version" >> release_notes.md
+              model=$(basename "$file" .txt)
+              version=$(cat "$file")
+              printf "| %-12s | %-16s |\n" "$model" "$version" >> release_notes.md
             fi
           done
           
