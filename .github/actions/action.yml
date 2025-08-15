@@ -347,6 +347,9 @@ runs:
         sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
         sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
         sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+        echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "./common/arch/arm64/configs/gki_defconfig"
+        echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n" >> "./common/arch/arm64/configs/gki_defconfig"
+        
         sed -i 's/check_defconfig//' ./common/build.config.gki
         tac ./common/scripts/setlocalversion | sed '0,/echo "\$res"/s//res="-${{ env.ANDROID_VER }}-OP-Wild"\;echo "\$res"\;/' | tac > ./common/scripts/setlocalversion.tmp && mv ./common/scripts/setlocalversion.tmp ./common/scripts/setlocalversion
         tac ./msm-kernel/scripts/setlocalversion | sed '0,/echo "\$res"/s//res="-${{ env.ANDROID_VER }}-OP-Wild"\;echo "\$res"\;/' | tac > ./msm-kernel/scripts/setlocalversion.tmp && mv ./msm-kernel/scripts/setlocalversion.tmp ./msm-kernel/scripts/setlocalversion
@@ -461,12 +464,13 @@ runs:
         MAKE_ARGS="LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
           RUSTC=$KERNEL_PATH/prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
           PAHOLE=$KERNEL_PATH/prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-          LD=ld.lld HOSTLD=ld.lld KCFLAGS+=-Wno-error"
+          LD=ld.lld HOSTLD=ld.lld"
         if [[ -v USE_LLVM_IAS ]]; then
           MAKE_ARGS="LLVM_IAS=1 $MAKE_ARGS"
         fi
-        make -j$(nproc --all) O=out $MAKE_ARGS gki_defconfig || exit 1
-        make -j$(nproc --all) O=out $MAKE_ARGS || exit 1
+        
+        make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2" gki_defconfig || exit 1
+        make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2"|| exit 1
 
     - name: Create Kernel ZIP
       id: create_zip
