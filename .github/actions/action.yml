@@ -34,24 +34,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install Dependencies
-      shell: bash
-      run: |
-        sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock
-        sudo apt update -qq
-        sudo DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends \
-          python3 git curl libelf-dev lld \
-          build-essential flex bison libssl-dev \
-          libncurses-dev liblz4-tool zlib1g-dev \
-          libxml2-utils rsync unzip
-
-    - name: Install Repo Tool
-      shell: bash
-      run: |
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
-        chmod a+x ~/repo
-        sudo mv ~/repo /usr/local/bin/repo
-
     - name: Setup Build System
       shell: bash
       run: |
@@ -75,6 +57,24 @@ runs:
         chmod a+rx ./git-repo/repo
         echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> "$GITHUB_ENV"
         echo "CONFIG=${{ inputs.model }}" >> "$GITHUB_ENV"
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock
+        sudo apt update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends \
+          python3 git curl libelf-dev lld \
+          build-essential flex bison libssl-dev \
+          libncurses-dev liblz4-tool zlib1g-dev \
+          libxml2-utils rsync unzip
+
+    - name: Install Repo Tool
+      shell: bash
+      run: |
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
+        chmod a+x ~/repo
+        sudo mv ~/repo /usr/local/bin/repo
 
     - name: Clone AnyKernel3 and Other Dependencies
       shell: bash
