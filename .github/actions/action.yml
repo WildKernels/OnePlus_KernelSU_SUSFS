@@ -332,26 +332,38 @@ runs:
         BUILDCONFIG="$KERNEL_PATH/common/build.config.gki"
         CONSTANTSCONFIG="$KERNEL_PATH/common/build.config.constants"
         CLANG_VERSION=""
-        if grep -q '^CONFIG_CLANG_VERSION=' "$DEFCONFIG"; then
-          CLANG_VERSION=$(grep '^CONFIG_CLANG_VERSION=' "$DEFCONFIG" | head -n1 | cut -d'=' -f2 | tr -d '"')
-        elif grep -q '^CLANG_VERSION=' "$BUILDCONFIG"; then
-          CLANG_VERSION=$(grep '^CLANG_VERSION=' "$BUILDCONFIG" | head -n1 | cut -d'=' -f2)
-        elif grep -q '^CLANG_VERSION=' "$CONSTANTSCONFIG"; then
-          CLANG_VERSION=$(grep '^CLANG_VERSION=' "$CONSTANTSCONFIG" | head -n1 | cut -d'=' -f2)
+        CLANG_BIN_PATH=""
+        if grep -q '^CONFIG_CLANG_VERSION=' "$DEFCONFIG" 2>/dev/null; then
+          CLANG_VERSION=$(grep '^CONFIG_CLANG_VERSION=' "$DEFCONFIG" 2>/dev/null | head -n1 | cut -d'=' -f2 | tr -d '"' | xargs)
+        elif grep -q '^CLANG_VERSION=' "$BUILDCONFIG" 2>/dev/null; then
+          CLANG_VERSION=$(grep '^CLANG_VERSION=' "$BUILDCONFIG" 2>/dev/null | head -n1 | cut -d'=' -f2 | xargs)
+        elif grep -q '^CLANG_VERSION=' "$CONSTANTSCONFIG" 2>/dev/null; then
+          CLANG_VERSION=$(grep '^CLANG_VERSION=' "$CONSTANTSCONFIG" 2>/dev/null | head -n1 | cut -d'=' -f2 | xargs)
           CLANG_VERSION="clang-$CLANG_VERSION"
         else
           echo "No clang version found in config, will auto-detect in prebuilts."
         fi
         if [ -z "$CLANG_VERSION" ]; then
           if [ -d "$KERNEL_PATH/prebuilts/clang/host/linux-x86" ]; then
-            CLANG_VERSION=$(ls -d "$KERNEL_PATH"/prebuilts/clang/host/linux-x86/*/ | head -n 1 | xargs basename)
+            CLANG_VERSION=$(ls -d "$KERNEL_PATH"/prebuilts/clang/host/linux-x86/clang-r*/ | tail -n 1 | xargs basename)
+            CLANG_BIN_PATH="$KERNEL_PATH/prebuilts/clang/host/linux-x86/$CLANG_VERSION/bin"
+          elif [ -d "$KERNEL_PATH/prebuilts-master/clang/host/linux-x86" ]; then
+            CLANG_VERSION=$(ls -d "$KERNEL_PATH"/prebuilts-master/clang/host/linux-x86/clang-r*/ | tail -n 1 | xargs basename)
+            CLANG_BIN_PATH="$KERNEL_PATH/prebuilts-master/clang/host/linux-x86/$CLANG_VERSION/bin"
           else
             CLANG_VERSION="clang"
+            CLANG_BIN_PATH="$KERNEL_PATH/prebuilts/clang/host/linux-x86/$CLANG_VERSION/bin" # dummy
+          fi
+        else
+          if [ -d "$KERNEL_PATH/prebuilts/clang/host/linux-x86" ]; then
+            CLANG_BIN_PATH="$KERNEL_PATH/prebuilts/clang/host/linux-x86/$CLANG_VERSION/bin"
+          else
+            CLANG_BIN_PATH="$KERNEL_PATH/prebuilts-master/clang/host/linux-x86/$CLANG_VERSION/bin"
           fi
         fi
         echo "Detected CLANG_VERSION: $CLANG_VERSION"
         echo "CLANG_VERSION=$CLANG_VERSION" >> $GITHUB_ENV
-        echo "CLANG_BIN_PATH=$KERNEL_PATH/prebuilts/clang/host/linux-x86/$CLANG_VERSION/bin" >> $GITHUB_ENV
+        echo "CLANG_BIN_PATH=$CLANG_BIN_PATH" >> $GITHUB_ENV
 
     - name: Build Kernel
       shell: bash
