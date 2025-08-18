@@ -50,13 +50,6 @@ runs:
         sudo apt-get autoclean -y
         echo "Package cleanup complete"
         df -h
-        sudo apt update
-        sudo apt install -y python3 python-is-python3
-        mkdir -p ./git-repo
-        curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
-        chmod a+rx ./git-repo/repo
-        echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> "$GITHUB_ENV"
-        echo "CONFIG=${{ inputs.model }}" >> "$GITHUB_ENV"
 
     - name: Install Dependencies
       shell: bash
@@ -67,14 +60,16 @@ runs:
           python3 git curl libelf-dev lld \
           build-essential flex bison libssl-dev \
           libncurses-dev liblz4-tool zlib1g-dev \
-          libxml2-utils rsync unzip
+          libxml2-utils rsync unzip python3 python-is-python3
 
     - name: Install Repo Tool
       shell: bash
       run: |
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
-        chmod a+x ~/repo
-        sudo mv ~/repo /usr/local/bin/repo
+        mkdir -p ./git-repo
+        curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
+        chmod a+rx ./git-repo/repo
+        echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> "$GITHUB_ENV"
+        echo "CONFIG=${{ inputs.model }}" >> "$GITHUB_ENV"
 
     - name: Clone AnyKernel3 and Other Dependencies
       shell: bash
