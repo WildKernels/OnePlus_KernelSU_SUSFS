@@ -281,7 +281,7 @@ runs:
         echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
         echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-    - name: Add TTL Target Support
+    - name: Add Lto Thin
       shell: bash
       run: |
         echo "Changing to configuration directory: $CONFIG..."
