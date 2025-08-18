@@ -464,8 +464,8 @@ runs:
           MAKE_ARGS="LLVM_IAS=1 $MAKE_ARGS"
         fi
         
-        make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2 -flto=thin" gki_defconfig || exit 1
-        make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2 -flto=thin" || exit 1
+        make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2" gki_defconfig || exit 1
+        make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2" || exit 1
 
     - name: Create Kernel ZIP
       id: create_zip
