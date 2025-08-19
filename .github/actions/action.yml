@@ -251,13 +251,13 @@ runs:
     - name: Apply ZRAM Patches (if enabled)
       if: ${{ inputs.zram == 'true' }}
       shell: bash
-      run: |   
+      run: |
         cd "$CONFIG/kernel_platform/common"
         cp ../../../SukiSU_patch/other/zram/zram_patch/${{ inputs.kernel_version }}/lz4kd.patch ./
         patch -p1 -F 3 < lz4kd.patch
         cp ../../../SukiSU_patch/other/zram/zram_patch/${{ inputs.kernel_version }}/lz4k_oplus.patch ./
         patch -p1 -F 3 < lz4k_oplus.patch
-        
+
     - name: Upgrade LZ4 (if enabled)
       if: ${{ inputs.zram == 'true' }}
       shell: bash
@@ -302,7 +302,7 @@ runs:
           echo "obj-\$(CONFIG_LZ4V2_COMPRESS) += lz4v2_core.o" >> ../lib/Makefile
           echo "obj-\$(CONFIG_LZ4V2_HC) += lz4v2_hc.o" >> ../lib/Makefile
         fi
-
+        
     - name: Add KernelSU-Next and SUSFS Configuration Settings
       shell: bash
       run: |
@@ -331,10 +331,10 @@ runs:
         echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
         echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
         
-     - name: Upgrade LZ4
-       if: ${{ inputs.zram == 'true' }}
-       shell: bash
-       run: |
+    - name: Upgrade LZ4 (if enabled)
+      if: ${{ inputs.zram == 'true' }}
+      shell: bash
+      run: |
          echo "Changing to configuration directory: $CONFIG..."
          cd "$CONFIG/kernel_platform"
          echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -566,133 +566,132 @@ runs:
         make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2 -flto=thin -fno-stack-protector" gki_defconfig || exit 1
         make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2 -flto=thin -fno-stack-protector" || exit 1
     
-- name: Download and Unzip ZRAM Module
-  id: zram_find
-  if: ${{ inputs.zram == 'true' }}
-  shell: bash
-  run: |
-    set -e
-    sudo apt install -y unzip
-    echo "Attempting to fetch ZRAM module zip download link..."
-    retries=3
-    success=0
-    for i in $(seq 1 $retries); do
-      echo "Attempt $i of $retries..."
-      download_url=$(curl -s https://api.github.com/repos/Bouteillepleine/ZRAM-Module/releases/latest | \
-        grep "browser_download_url" | grep "ZRAM-Module-.*\.zip" | cut -d '"' -f 4 | head -n 1)
-      if [ -n "$download_url" ]; then
-        echo "Successfully retrieved download link: $download_url"
-        wget -N "$download_url" && success=1 && break
-      else
-        echo "Failed to retrieve download link, retrying after 3 seconds..."
-        sleep 3
-      fi
-    done
-    if [ "$success" -ne 1 ]; then
-      echo "Failed to retrieve ZRAM module download link after $retries attempts"
-      echo "has_zram=false" >> "$GITHUB_OUTPUT"
-      exit 0
-    fi
-    zram_zip=$(ls -t ZRAM-Module-*.zip | head -1)
-    unzip "$zram_zip" -d ZRAM-Module
-    echo "Contents of ZRAM-Module directory:"
-    ls -R ZRAM-Module
-    target="./ZRAM-Module/zram/zram.ko"
-    echo "Searching for zram.ko module file..."
-    search_paths=(
-      "$GITHUB_WORKSPACE/${{ env.CONFIG }}/kernel_platform/out"
-      "$GITHUB_WORKSPACE/${{ env.CONFIG }}/kernel_platform/common/out"
-      "$GITHUB_WORKSPACE/${{ env.CONFIG }}/kernel_platform/common/out/modules"
-      "$GITHUB_WORKSPACE/${{ env.CONFIG }}/kernel_platform/out/modules"
-      "$GITHUB_WORKSPACE/${{ env.CONFIG }}/device/qcom"
-      "$GITHUB_WORKSPACE/${{ env.CONFIG }}"
-      "$GITHUB_WORKSPACE/ZRAM-Module/zram"
-    )
-    echo "Search paths: ${search_paths[*]}"
-    zram_path=""
-    for path in "${search_paths[@]}"; do
-      echo "Searching in $path..."
-      if [ -d "$path" ]; then
-        zram_path=$(find "$path" -type f -name "zram.ko" -maxdepth 5 2>/dev/null | head -n 1)
-        [ -n "$zram_path" ] && break
-      else
-        echo "Directory $path does not exist, skipping..."
-      fi
-    done
-    if [ -z "$zram_path" ]; then
-      echo "zram.ko file not found in initial search, attempting broader search..."
-      zram_path=$(find "$GITHUB_WORKSPACE" -type f -name "zram.ko" -maxdepth 10 2>/dev/null | head -n 1)
-    fi
-    if [ -n "$zram_path" ] && [ -f "$zram_path" ]; then
-      echo "ZRAM module file located at: $zram_path"
-      mkdir -p "$(dirname "$target")"
-      if [ "$(realpath "$zram_path")" != "$(realpath "$target")" ]; then
-        cp "$zram_path" "$target"
-        echo "Copied zram.ko to $target"
-      else
-        echo "Source file is the same as target path, skipping copy"
-      fi
-      echo "has_zram=true" >> "$GITHUB_OUTPUT"
-      zram_version=$(echo "$zram_zip" | sed -E 's/.*ZRAM-Module-(.*)\.zip/\1/')
-      echo "zram_version=$zram_version" >> "$GITHUB_OUTPUT"
-    else
-      echo "zram.ko file not found in any search paths or ZRAM-Module directory"
-      echo "has_zram=false" >> "$GITHUB_OUTPUT"
-      echo "Continuing workflow without ZRAM module..."
-    fi
-
-- name: Create Kernel ZIP
-  id: create_zip
-  shell: bash
-  run: |
-    CONFIG_DIR="$GITHUB_WORKSPACE/${{ env.CONFIG }}"
-    KERNEL_PATH="$CONFIG_DIR/kernel_platform"
+    - name: Download and Unzip ZRAM Module
+      if: ${{ inputs.zram == 'true' }}
+      shell: bash
+      run: |
+        set -e
+        sudo apt install -y unzip
+        echo "Attempting to fetch ZRAM module zip download link..."
+        retries=3
+        success=0
+        for i in $(seq 1 $retries); do
+          echo "Attempt $i of $retries..."
+          download_url=$(curl -s https://api.github.com/repos/Bouteillepleine/ZRAM-Module/releases/latest | \
+            grep "browser_download_url" | grep "ZRAM-Module-.*\.zip" | cut -d '"' -f 4 | head -n 1)
+          if [ -n "$download_url" ]; then
+            echo "Successfully retrieved download link: $download_url"
+            wget -N "$download_url" && success=1 && break
+          else
+            echo "Failed to retrieve download link, retrying after 3 seconds..."
+            sleep 3
+          fi
+        done
+        if [ "$success" -ne 1 ]; then
+          echo "Failed to retrieve ZRAM module download link after $retries attempts"
+          echo "has_zram=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        zram_zip=$(ls -t ZRAM-Module-*.zip | head -1)
+        unzip "$zram_zip" -d ZRAM-Module
+        echo "Contents of ZRAM-Module directory:"
+        ls -R ZRAM-Module
+        target="./ZRAM-Module/zram/zram.ko"
+        echo "Searching for zram.ko module file..."
+        search_paths=(
+          "$GITHUB_WORKSPACE/${{ env.CONFIG }}/kernel_platform/out"
+          "$GITHUB_WORKSPACE/${{ env.CONFIG }}/kernel_platform/common/out"
+          "$GITHUB_WORKSPACE/${{ env.CONFIG }}/kernel_platform/common/out/modules"
+          "$GITHUB_WORKSPACE/${{ env.CONFIG }}/kernel_platform/out/modules"
+          "$GITHUB_WORKSPACE/${{ env.CONFIG }}/device/qcom"
+          "$GITHUB_WORKSPACE/${{ env.CONFIG }}"
+          "$GITHUB_WORKSPACE/ZRAM-Module/zram"
+        )
+        echo "Search paths: ${search_paths[*]}"
+        zram_path=""
+        for path in "${search_paths[@]}"; do
+          echo "Searching in $path..."
+          if [ -d "$path" ]; then
+            zram_path=$(find "$path" -type f -name "zram.ko" -maxdepth 5 2>/dev/null | head -n 1)
+            [ -n "$zram_path" ] && break
+          else
+            echo "Directory $path does not exist, skipping..."
+          fi
+        done
+        if [ -z "$zram_path" ]; then
+          echo "zram.ko file not found in initial search, attempting broader search..."
+          zram_path=$(find "$GITHUB_WORKSPACE" -type f -name "zram.ko" -maxdepth 10 2>/dev/null | head -n 1)
+        fi
+        if [ -n "$zram_path" ] && [ -f "$zram_path" ]; then
+          echo "ZRAM module file located at: $zram_path"
+          mkdir -p "$(dirname "$target")"
+          if [ "$(realpath "$zram_path")" != "$(realpath "$target")" ]; then
+            cp "$zram_path" "$target"
+            echo "Copied zram.ko to $target"
+          else
+            echo "Source file is the same as target path, skipping copy"
+          fi
+          echo "has_zram=true" >> "$GITHUB_OUTPUT"
+          zram_version=$(echo "$zram_zip" | sed -E 's/.*ZRAM-Module-(.*)\.zip/\1/')
+          echo "zram_version=$zram_version" >> "$GITHUB_OUTPUT"
+        else
+          echo "zram.ko file not found in any search paths or ZRAM-Module directory"
+          echo "has_zram=false" >> "$GITHUB_OUTPUT"
+          echo "Continuing workflow without ZRAM module..."
+        fi
     
-    cp "$KERNEL_PATH/common/out/arch/arm64/boot/Image" "$GITHUB_WORKSPACE/AnyKernel3/Image"
+    - name: Create Kernel ZIP
+      id: create_zip
+      shell: bash
+      run: |
+        CONFIG_DIR="$GITHUB_WORKSPACE/${{ env.CONFIG }}"
+        KERNEL_PATH="$CONFIG_DIR/kernel_platform"
+        
+        cp "$KERNEL_PATH/common/out/arch/arm64/boot/Image" "$GITHUB_WORKSPACE/AnyKernel3/Image"
+        
+        cd "$GITHUB_WORKSPACE/AnyKernel3"
+        
+        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
+          cp "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/bins/"* ./tools/
+          patch -F 3 < "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch"
+        fi
+        
+        AK_ZIP_NAME="AnyKernel3_${{ inputs.model }}_${{ inputs.android_version }}-${{ inputs.kernel_version }}_Next_${{ env.KSUVER }}_SUSFS_${{ env.SUSVER }}.zip"
+        zip -r "$AK_ZIP_NAME" ./*
+        mv "$AK_ZIP_NAME" "$GITHUB_WORKSPACE/"
+        
+        if [ "${{ inputs.zram }}" = "true" ] && [ "${{ steps.zram_find.outputs.has_zram }}" = "true" ]; then
+          ZRAM_ZIP_NAME="ZRAM-Module-${{ steps.zram_find.outputs.zram_version }}_OnePlus${{ inputs.model }}_Android${{ inputs.android_version }}.${{ inputs.kernel_version }}.zip"
+          cd "$GITHUB_WORKSPACE/ZRAM-Module"
+          zip -r "$ZRAM_ZIP_NAME" .
+          mv "$ZRAM_ZIP_NAME" "$GITHUB_WORKSPACE/"
+        fi
+        
+        OUTER_ZIP_NAME="kernel-${{ inputs.model }}.zip"
+        cd "$GITHUB_WORKSPACE"
+        mkdir -p artifacts
+        mv "$AK_ZIP_NAME" artifacts/
+        if [ "${{ inputs.zram }}" = "true" ] && [ "${{ steps.zram_find.outputs.has_zram }}" = "true" ]; then
+          mv "$ZRAM_ZIP_NAME" artifacts/
+        fi
+        cd artifacts
+        zip -r "$GITHUB_WORKSPACE/$OUTER_ZIP_NAME" .
+        cd "$GITHUB_WORKSPACE"
+        
+        ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
+        mkdir -p "$ARTIFACTS_DIR"
+        mv "$OUTER_ZIP_NAME" "$ARTIFACTS_DIR/"
+        
+        rm -rf artifacts
+        rm -f "$AK_ZIP_NAME"
+        if [ "${{ inputs.zram }}" = "true" ] && [ "${{ steps.zram_find.outputs.has_zram }}" = "true" ]; then
+          rm -f "$ZRAM_ZIP_NAME"
+        fi
     
-    cd "$GITHUB_WORKSPACE/AnyKernel3"
-    
-    if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
-      cp "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/bins/"* ./tools/
-      patch -F 3 < "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch"
-    fi
-    
-    AK_ZIP_NAME="AnyKernel3_${{ inputs.model }}_${{ inputs.android_version }}-${{ inputs.kernel_version }}_Next_${{ env.KSUVER }}_SUSFS_${{ env.SUSVER }}.zip"
-    zip -r "$AK_ZIP_NAME" ./*
-    mv "$AK_ZIP_NAME" "$GITHUB_WORKSPACE/"
-    
-    if [ "${{ inputs.zram }}" = "true" ] && [ "${{ steps.zram_find.outputs.has_zram }}" = "true" ]; then
-      ZRAM_ZIP_NAME="ZRAM-Module-${{ steps.zram_find.outputs.zram_version }}_OnePlus${{ inputs.model }}_Android${{ inputs.android_version }}.${{ inputs.kernel_version }}.zip"
-      cd "$GITHUB_WORKSPACE/ZRAM-Module"
-      zip -r "$ZRAM_ZIP_NAME" .
-      mv "$ZRAM_ZIP_NAME" "$GITHUB_WORKSPACE/"
-    fi
-    
-    OUTER_ZIP_NAME="kernel-${{ inputs.model }}.zip"
-    cd "$GITHUB_WORKSPACE"
-    mkdir -p artifacts
-    mv "$AK_ZIP_NAME" artifacts/
-    if [ "${{ inputs.zram }}" = "true" ] && [ "${{ steps.zram_find.outputs.has_zram }}" = "true" ]; then
-      mv "$ZRAM_ZIP_NAME" artifacts/
-    fi
-    cd artifacts
-    zip -r "$GITHUB_WORKSPACE/$OUTER_ZIP_NAME" .
-    cd "$GITHUB_WORKSPACE"
-    
-    ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
-    mkdir -p "$ARTIFACTS_DIR"
-    mv "$OUTER_ZIP_NAME" "$ARTIFACTS_DIR/"
-    
-    rm -rf artifacts
-    rm -f "$AK_ZIP_NAME"
-    if [ "${{ inputs.zram }}" = "true" ] && [ "${{ steps.zram_find.outputs.has_zram }}" = "true" ]; then
-      rm -f "$ZRAM_ZIP_NAME"
-    fi
-
-- name: Upload Artifacts
-  if: success() && steps.create_zip.conclusion == 'success'
-  uses: actions/upload-artifact@v4
-  with:
-    name: kernel-${{ env.CONFIG }}
-    path: |
-      ${{ env.CONFIG }}/artifacts/*
+    - name: Upload Artifacts
+      if: success() && steps.create_zip.conclusion == 'success'
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel-${{ env.CONFIG }}
+        path: |
+          ${{ env.CONFIG }}/artifacts/*
