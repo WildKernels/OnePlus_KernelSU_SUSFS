@@ -571,6 +571,7 @@ runs:
         make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2 -flto=thin -fno-stack-protector" || exit 1
     
     - name: Download and Unzip ZRAM Module
+      id: zram_find
       if: ${{ inputs.zram == 'true' }}
       shell: bash
       run: |
@@ -636,6 +637,7 @@ runs:
             echo "Source file is the same as target path, skipping copy"
           fi
           echo "has_zram=true" >> "$GITHUB_OUTPUT"
+          # Extract version from ZIP file name (e.g., ZRAM-Module-v1.2.3.zip -> v1.2.3)
           zram_version=$(echo "$zram_zip" | sed -E 's/.*ZRAM-Module-(.*)\.zip/\1/')
           echo "zram_version=$zram_version" >> "$GITHUB_OUTPUT"
         else
@@ -643,7 +645,7 @@ runs:
           echo "has_zram=false" >> "$GITHUB_OUTPUT"
           echo "Continuing workflow without ZRAM module..."
         fi
-    
+
     - name: Create Kernel ZIP
       id: create_zip
       shell: bash
@@ -665,7 +667,7 @@ runs:
         mv "$AK_ZIP_NAME" "$GITHUB_WORKSPACE/"
         
         if [ "${{ inputs.zram }}" = "true" ] && [ "${{ steps.zram_find.outputs.has_zram }}" = "true" ]; then
-          ZRAM_ZIP_NAME="ZRAM-Module-${{ steps.zram_find.outputs.zram_version }}_OnePlus${{ inputs.model }}_Android${{ inputs.android_version }}.${{ inputs.kernel_version }}.zip"
+          ZRAM_ZIP_NAME="ZRAM-Module-${{ steps.zram_find.outputs.zram_version }}_OnePlus${{ inputs.model }}.zip"
           cd "$GITHUB_WORKSPACE/ZRAM-Module"
           zip -r "$ZRAM_ZIP_NAME" .
           mv "$ZRAM_ZIP_NAME" "$GITHUB_WORKSPACE/"
@@ -691,7 +693,7 @@ runs:
         if [ "${{ inputs.zram }}" = "true" ] && [ "${{ steps.zram_find.outputs.has_zram }}" = "true" ]; then
           rm -f "$ZRAM_ZIP_NAME"
         fi
-    
+
     - name: Upload Artifacts
       if: success() && steps.create_zip.conclusion == 'success'
       uses: actions/upload-artifact@v4
