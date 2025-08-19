@@ -44,10 +44,15 @@ on:
         description: "Choose SusFS Branch for android15-6.6"
         type: string
         default: "gki-android15-6.6"
-      
+      zram:
+        description: "Enable ZRAM module for builds?"
+        required: false
+        type: boolean
+        default: false
+
 jobs:
   build-batch-1:
-    name: build-batch-1 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }})
+    name: build-batch-1 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }}, ZRAM:${{ matrix.zram }})
     strategy:
       fail-fast: false
       matrix:
@@ -58,55 +63,62 @@ jobs:
             manifest: oneplus_11_v.xml
             android_version: android13
             kernel_version: "5.15"
+            zram: ${{ inputs.zram }}
           - model: OP11r
             soc: waipio
             branch: oneplus/sm8475
             manifest: oneplus_11r_v.xml
             android_version: android12
             kernel_version: "5.10"
+            zram: ${{ inputs.zram }}
           - model: OP-OPEN
             soc: kalama
             branch: oneplus/sm8550
             manifest: oneplus_open_v.xml
             android_version: android13
             kernel_version: "5.15"
+            zram: ${{ inputs.zram }}
           - model: OP-ACE-2
             soc: waipio
             branch: oneplus/sm8475
             manifest: oneplus_ace2_v.xml
             android_version: android12
             kernel_version: "5.10"
+            zram: ${{ inputs.zram }}
           - model: OP10t
             soc: waipio
             branch: oneplus/sm8475
             manifest: oneplus_10t_v.xml
             android_version: android12
             kernel_version: "5.10"
+            zram: ${{ inputs.zram }}
           - model: OP10pro
             soc: waipio
             branch: oneplus/sm8450
             manifest: oneplus_10_pro_v.xml
             android_version: android12
             kernel_version: "5.10"
+            zram: ${{ inputs.zram }}
           - model: OP-ACE-2-PRO
             soc: kalama
             branch: oneplus/sm8550
             manifest: oneplus_ace2_pro_v.xml
             android_version: android13
             kernel_version: "5.15"
+            zram: ${{ inputs.zram }}
           - model: OP12r
             soc: kalama
             branch: oneplus/sm8550
             manifest: oneplus_12r_v.xml
             android_version: android13
             kernel_version: "5.15"
+            zram: ${{ inputs.zram }}
     runs-on: ubuntu-latest
     steps:
       - name: Select Appropriate SusFS Branch
         id: get-susfs-branch
         run: |
           KERNEL_STRING="${{ matrix.android_version }}-${{ matrix.kernel_version }}"
-          
           case "$KERNEL_STRING" in
             "android12-5.10")
               SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch }}"
@@ -131,11 +143,9 @@ jobs:
               exit 1
               ;;
           esac
-          
           if [[ -z "$SUSFS_BRANCH" ]]; then
             SUSFS_BRANCH="gki-${{ matrix.android_version }}-${{ matrix.kernel_version }}"
           fi
-          
           echo "susfs_branch=$SUSFS_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Checkout Code
@@ -154,9 +164,10 @@ jobs:
           kernel_version: ${{ matrix.kernel_version }}
           ksun_branch: ${{ inputs.ksun_branch }}
           susfs_branch: ${{ steps.get-susfs-branch.outputs.susfs_branch }}
+          zram: ${{ matrix.zram }}
 
   build-batch-2:
-    name: build-batch-2 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }})
+    name: build-batch-2 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }}, ZRAM:${{ matrix.zram }})
     strategy:
       fail-fast: false
       matrix:
@@ -167,67 +178,76 @@ jobs:
             manifest: oneplus_13.xml
             android_version: android15
             kernel_version: "6.6"
+            zram: ${{ inputs.zram }}
           - model: OPAce5Pro
             soc: sun
             branch: oneplus/sm8750
             manifest: oneplus_ace5_pro.xml
             android_version: android15
             kernel_version: "6.6"
+            zram: ${{ inputs.zram }}
           - model: OP12
             soc: pineapple
             branch: oneplus/sm8650
             manifest: oneplus12_v.xml
             android_version: android14
             kernel_version: "6.1"
+            zram: ${{ inputs.zram }}
           - model: OP13r
             soc: pineapple
             branch: oneplus/sm8650
             manifest: oneplus_13r.xml
             android_version: android14
             kernel_version: "6.1"
+            zram: ${{ inputs.zram }}
           - model: OP-ACE-5
             soc: pineapple
             branch: oneplus/sm8650
             manifest: oneplus_ace5.xml
             android_version: android14
             kernel_version: "6.1"
+            zram: ${{ inputs.zram }}
           - model: OP-ACE-3V
             soc: pineapple
             branch: oneplus/sm7675
             manifest: oneplus_ace_3v_v.xml
             android_version: android14
             kernel_version: "6.1"
+            zram: ${{ inputs.zram }}
           - model: OP-NORD-4
             soc: pineapple
             branch: oneplus/sm7675
             manifest: oneplus_nord_4_v.xml
             android_version: android14
             kernel_version: "6.1"
+            zram: ${{ inputs.zram }}
           - model: OP-PAD-2
             soc: pineapple
             branch: oneplus/sm8650
             manifest: oneplus_pad2_v.xml
             android_version: android14
             kernel_version: "6.1"
+            zram: ${{ inputs.zram }}
           - model: OP13S
             soc: sun
             branch: oneplus/sm8750
             manifest: oneplus_13s.xml
             android_version: android15
             kernel_version: "6.6"
+            zram: ${{ inputs.zram }}
           - model: OP-Ace3-Pro
             soc: pineapple
             branch: oneplus/sm8650
             manifest: oneplus_ace3_pro_v.xml
             android_version: android14
             kernel_version: "6.1"
+            zram: ${{ inputs.zram }}
     runs-on: ubuntu-latest
     steps:
       - name: Select Appropriate SusFS Branch
         id: get-susfs-branch
         run: |
           KERNEL_STRING="${{ matrix.android_version }}-${{ matrix.kernel_version }}"
-          
           case "$KERNEL_STRING" in
             "android12-5.10")
               SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch }}"
@@ -252,11 +272,9 @@ jobs:
               exit 1
               ;;
           esac
-          
           if [[ -z "$SUSFS_BRANCH" ]]; then
             SUSFS_BRANCH="gki-${{ matrix.android_version }}-${{ matrix.kernel_version }}"
           fi
-          
           echo "susfs_branch=$SUSFS_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Checkout Code
@@ -275,6 +293,7 @@ jobs:
           kernel_version: ${{ matrix.kernel_version }}
           ksun_branch: ${{ inputs.ksun_branch }}
           susfs_branch: ${{ steps.get-susfs-branch.outputs.susfs_branch }}
+          zram: ${{ matrix.zram }}
 
   trigger-release:
     needs:
@@ -357,6 +376,7 @@ jobs:
           - [+] CONFIG_TMPFS_XATTR Support [Mountify Support]
           - [+] BBR v1 Support
           - [+] HMBIRD scx support for OnePlus 13 & OnePlus Ace 5 Pro
+          - [+] ZRAM Module Support (if enabled)
           EOF
           
           # Output for debugging
