@@ -239,9 +239,9 @@ runs:
         patch -p1 -F 3 < 69_hide_stuff.patch
         
     - name: Apply ZRAM Kernel Sources (if enabled)
+      if: ${{ inputs.zram == 'true' }}
       shell: bash
       run: |
-        if: ${{ inputs.zram == 'true' }}
         cd "$CONFIG/kernel_platform/common"
         cp -r ../../../SukiSU_patch/other/zram/lz4k/include/linux/* ./include/linux/
         cp -r ../../../SukiSU_patch/other/zram/lz4k/lib/* ./lib/
@@ -249,9 +249,9 @@ runs:
         cp -r ../../../SukiSU_patch/other/zram/lz4k_oplus ./lib/
 
     - name: Apply ZRAM Patches (if enabled)
+      if: ${{ inputs.zram == 'true' }}
       shell: bash
-      run: |
-        if: ${{ inputs.zram == 'true' }}      
+      run: |   
         cd "$CONFIG/kernel_platform/common"
         cp ../../../SukiSU_patch/other/zram/zram_patch/${{ inputs.kernel_version }}/lz4kd.patch ./
         patch -p1 -F 3 < lz4kd.patch
@@ -259,9 +259,9 @@ runs:
         patch -p1 -F 3 < lz4k_oplus.patch
         
     - name: Upgrade LZ4 (if enabled)
+      if: ${{ inputs.zram == 'true' }}
       shell: bash
       run: |
-        if: ${{ inputs.zram == 'true' }}
         LZ4_VERSION="1.10.0"
         LZ4_DOWNLOAD_URL="https://github.com/lz4/lz4/archive/refs/tags/v${LZ4_VERSION}.tar.gz"
         cd "$CONFIG/kernel_platform/common"
@@ -332,9 +332,9 @@ runs:
         echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
         
      - name: Upgrade LZ4 (if enabled)
+       if: ${{ inputs.zram == 'true' }}
        shell: bash
        run: |
-        if [ "${{ inputs.zram }}" = "true" ]; then
           echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_LZ4K_HC=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_LZ4K_DEBUG=n" >> ./common/arch/arm64/configs/gki_defconfig
