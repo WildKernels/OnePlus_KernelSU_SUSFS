@@ -331,20 +331,22 @@ runs:
         echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
         echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
         
-     - name: Upgrade LZ4 (if enabled)
+     - name: Upgrade LZ4
        if: ${{ inputs.zram == 'true' }}
        shell: bash
        run: |
-          echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_CRYPTO_LZ4K_HC=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_CRYPTO_LZ4K_DEBUG=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_ZRAM_WRITEBACK=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_LZ4V2_COMPRESS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_LZ4V2_HC=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_LZ4V2_DEBUG=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_ZRAM_LZ4V2=y" >> ./common/arch/arm64/configs/gki_defconfig
+         echo "Changing to configuration directory: $CONFIG..."
+         cd "$CONFIG/kernel_platform"
+         echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
+         echo "CONFIG_CRYPTO_LZ4K_HC=y" >> ./common/arch/arm64/configs/gki_defconfig
+         echo "CONFIG_CRYPTO_LZ4K_DEBUG=n" >> ./common/arch/arm64/configs/gki_defconfig
+         echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
+         echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> ./common/arch/arm64/configs/gki_defconfig
+         echo "CONFIG_ZRAM_WRITEBACK=y" >> ./common/arch/arm64/configs/gki_defconfig
+         echo "CONFIG_LZ4V2_COMPRESS=y" >> ./common/arch/arm64/configs/gki_defconfig
+         echo "CONFIG_LZ4V2_HC=y" >> ./common/arch/arm64/configs/gki_defconfig
+         echo "CONFIG_LZ4V2_DEBUG=n" >> ./common/arch/arm64/configs/gki_defconfig
+         echo "CONFIG_ZRAM_LZ4V2=y" >> ./common/arch/arm64/configs/gki_defconfig
                         
     - name: Add BBR v1 Support
       shell: bash
