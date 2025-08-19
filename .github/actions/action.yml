@@ -30,7 +30,7 @@ inputs:
     required: true
     type: string
     default: ""
-   zram:
+  zram:
     required: false
     type: boolean
     default: false
