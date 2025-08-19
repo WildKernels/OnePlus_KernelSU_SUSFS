@@ -20,11 +20,6 @@ on:
           - stable
           - next
         default: next
-      zram:
-        description: "Whether to enable additional ZRAM algorithms"
-        required: true
-        type: boolean
-        
       android12-5_10_susfs_branch:
         description: "Choose SusFS Branch for android12-5.10"
         type: string
@@ -52,7 +47,7 @@ on:
       
 jobs:
   build-batch-1:
-    name: build-batch-1 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }}), ${{ inputs.zram }})
+    name: build-batch-1 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }})
     strategy:
       fail-fast: false
       matrix:
@@ -161,7 +156,7 @@ jobs:
           susfs_branch: ${{ steps.get-susfs-branch.outputs.susfs_branch }}
 
   build-batch-2:
-    name: build-batch-2 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }}), ${{ inputs.zram }})
+    name: build-batch-2 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }})
     strategy:
       fail-fast: false
       matrix:
@@ -362,7 +357,6 @@ jobs:
           - [+] CONFIG_TMPFS_XATTR Support [Mountify Support]
           - [+] BBR v1 Support
           - [+] HMBIRD scx support for OnePlus 13 & OnePlus Ace 5 Pro
-          - [+] Zram module
           EOF
           
           # Output for debugging
