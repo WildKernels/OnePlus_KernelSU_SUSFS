@@ -12,14 +12,13 @@ on:
         required: true
         type: boolean
         default: false
-      ksun_branch:
-        description: "Choose KernelSU Next Branch"
+      BRANCH_NAME:
+        description: "Choose susfs-main"
         required: true
         type: choice
         options:
-          - stable
-          - next
-        default: next
+          - susfs-main
+        default: susfs-main
       android12-5_10_susfs_branch:
         description: "Choose SusFS Branch for android12-5.10"
         type: string
@@ -44,10 +43,26 @@ on:
         description: "Choose SusFS Branch for android15-6.6"
         type: string
         default: "gki-android15-6.6"
-      
+      ksu_meta:
+        description: "SukiSU Meta (e.g., susfs-main/Wild)"
+        type: string
+        default: "susfs-main/Wild"
+      kpm:
+        description: "Enable KPM"
+        type: boolean
+        default: true
+      hook:
+        description: "Hook type"
+        type: choice
+        options:
+          - kprobe
+          - manual
+          - tracepoint
+        default: manual
+
 jobs:
   build-batch-1:
-    name: build-batch-1 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }})
+    name: build-batch-1 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.BRANCH_NAME }})
     strategy:
       fail-fast: false
       matrix:
@@ -152,11 +167,14 @@ jobs:
           manifest: ${{ matrix.manifest }}
           android_version: ${{ matrix.android_version }}
           kernel_version: ${{ matrix.kernel_version }}
-          ksun_branch: ${{ inputs.ksun_branch }}
+          BRANCH_NAME: ${{ inputs.BRANCH_NAME }}
           susfs_branch: ${{ steps.get-susfs-branch.outputs.susfs_branch }}
+          KSU_META: ${{ inputs.ksu_meta }}
+          KPM: ${{ inputs.kpm }}
+          HOOK: ${{ inputs.hook }}
 
   build-batch-2:
-    name: build-batch-2 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }})
+    name: build-batch-2 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.BRANCH_NAME }})
     strategy:
       fail-fast: false
       matrix:
@@ -273,8 +291,11 @@ jobs:
           manifest: ${{ matrix.manifest }}
           android_version: ${{ matrix.android_version }}
           kernel_version: ${{ matrix.kernel_version }}
-          ksun_branch: ${{ inputs.ksun_branch }}
+          BRANCH_NAME: ${{ inputs.BRANCH_NAME }}
           susfs_branch: ${{ steps.get-susfs-branch.outputs.susfs_branch }}
+          KSU_META: ${{ inputs.ksu_meta }}
+          KPM: ${{ inputs.kpm }}
+          HOOK: ${{ inputs.hook }}
 
   trigger-release:
     needs:
