@@ -71,12 +71,22 @@ runs:
       run: |
         set -e
         ANYKERNEL_BRANCH="gki-2.0"
-        SUSFS_BRANCH="${{ inputs.susfs_branch:-gki-${{ inputs.android_version }}-${{ inputs.kernel_version }} }}"
+    
+        # Raw input value
+        SUSFS_BRANCH_INPUT='${{ inputs.susfs_branch }}'
+        if [ -n "$SUSFS_BRANCH_INPUT" ]; then
+          SUSFS_BRANCH="$SUSFS_BRANCH_INPUT"
+        else
+          SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
+        fi
+    
         echo "Using AnyKernel3 branch: $ANYKERNEL_BRANCH"
         echo "Using SUSFS branch/tag: $SUSFS_BRANCH"
+    
         git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
         git clone https://github.com/TheWildJames/kernel_patches.git
         git clone https://gitlab.com/simonpunk/susfs4ksu.git
+    
         cd susfs4ksu
         if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1; then
           git checkout "$SUSFS_BRANCH"
