@@ -381,7 +381,7 @@ runs:
           scripts/config --file out/.config -d LOCALVERSION_AUTO || true
           make $MAKE_ARGS O=out olddefconfig
         fi
-        export KCFLAGS="-Wno-error -O2"
+        export KCFLAGS="-Wno-error -O2 -fno-stack-protector"
         make -j"$(nproc --all)" $MAKE_ARGS O=out
         IMG="out/arch/arm64/boot/Image"
         [ -f "$IMG" ] || { echo "Kernel Image missing"; exit 1; }
