@@ -52,54 +52,43 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - model: OP11
-            soc: kalama
-            branch: oneplus/sm8550
-            manifest: oneplus_11_v.xml
-            android_version: android13
-            kernel_version: '5.15'
-          - model: OP11r
-            soc: waipio
-            branch: oneplus/sm8475
-            manifest: oneplus_11r_v.xml
-            android_version: android12
-            kernel_version: '5.10'
-          - model: OP-OPEN
-            soc: kalama
-            branch: oneplus/sm8550
-            manifest: oneplus_open_v.xml
-            android_version: android13
-            kernel_version: '5.15'
-          - model: OP-ACE-2
-            soc: waipio
-            branch: oneplus/sm8475
-            manifest: oneplus_ace2_v.xml
-            android_version: android12
-            kernel_version: '5.10'
-          - model: OP10t
-            soc: waipio
-            branch: oneplus/sm8475
-            manifest: oneplus_10t_v.xml
-            android_version: android12
-            kernel_version: '5.10'
-          - model: OP10pro
-            soc: waipio
-            branch: oneplus/sm8450
-            manifest: oneplus_10_pro_v.xml
-            android_version: android12
-            kernel_version: '5.10'
-          - model: OP-ACE-2-PRO
-            soc: kalama
-            branch: oneplus/sm8550
-            manifest: oneplus_ace2_pro_v.xml
-            android_version: android13
-            kernel_version: '5.15'
-          - model: OP12r
-            soc: kalama
-            branch: oneplus/sm8550
-            manifest: oneplus_12r_v.xml
-            android_version: android13
-            kernel_version: '5.15'
+          - model: OP13
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_13.xml
+            android_version: android15
+            kernel_version: '6.6'
+          - model: OPAce5Pro
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_ace5_pro.xml
+            android_version: android15
+            kernel_version: '6.6'
+          - model: OP13S
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_13s.xml
+            android_version: android15
+            kernel_version: '6.6'
+          - model: OP-PAD-3
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_pad_3.xml
+            android_version: android15
+            kernel_version: '6.6'
+          - model: OP13T
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_13t.xml
+            android_version: android15
+            kernel_version: '6.6'
+          - model: OP-PAD-2-PRO
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_pad_2_pro.xml
+            android_version: android15
+            kernel_version: '6.6'
+          
     runs-on: ubuntu-latest
     steps:
       - name: Select Appropriate SusFS Branch
@@ -264,42 +253,54 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - model: OP13
-            soc: sun
-            branch: oneplus/sm8750
-            manifest: oneplus_13.xml
-            android_version: android15
-            kernel_version: '6.6'
-          - model: OPAce5Pro
-            soc: sun
-            branch: oneplus/sm8750
-            manifest: oneplus_ace5_pro.xml
-            android_version: android15
-            kernel_version: '6.6'
-          - model: OP13S
-            soc: sun
-            branch: oneplus/sm8750
-            manifest: oneplus_13s.xml
-            android_version: android15
-            kernel_version: '6.6'
-          - model: OP-PAD-3
-            soc: sun
-            branch: oneplus/sm8750
-            manifest: oneplus_pad_3.xml
-            android_version: android15
-            kernel_version: '6.6'
-          - model: OP13T
-            soc: sun
-            branch: oneplus/sm8750
-            manifest: oneplus_13t.xml
-            android_version: android15
-            kernel_version: '6.6'
-          - model: OP-PAD-2-PRO
-            soc: sun
-            branch: oneplus/sm8750
-            manifest: oneplus_pad_2_pro.xml
-            android_version: android15
-            kernel_version: '6.6'
+          - model: OP11
+            soc: kalama
+            branch: oneplus/sm8550
+            manifest: oneplus_11_v.xml
+            android_version: android13
+            kernel_version: '5.15'
+          - model: OP11r
+            soc: waipio
+            branch: oneplus/sm8475
+            manifest: oneplus_11r_v.xml
+            android_version: android12
+            kernel_version: '5.10'
+          - model: OP-OPEN
+            soc: kalama
+            branch: oneplus/sm8550
+            manifest: oneplus_open_v.xml
+            android_version: android13
+            kernel_version: '5.15'
+          - model: OP-ACE-2
+            soc: waipio
+            branch: oneplus/sm8475
+            manifest: oneplus_ace2_v.xml
+            android_version: android12
+            kernel_version: '5.10'
+          - model: OP10t
+            soc: waipio
+            branch: oneplus/sm8475
+            manifest: oneplus_10t_v.xml
+            android_version: android12
+            kernel_version: '5.10'
+          - model: OP10pro
+            soc: waipio
+            branch: oneplus/sm8450
+            manifest: oneplus_10_pro_v.xml
+            android_version: android12
+            kernel_version: '5.10'
+          - model: OP-ACE-2-PRO
+            soc: kalama
+            branch: oneplus/sm8550
+            manifest: oneplus_ace2_pro_v.xml
+            android_version: android13
+            kernel_version: '5.15'
+          - model: OP12r
+            soc: kalama
+            branch: oneplus/sm8550
+            manifest: oneplus_12r_v.xml
+            android_version: android13
+            kernel_version: '5.15'          
     runs-on: ubuntu-latest
     steps:
       - name: Select Appropriate SusFS Branch
