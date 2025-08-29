@@ -221,6 +221,30 @@ jobs:
             manifest: oneplus_ace3_pro_v.xml
             android_version: android14
             kernel_version: "6.1"
+          - model: OP-PAD-3
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_pad_3.xml
+            android_version: android15
+            kernel_version: "6.6"
+          - model: OP13T
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_13t.xml
+            android_version: android15
+            kernel_version: "6.6"
+          - model: OP-PAD-2-PRO
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_pad_2_pro.xml
+            android_version: android15
+            kernel_version: "6.6"
+          - model: OP-PAD-Pro
+            soc: pineapple
+            branch: oneplus/sm8650
+            manifest: oneplus_pad_pro_v.xml
+            android_version: android14
+            kernel_version: "6.1"
     runs-on: ubuntu-latest
     steps:
       - name: Select Appropriate SusFS Branch
