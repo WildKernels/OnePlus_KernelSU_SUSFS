@@ -160,19 +160,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - model: OP13
-            soc: sun
-            branch: oneplus/sm8750
-            manifest: oneplus_13.xml
-            android_version: android15
-            kernel_version: "6.6"
-          - model: OPAce5Pro
-            soc: sun
-            branch: oneplus/sm8750
-            manifest: oneplus_ace5_pro.xml
-            android_version: android15
-            kernel_version: "6.6"
+        include:          
           - model: OP12
             soc: pineapple
             branch: oneplus/sm8650
@@ -208,19 +196,81 @@ jobs:
             branch: oneplus/sm8650
             manifest: oneplus_pad2_v.xml
             android_version: android14
-            kernel_version: "6.1"
-          - model: OP13S
-            soc: sun
-            branch: oneplus/sm8750
-            manifest: oneplus_13s.xml
-            android_version: android15
-            kernel_version: "6.6"
+            kernel_version: "6.1"          
           - model: OP-Ace3-Pro
             soc: pineapple
             branch: oneplus/sm8650
             manifest: oneplus_ace3_pro_v.xml
             android_version: android14
+            kernel_version: "6.1"          
+          - model: OP-PAD-Pro
+            soc: pineapple
+            branch: oneplus/sm8650
+            manifest: oneplus_pad_pro_v.xml
+            android_version: android14
             kernel_version: "6.1"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Select Appropriate SusFS Branch
+        id: get-susfs-branch
+        run: |
+          KERNEL_STRING="${{ matrix.android_version }}-${{ matrix.kernel_version }}"
+          
+          case "$KERNEL_STRING" in
+            "android12-5.10")
+              SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch }}"
+              ;;
+            "android13-5.10")
+              SUSFS_BRANCH="${{ inputs.android13-5_10_susfs_branch }}"
+              ;;
+            "android13-5.15")
+              SUSFS_BRANCH="${{ inputs.android13-5_15_susfs_branch }}"
+              ;;
+            "android14-5.15")
+              SUSFS_BRANCH="${{ inputs.android14-5_15_susfs_branch }}"
+              ;;
+            "android14-6.1")
+              SUSFS_BRANCH="${{ inputs.android14-6_1_susfs_branch }}"
+              ;;
+            "android15-6.6")
+              SUSFS_BRANCH="${{ inputs.android15-6_6_susfs_branch }}"
+              ;;
+            *)
+              echo "Invalid kernel version or unsupported: $KERNEL_STRING"
+              exit 1
+              ;;
+          esac
+          
+          if [[ -z "$SUSFS_BRANCH" ]]; then
+            SUSFS_BRANCH="gki-${{ matrix.android_version }}-${{ matrix.kernel_version }}"
+          fi
+          
+          echo "susfs_branch=$SUSFS_BRANCH" >> $GITHUB_OUTPUT
+
+  build-batch-3:
+    name: build-batch-3 (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - model: OP13
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_13.xml
+            android_version: android15
+            kernel_version: "6.6"
+          - model: OPAce5Pro
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_ace5_pro.xml
+            android_version: android15
+            kernel_version: "6.6"          
+          - model: OP13S
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: oneplus_13s.xml
+            android_version: android15
+            kernel_version: "6.6"          
           - model: OP-PAD-3
             soc: sun
             branch: oneplus/sm8750
@@ -238,13 +288,7 @@ jobs:
             branch: oneplus/sm8750
             manifest: oneplus_pad_2_pro.xml
             android_version: android15
-            kernel_version: "6.6"
-          - model: OP-PAD-Pro
-            soc: pineapple
-            branch: oneplus/sm8650
-            manifest: oneplus_pad_pro_v.xml
-            android_version: android14
-            kernel_version: "6.1"
+            kernel_version: "6.6"          
     runs-on: ubuntu-latest
     steps:
       - name: Select Appropriate SusFS Branch
@@ -304,6 +348,7 @@ jobs:
     needs:
       - build-batch-1
       - build-batch-2
+      - build-batch-3
     runs-on: ubuntu-latest
     if: ${{ inputs.make_release }}
     env:
