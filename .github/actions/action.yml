@@ -381,7 +381,7 @@ runs:
         export LD=ld.lld HOSTLD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip HOSTCC=clang HOSTCXX=clang++
         export CROSS_COMPILE=aarch64-linux-android-
         export CROSS_COMPILE_COMPAT=arm-linux-androidkernel-
-        export KCFLAGS="-O2 -Wno-error"
+        export KCFLAGS="-O2 -pipe -fno-stack-protector -Wno-error"
         export KCPPFLAGS="-DCONFIG_OPTIMIZE_INLINING"
 
         echo "==> Generating base defconfig..."
@@ -391,7 +391,7 @@ runs:
         if [ -n "${CUSTOM_LOCALVERSION:-}" ]; then
           LV="$CUSTOM_LOCALVERSION"
         else
-          LV="-${ANDROID_VER:-unknown}-OP-Ultra"
+          LV="-${ANDROID_VER:-unknown}-OP-Wild"
         fi
         echo "Applying LOCALVERSION: $LV"
         ./scripts/config --file "$OUT/.config" --set-str LOCALVERSION "$LV"
