@@ -34,29 +34,27 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Disk / Cleanup (optional)
+    - name: Setup Build System
       shell: bash
       run: |
-        set -euo pipefail
-        echo "::group::Pre-clean"
-        df -h
-        # Keep cleanup minimal; remove only large, surely unused SDK bundles
-        sudo rm -rf /usr/share/dotnet /usr/local/lib/android || true
-        df -h
+        set -e
+        export DEBIAN_FRONTEND=noninteractive
+        echo "DEBIAN_FRONTEND=noninteractive" >> "$GITHUB_ENV"
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/share/swift || true
+        sudo docker image prune --all --force || true
+        sudo apt-get purge -y aria2 ansible azure-cli shellcheck rpm xorriso zsync esl-erlang firefox google-chrome-stable google-cloud-sdk imagemagick ant kubectl mercurial mono-complete yarn ruby-full subversion mongodb-org microsoft-edge-stable || true
+        sudo apt-get autoremove -y
+        sudo apt-get autoclean -y
         echo "::endgroup::"
-
-    - name: Install Minimal Dependencies
+    
+    - name: Install Dependencies
       shell: bash
       run: |
-        set -euo pipefail
-        echo "::group::Install deps"
-        sudo apt-get update -qq
-        # Trimmed list: python3 already present
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-          git curl ca-certificates build-essential clang lld flex bison \
-          libelf-dev libssl-dev libncurses-dev zlib1g-dev liblz4-tool \
-          libxml2-utils rsync unzip dwarves
-        sudo apt-get clean
+        set -e
+        sudo apt update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
+          git curl python3 libelf-dev libelf1 lld build-essential flex bison libssl-dev \
+          libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip dwarves
         echo "::endgroup::"
 
     - name: Install Repo Tool
