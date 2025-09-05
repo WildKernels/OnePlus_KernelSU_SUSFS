@@ -20,6 +20,14 @@ on:
           - stable
           - next
         default: next
+      optimize_level:
+        description: "Compiler optimization level"
+        required: true
+        type: choice
+        options:
+          - O2
+          - O3
+        default: O2
       android12-5_10_susfs_branch:
         description: 'Choose SusFS Branch for android12-5.10'
         type: string
