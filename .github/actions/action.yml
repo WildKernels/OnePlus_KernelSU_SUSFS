@@ -27,44 +27,63 @@ inputs:
     required: true
     type: string
     default: ""
+  optimize_level:
+    required: false
+    type: string
+    default: O2  # Choices: O2 or O3
+
+outputs:
+  kernel_version:
+    value: ${{ steps.save_metadata.outputs.kernel_version }}
+  ksu_version:
+    value: ${{ steps.save_metadata.outputs.ksu_version }}
+  susfs_version:
+    value: ${{ steps.save_metadata.outputs.susfs_version }}
+  image_sha256:
+    value: ${{ steps.collect_stats.outputs.image_sha256 }}
+  warnings:
+    value: ${{ steps.collect_stats.outputs.warnings }}
 
 runs:
   using: composite
   steps:
-    - name: Setup Build System
+    - name: Validate Inputs
       shell: bash
       run: |
-        set -e
-        export DEBIAN_FRONTEND=noninteractive
-        echo "DEBIAN_FRONTEND=noninteractive" >> "$GITHUB_ENV"
-        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/share/swift || true
-        sudo docker image prune --all --force || true
-        sudo apt-get purge -y aria2 ansible azure-cli shellcheck rpm xorriso zsync esl-erlang firefox google-chrome-stable google-cloud-sdk imagemagick ant kubectl mercurial mono-complete yarn ruby-full subversion mongodb-org microsoft-edge-stable || true
-        sudo apt-get autoremove -y
-        sudo apt-get autoclean -y
-
-    - name: Install Dependencies
+        set -euo pipefail
+        av='${{ inputs.android_version }}'
+        kv='${{ inputs.kernel_version }}'
+        model='${{ inputs.model }}'
+        if ! [[ "$kv" =~ ^[0-9]+.[0-9]+$ ]]; then
+          echo "kernel_version must look like Major.Minor (e.g. 6.6) got: $kv"
+          exit 1
+        fi
+        case "$av" in
+          android12|android13|android14|android15) : ;;
+          *) echo "Unsupported android_version: $av"; exit 1 ;;
+        esac
+        if [[ -z "$model" ]]; then
+          echo "Empty model not allowed"; exit 1
+        fi
+        echo "Input validation OK."
+        
+    - name: Install Minimal Dependencies
       shell: bash
       run: |
-        set -e
-        sudo apt update -qq
-        sudo DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
-          git curl python3 libelf-dev libelf1 lld build-essential flex bison libssl-dev \
-          libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip zip dwarves \
-          bc device-tree-compiler
-
-    - name: Install Repo Tool
-      shell: bash
-      run: |
-        mkdir -p ./git-repo
-        curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
-        chmod a+rx ./git-repo/repo
-        echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> "$GITHUB_ENV"
-        echo "CONFIG=${{ inputs.model }}" >> "$GITHUB_ENV"
+        set -euo pipefail
+        echo "::group::Install deps"
+        sudo apt-get -o Acquire::Retries=3 update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          git curl ca-certificates build-essential clang lld flex bison \
+          libelf-dev libssl-dev libncurses-dev zlib1g-dev liblz4-tool \
+          libxml2-utils rsync unzip dwarves file
+        sudo apt-get clean
+        echo "::endgroup::"
 
     - name: Clone AnyKernel3 and Other Dependencies
       shell: bash
       run: |
+        set -euo pipefail
         echo "Cloning AnyKernel3 and other dependencies..."
         ANYKERNEL_BRANCH="gki-2.0"
         if [[ -z "${{ inputs.susfs_branch }}" ]]; then
@@ -72,60 +91,77 @@ runs:
         else
           SUSFS_BRANCH="${{ inputs.susfs_branch }}"
         fi
-        echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
-        echo "Using branch for SUSFS: $SUSFS_BRANCH"
-        echo "SUSFS_BRANCH=$SUSFS_BRANCH" >> "$GITHUB_ENV"
-        git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
+        echo "Using AnyKernel3 branch: $ANYKERNEL_BRANCH"
+        echo "Using SUSFS branch: $SUSFS_BRANCH"
+        git clone --depth=1 https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
         git clone https://github.com/TheWildJames/kernel_patches.git
         git clone https://gitlab.com/simonpunk/susfs4ksu.git
-        cd susfs4ksu || exit 1
+        cd susfs4ksu
         if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1 ; then
           git checkout "$SUSFS_BRANCH"
         else
-          echo "Error: '$SUSFS_BRANCH' is neither a valid branch/tag nor a valid commit hash."
+          echo "Error: SUSFS branch or ref '$SUSFS_BRANCH' not found."
           exit 1
         fi
 
     - name: Initialize and Sync Kernel Source
       shell: bash
       run: |
-        echo "Creating folder for configuration: $CONFIG..."
+        set -euo pipefail
+        echo "Creating folder for configuration: $CONFIG"
         mkdir -p "$CONFIG"
         cd "$CONFIG"
         echo "Initializing and syncing kernel source..."
         if [[ "${{ inputs.manifest }}" == https://* ]]; then
           mkdir -p .repo/manifests
-          curl -Ls ${{ inputs.manifest }} -o .repo/manifests/temp_manifest.xml
-          $REPO init -u https://github.com/OnePlusOSS/kernel_manifest.git -b oneplus/sm8650 -m temp_manifest.xml --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
+          curl --fail --show-error --location --proto '=https' \
+            "${{ inputs.manifest }}" -o .repo/manifests/temp_manifest.xml
+          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git \
+            -b oneplus/sm8650 -m temp_manifest.xml --repo-rev=v2.16 \
+            --depth=1 --no-clone-bundle --no-tags
         else
-          $REPO init -u https://github.com/OnePlusOSS/kernel_manifest.git -b ${{ inputs.branch }} -m ${{ inputs.manifest }} --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
+          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git \
+            -b "${{ inputs.branch }}" -m "${{ inputs.manifest }}" \
+            --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
         fi
-        $REPO --version
-        $REPO --trace sync -c --no-clone-bundle --no-tags --optimized-fetch -j"$(nproc --all)" --fail-fast
+        "$REPO" --version
+        for i in 1 2 3; do
+          if "$REPO" --trace sync -c --no-clone-bundle --no-tags --optimized-fetch \
+             -j"$(nproc --all)" --fail-fast; then
+            break
+          fi
+          echo "repo sync attempt $i failed; retrying..."
+          sleep 30
+        done
 
     - name: Clean Up ABI Protected Exports
       shell: bash
       run: |
+        set -euo pipefail
         cd "$CONFIG/kernel_platform"
-        rm -f common/android/abi_gki_protected_exports_* || echo "No protected exports in common!"
-        rm -f msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports in msm-kernel!"
+        rm -f common/android/abi_gki_protected_exports_* || echo "No protected exports in common/"
+        rm -f msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports in msm-kernel/"
         df -h
 
     - name: Add KernelSU Next
       shell: bash
       run: |
+        set -euo pipefail
         cd "$CONFIG/kernel_platform"
         echo "Adding KernelSU Next..."
-        if [ "${{ inputs.ksun_branch }}" == "stable" ]; then
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
+        if [ "${{ inputs.ksun_branch }}" = "stable" ]; then
+          curl --fail --location --proto '=https' \
+            -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
         else
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s ${{ inputs.ksun_branch }}
+          curl --fail --location --proto '=https' \
+            -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "${{ inputs.ksun_branch }}"
         fi
         git submodule update --init --recursive
 
     - name: Apply SUSFS Patches
       shell: bash
       run: |
+        set -euo pipefail
         cd "$CONFIG/kernel_platform"
         echo "Applying SUSFS patches..."
         cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
@@ -203,12 +239,14 @@ runs:
     - name: Apply KSUN Hooks
       shell: bash
       run: |
+        set -euo pipefail
         cd "$CONFIG/kernel_platform/common"
         patch -p1 < ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch
 
     - name: Apply Hide Stuff Patches
       shell: bash
       run: |
+        set -euo pipefail
         cd "$CONFIG/kernel_platform/common"
         cp ../../../kernel_patches/69_hide_stuff.patch ./
         patch -p1 -F 3 < 69_hide_stuff.patch
@@ -216,29 +254,30 @@ runs:
     - name: Add KernelSU-Next and SUSFS Configuration Settings
       shell: bash
       run: |
+        set -euo pipefail
         cd "$CONFIG/kernel_platform"
-        {
-          echo "CONFIG_KSU=y"
-          echo "CONFIG_KSU_KPROBES_HOOK=n"
-          echo "CONFIG_KSU_SUSFS=y"
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y"
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y"
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y"
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y"
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n"
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y"
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y"
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y"
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y"
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y"
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y"
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n"
-          echo "CONFIG_TMPFS_XATTR=y"
-          echo "CONFIG_TMPFS_POSIX_ACL=y"
-        } >> ./common/arch/arm64/configs/gki_defconfig
+        cat >> ./common/arch/arm64/configs/gki_defconfig <<'EOF'
+        CONFIG_KSU=y
+        CONFIG_KSU_KPROBES_HOOK=n
+        CONFIG_KSU_SUSFS=y
+        CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
+        CONFIG_KSU_SUSFS_SUS_PATH=y
+        CONFIG_KSU_SUSFS_SUS_MOUNT=y
+        CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+        CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+        CONFIG_KSU_SUSFS_SUS_KSTAT=y
+        CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n
+        CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+        CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
+        CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+        CONFIG_KSU_SUSFS_ENABLE_LOG=y
+        CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+        CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+        CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+        CONFIG_KSU_SUSFS_SUS_SU=n
+        CONFIG_TMPFS_XATTR=y
+        CONFIG_TMPFS_POSIX_ACL=y
+        EOF
 
     - name: Add Oneplus BBR
       shell: bash
@@ -277,21 +316,20 @@ runs:
         } >> ./common/arch/arm64/configs/gki_defconfig
 
     - name: Save Build Metadata
-      shell: bash
       id: save_metadata
+      shell: bash
       run: |
-        CONFIG_DIR="$GITHUB_WORKSPACE/${{ env.CONFIG }}"
+        set -euo pipefail
+        CONFIG_DIR="$GITHUB_WORKSPACE/${CONFIG}"
         ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
         mkdir -p "$ARTIFACTS_DIR"
         cd "$CONFIG_DIR/kernel_platform/common"
         CONFIG_FILES=("build.config.common" "build.config.constants")
         BRANCH_LINE=""
-        for file in "${CONFIG_FILES[@]}"; do
-          if [ -f "$file" ]; then
-            line=$(grep '^[[:space:]]*BRANCH=' "$file" | head -n1 || true)
-            if [ -n "$line" ]; then
-              BRANCH_LINE="$line"; break
-            fi
+        for f in "${CONFIG_FILES[@]}"; do
+          if [ -f "$f" ]; then
+            l=$(grep '^[[:space:]]*BRANCH=' "$f" || true)
+            if [ -n "$l" ]; then BRANCH_LINE="$l"; break; fi
           fi
         done
         if [ -z "$BRANCH_LINE" ]; then
@@ -300,30 +338,31 @@ runs:
         BRANCH_VALUE="${BRANCH_LINE#*=}"
         ANDROID_VERSION="${BRANCH_VALUE%-*}"
         if [ -z "$ANDROID_VERSION" ]; then
-          echo "Error: Could not parse android version"; exit 1
+          echo "Could not parse android version from BRANCH=$BRANCH_VALUE"
+          exit 1
         fi
         VERSION=$(grep '^VERSION *=' Makefile | awk '{print $3}')
         PATCHLEVEL=$(grep '^PATCHLEVEL *=' Makefile | awk '{print $3}')
         SUBLEVEL=$(grep '^SUBLEVEL *=' Makefile | awk '{print $3}')
         FULL_VERSION="$VERSION.$PATCHLEVEL.$SUBLEVEL"
-        echo "Kernel Version: $ANDROID_VERSION-$FULL_VERSION"
         cd "$ARTIFACTS_DIR"
-        echo "$ANDROID_VERSION-$FULL_VERSION" > ${{ inputs.model }}.txt
-        echo "ANDROID_VER=$ANDROID_VERSION" >> $GITHUB_ENV
+        echo "$ANDROID_VERSION-$FULL_VERSION" > "${{ inputs.model }}.txt"
+        echo "ANDROID_VER=$ANDROID_VERSION" >> "$GITHUB_ENV"
+        echo "kernel_version=$ANDROID_VERSION-$FULL_VERSION" >> "$GITHUB_OUTPUT"
+        echo "ksu_version=${KSUVER:-unknown}" >> "$GITHUB_OUTPUT"
+        echo "susfs_version=${SUSVER:-unknown}" >> "$GITHUB_OUTPUT"
 
     - name: Customize Kernel Branding
       shell: bash
       run: |
-        set -e
-        KERNEL_PATH="$GITHUB_WORKSPACE/${{ env.CONFIG }}/kernel_platform"
-        COMMON_DIR="$KERNEL_PATH/common"
-        cd "$COMMON_DIR"
+        set -euo pipefail
+        KERNEL_PATH="$GITHUB_WORKSPACE/${CONFIG}/kernel_platform"
+        cd "$KERNEL_PATH/common"
         mkdir -p out
-        CUSTOM_LOCALVERSION="-${ANDROID_VER}-OP-Wild"
-        echo "Using CUSTOM_LOCALVERSION=${CUSTOM_LOCALVERSION}"
-        echo "CUSTOM_LOCALVERSION=${CUSTOM_LOCALVERSION}" >> "$GITHUB_ENV"
+        CUSTOM_LOCALVERSION="-${ANDROID_VER}-OP-⚡Ultra⚡"
+        echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
 
-    - name: Detect Clang
+    - name: Detect Clang (toolchain for build)
       shell: bash
       run: |
         set -euo pipefail
@@ -352,65 +391,137 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        KERNEL_PATH="$GITHUB_WORKSPACE/${{ env.CONFIG }}/kernel_platform"
+        KERNEL_PATH="$GITHUB_WORKSPACE/${CONFIG}/kernel_platform"
         COMMON="$KERNEL_PATH/common"
         cd "$COMMON"
-        if [ -n "${{ env.CLANG_BIN_PATH }}" ] && [ -x "${{ env.CLANG_BIN_PATH }}/clang" ]; then
-          export PATH="${{ env.CLANG_BIN_PATH }}:$PATH"
-        elif command -v clang >/dev/null 2>&1; then
-          echo "Using system clang already in PATH: $(clang --version | head -n1)"
-        else
-          echo "Error: No clang available"
-          exit 1
+        : > "$COMMON/.scmversion"
+        if [ -n "${CLANG_BIN_PATH:-}" ] && [ -x "${CLANG_BIN_PATH}/clang" ]; then
+          export PATH="${CLANG_BIN_PATH}:$PATH"
         fi
-        export LLVM=1
-        export LLVM_IAS=1
+        export LLVM=1 LLVM_IAS=1
         export ARCH=arm64 SUBARCH=arm64
         export CROSS_COMPILE=aarch64-linux-android-
         export CROSS_COMPILE_COMPAT=arm-linux-androideabi-
         export LD=ld.lld HOSTLD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip HOSTCC=clang HOSTCXX=clang++
-        RUSTC_DIR="$KERNEL_PATH/prebuilts/rust/linux-x86/1.73.0b/bin"
-        MAKE_ARGS="LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_COMPAT=arm-linux-androideabi- LD=ld.lld HOSTLD=ld.lld"
-        if [ -x "$RUSTC_DIR/rustc" ]; then
-          MAKE_ARGS+=" RUSTC=$RUSTC_DIR/rustc"
-        fi
-        mkdir -p out
-        make $MAKE_ARGS O=out gki_defconfig
+        export CC="clang"
+        OUT=out
+        mkdir -p "$OUT"
+        make O="$OUT" gki_defconfig
         if [ -n "${CUSTOM_LOCALVERSION:-}" ]; then
-          scripts/config --file out/.config --set-str LOCALVERSION "${CUSTOM_LOCALVERSION}"
-          scripts/config --file out/.config -d LOCALVERSION_AUTO || true
-          make $MAKE_ARGS O=out olddefconfig
+          scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${CUSTOM_LOCALVERSION}"
+          scripts/config --file "$OUT/.config" -d LOCALVERSION_AUTO || true
+        fi        
+        if [ "${{ inputs.optimize_level }}" = "O3" ]; then
+          scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE
+          scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3
+          export KCFLAGS="-Wno-error -pipe -O3 -fno-stack-protector"
+        else
+          scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE
+          scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE_O3
+          export KCFLAGS="-Wno-error -pipe -O2 -fno-stack-protector"
         fi
-        export KCFLAGS="-Wno-error -O2 -fno-stack-protector"
-        make -j"$(nproc --all)" $MAKE_ARGS O=out
-        IMG="out/arch/arm64/boot/Image"
-        [ -f "$IMG" ] || { echo "Kernel Image missing"; exit 1; }
-        sha256sum "$IMG" | tee out/Image.sha256
-        cp "$IMG" "$GITHUB_WORKSPACE/AnyKernel3/Image"
-        echo "Build finished with Clang: ${CLANG_VERSION:-unknown}"
+        export KCPPFLAGS="-DCONFIG_OPTIMIZE_INLINING"
+        make O="$OUT" olddefconfig
+        echo "Starting build with $(nproc --all) threads..."
+        set -o pipefail
+        make -j"$(nproc --all)" O="$OUT" 2>&1 | tee build.log
+        IMG="$OUT/arch/arm64/boot/Image"
+        if [ ! -f "$IMG" ]; then
+          echo "Kernel Image missing"; exit 1
+        fi
+        sha256sum "$IMG" | tee "$OUT/Image.sha256"
+
+    - name: Collect Build Stats / Validate Image
+      id: collect_stats
+      shell: bash
+      run: |
+        set -euo pipefail
+        KERNEL_PATH="$GITHUB_WORKSPACE/${CONFIG}/kernel_platform"
+        COMMON="$KERNEL_PATH/common"
+        OUT="$COMMON/out"
+        IMG="$OUT/arch/arm64/boot/Image"
+        WARNINGS=$(grep -i -E 'warning:' "$COMMON/build.log" | wc -l || true)
+        echo "$WARNINGS" > "$OUT/warnings.txt"
+        file "$IMG" > "$OUT/Image.file"
+        if ! file "$IMG" | grep -qi 'ARM64'; then
+          echo "Image does not appear to be ARM64:"
+          file "$IMG"
+          exit 1
+        fi
+        MIN_SIZE=$((6*1024*1024))
+        ACTUAL_SIZE=$(stat -c %s "$IMG")
+        if [ "$ACTUAL_SIZE" -lt "$MIN_SIZE" ]; then
+          echo "Image size $ACTUAL_SIZE < $MIN_SIZE (suspicious)"; exit 1
+        fi
+        IMAGE_SHA256=$(cut -d' ' -f1 "$OUT/Image.sha256")
+        echo "Image sha256: $IMAGE_SHA256"
+        echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
+        echo "image_sha256=$IMAGE_SHA256" >> "$GITHUB_OUTPUT"
 
     - name: Create Kernel ZIP
       id: create_zip
       shell: bash
       run: |
-        set -e
-        CONFIG_DIR="$GITHUB_WORKSPACE/${{ env.CONFIG }}"
-        OUTIMG="$CONFIG_DIR/kernel_platform/common/out/arch/arm64/boot/Image"
-        [ -f "$OUTIMG" ] || { echo "Built Image not found"; exit 1; }
-        cp "$OUTIMG" "$GITHUB_WORKSPACE/AnyKernel3/Image"
+        set -euo pipefail
+        CONFIG_DIR="$GITHUB_WORKSPACE/${CONFIG}"
+        KERNEL_PATH="$CONFIG_DIR/kernel_platform"
+        COMMON_OUT="$KERNEL_PATH/common/out"
+        IMAGE_PATH="$COMMON_OUT/arch/arm64/boot/Image"
+        if [ ! -f "$IMAGE_PATH" ]; then
+          echo "ERROR: Built Image not found"
+          exit 1
+        fi
+        cp "$IMAGE_PATH" "$GITHUB_WORKSPACE/AnyKernel3/Image"
         cd "$GITHUB_WORKSPACE/AnyKernel3"
         if [ "${{ inputs.model }}" = "OPAce5Pro" ] || [ "${{ inputs.model }}" = "OP13" ]; then
           cp "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/bins/"* ./tools/ 2>/dev/null || true
-          patch -F 3 < "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch" || true
+          patch -F 3 < "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch"
         fi
-        ZIP_NAME="AnyKernel3_${{ inputs.model }}_${{ inputs.android_version }}-${{ inputs.kernel_version }}_Next_${{ env.KSUVER }}_SUSFS_${{ env.SUSVER }}.zip"
+        ZIP_NAME="AnyKernel3_${{ inputs.model }}_${{ inputs.android_version }}-${{ inputs.kernel_version }}_Next_${KSUVER}_${SUSVER}.zip"
         ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
         mkdir -p "$ARTIFACTS_DIR"
-        zip -r "$ARTIFACTS_DIR/$ZIP_NAME" ./*
+        cp "$KERNEL_PATH/common/out/.config" "$ARTIFACTS_DIR/${{ inputs.model }}.config"
+        cp "$KERNEL_PATH/common/build.log" "$ARTIFACTS_DIR/${{ inputs.model }}.build.log"
+        cp "$KERNEL_PATH/common/out/warnings.txt" "$ARTIFACTS_DIR/${{ inputs.model }}.warnings.txt"
+        echo "Creating zip file: $ZIP_NAME"
+        zip -r "$ARTIFACTS_DIR/$ZIP_NAME" ./* >/dev/null
+        (cd "$ARTIFACTS_DIR" && sha256sum "$ZIP_NAME" > "${ZIP_NAME}.sha256")
+        (cd "$ARTIFACTS_DIR" && { cat "$KERNEL_PATH/common/out/Image.sha256"; sha256sum "$ZIP_NAME"; } > SHA256SUMS.txt)
+
+    - name: Final Build Summary
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "Model: ${{ inputs.model }}"
+          echo "Android: ${{ inputs.android_version }}"
+          echo "Kernel base: ${{ inputs.kernel_version }}"
+          echo "Kernel full: ${{ steps.save_metadata.outputs.kernel_version }}"
+          echo "KSU Version: ${KSUVER:-unknown}"
+          echo "SUSFS Version: ${SUSVER:-unknown}"
+          echo "Optimization: ${{ inputs.optimize_level }}"
+          echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
+          echo "Compiler: ${CLANG_VERSION:-unknown}"
+          echo "Warnings: ${{ steps.collect_stats.outputs.warnings }}"
+        } | tee summary.txt
+        {
+          echo "### Kernel Build Summary"
+          echo ""
+          echo "- Model: ${{ inputs.model }}"
+          echo "- Android: ${{ inputs.android_version }}"
+          echo "- Kernel Version: ${{ steps.save_metadata.outputs.kernel_version }}"
+          echo "- KSU Version: ${KSUVER:-unknown}"
+          echo "- SUSFS Version: ${SUSVER:-unknown}"
+          echo "- Optimization: ${{ inputs.optimize_level }}"
+          echo "- Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
+          echo "- Warnings: ${{ steps.collect_stats.outputs.warnings }}"
+        } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Upload Artifacts
       if: success() && steps.create_zip.conclusion == 'success'
       uses: actions/upload-artifact@v4
       with:
         name: kernel-${{ env.CONFIG }}
+        path: |
+          ${{ env.CONFIG }}/artifacts/*
         path: ${{ env.CONFIG }}/artifacts/*
