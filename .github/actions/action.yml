@@ -1,4 +1,7 @@
 name: Build
+permissions:
+  contents: write
+  actions: write
 
 inputs:
   model:
