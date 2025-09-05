@@ -1,4 +1,5 @@
-name: Build
+name: Build and Release OnePlus Kernels
+
 permissions:
   contents: write
   actions: write
@@ -69,7 +70,22 @@ runs:
           echo "Empty model not allowed"; exit 1
         fi
         echo "Input validation OK."
-        
+
+    - name: Setup Base Environment
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Derive a unique build directory name
+        CONFIG="${{ inputs.model }}_${{ inputs.android_version }}_${{ inputs.kernel_version }}"
+        echo "CONFIG=$CONFIG" >> "$GITHUB_ENV"
+        # Install repo tool if missing
+        REPO="/usr/local/bin/repo"
+        if [ ! -x "$REPO" ]; then
+          curl -s https://storage.googleapis.com/git-repo-downloads/repo -o "$REPO"
+          chmod +x "$REPO"
+        fi
+        echo "REPO=$REPO" >> "$GITHUB_ENV"
+
     - name: Install Minimal Dependencies
       shell: bash
       run: |
@@ -79,7 +95,7 @@ runs:
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
           git curl ca-certificates build-essential clang lld flex bison \
           libelf-dev libssl-dev libncurses-dev zlib1g-dev liblz4-tool \
-          libxml2-utils rsync unzip dwarves file
+          libxml2-utils rsync unzip dwarves file python3
         sudo apt-get clean
         echo "::endgroup::"
 
@@ -97,10 +113,10 @@ runs:
         echo "Using AnyKernel3 branch: $ANYKERNEL_BRANCH"
         echo "Using SUSFS branch: $SUSFS_BRANCH"
         git clone --depth=1 https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
-        git clone https://github.com/TheWildJames/kernel_patches.git
+        git clone --depth=1 https://github.com/TheWildJames/kernel_patches.git
         git clone https://gitlab.com/simonpunk/susfs4ksu.git
         cd susfs4ksu
-        if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1 ; then
+        if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1; then
           git checkout "$SUSFS_BRANCH"
         else
           echo "Error: SUSFS branch or ref '$SUSFS_BRANCH' not found."
@@ -128,22 +144,25 @@ runs:
             --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
         fi
         "$REPO" --version
+        success=false
         for i in 1 2 3; do
-          if "$REPO" --trace sync -c --no-clone-bundle --no-tags --optimized-fetch \
+          if "$REPO" sync -c --no-clone-bundle --no-tags --optimized-fetch \
              -j"$(nproc --all)" --fail-fast; then
+            success=true
             break
           fi
           echo "repo sync attempt $i failed; retrying..."
           sleep 30
         done
+        $success || { echo "repo sync failed after 3 attempts"; exit 1; }
 
     - name: Clean Up ABI Protected Exports
       shell: bash
       run: |
         set -euo pipefail
         cd "$CONFIG/kernel_platform"
-        rm -f common/android/abi_gki_protected_exports_* || echo "No protected exports in common/"
-        rm -f msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports in msm-kernel/"
+        rm -f common/android/abi_gki_protected_exports_* || true
+        rm -f msm-kernel/android/abi_gki_protected_exports_* || true
         df -h
 
     - name: Add KernelSU Next
@@ -170,73 +189,73 @@ runs:
         cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
         cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
         cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-        cd ./KernelSU-Next
-        susfs_version=$(grep '#define SUSFS_VERSION' ../common/include/linux/susfs.h | awk -F'"' '{print $2}')
-        echo "SUSVER=$susfs_version" >> $GITHUB_ENV
+        cd KernelSU-Next
+        susfs_version=$(awk -F'"' '/SUSFS_VERSION/ {print $2}' ../common/include/linux/susfs.h || true)
+        if [ -z "$susfs_version" ]; then
+          echo "Failed to detect SUSFS version"
+          exit 1
+        fi
+        echo "SUSVER=$susfs_version" >> "$GITHUB_ENV"
         BASE_VERSION=10200
-        cd ./kernel
-        KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" $BASE_VERSION)
-        sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
+        cd kernel
+        KSU_VERSION=$(( $(git rev-list --count HEAD) + BASE_VERSION ))
+        sed -i "s/^DKSU_VERSION=.*/DKSU_VERSION=${KSU_VERSION}/" Makefile
         cd ..
-        echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+        echo "KSUVER=$KSU_VERSION" >> "$GITHUB_ENV"
         echo "KernelSU Next Version: $KSU_VERSION"
-        echo "SusFS Version: $susfs_version"
+        echo "SUSFS Version: $susfs_version"
         case "$susfs_version" in
-          "v1.5.5"|"v1.5.6"|"v1.5.7")
-            cp "../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch" "./ksun_susfs_latest.patch"
+          v1.5.5|v1.5.6|v1.5.7)
+            cp "../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch" ./ksun_susfs_latest.patch
             ;;
-          "v1.5.8")
-            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+          v1.5.8)
+            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch .
             patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch  || true
-            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_apk_sign.c.patch" ./
-            patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
-            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_core_hook.c.patch" ./
-            patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_selinux.c.patch" ./
-            patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
-            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_ksud.c.patch" ./
-            patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
+            for f in fix_apk_sign.c.patch fix_core_hook.c.patch fix_selinux.c.patch fix_ksud.c.patch; do
+              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/$f" .
+              patch -p1 --forward --fuzz=3 < "$f"
+            done
             ;;
-          "v1.5.9")
-            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-            patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
-            for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
-              echo "Patching file: $file.c with fix_$file.c.patch"
-              patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch"
+          v1.5.9)
+            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch .
+            patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
+            for f in $(find ./kernel -maxdepth 2 -name '*.c' -printf '%f\n' | sed 's/\.c$//' ); do
+              p="../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_${f}.c.patch"
+              [ -f "$p" ] && patch -p1 --forward < "$p" || true
             done
             patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
             ;;
           *)
-            echo "Invalid version: $susfs_version"
+            echo "Unsupported SUSFS version: $susfs_version"
             exit 1
             ;;
         esac
-        patch -p1 --forward < ksun_susfs_latest.patch || true
+        if [ -f ksun_susfs_latest.patch ]; then
+          patch -p1 --forward < ksun_susfs_latest.patch || true
+        fi
         cd ../common
         if [ "${{ inputs.android_version }}" = "android15" ] && [ "${{ inputs.kernel_version }}" = "6.6" ]; then
-          if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
-            sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
+          if ! grep -qxF '#include <trace/hooks/fs.h>' fs/namespace.c; then
+            sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' fs/namespace.c
           fi
         fi
         patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
         KERNEL_VERSION="${{ inputs.kernel_version }}"
         MIN_VERSION="5.16"
         if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
-          echo "Patching ptrace!"
-          patch -p1 -F 3 < "../../../kernel_patches/gki_ptrace.patch"
+          echo "Applying ptrace patch (kernel <= $MIN_VERSION)"
+          patch -p1 -F 3 < "../../../kernel_patches/gki_ptrace.patch" || true
         else
-          echo "Kernel >= $MIN_VERSION, skipping ptrace patch"
+          echo "Kernel > $MIN_VERSION, skipping ptrace patch"
         fi
-        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
-          echo "Patching hmbird!"
-          echo 'obj-y += hmbird_patch.o' >> ./drivers/Makefile
+        if [ "${{ inputs.model }}" = "OPAce5Pro" ] || [ "${{ inputs.model }}" = "OP13" ]; then
+          echo "Applying hmbird patches..."
+          echo 'obj-y += hmbird_patch.o' >> drivers/Makefile
           patch -p1 -F 3 < "../../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch"
-          echo "Patching hmbird files!"
-          cd ./kernel/sched
-          rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c
-          patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
+          ( cd kernel/sched && rm -f ext.c ext.h build_policy.c slim.h slim_sysctl.c && \
+            patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch" )
         else
-          echo "Not OPAce5Pro / OP13 , skipping fengchi patch"
+          echo "Skipping hmbird patches for model ${{ inputs.model }}"
         fi
 
     - name: Apply KSUN Hooks
@@ -251,7 +270,7 @@ runs:
       run: |
         set -euo pipefail
         cd "$CONFIG/kernel_platform/common"
-        cp ../../../kernel_patches/69_hide_stuff.patch ./
+        cp ../../../kernel_patches/69_hide_stuff.patch .
         patch -p1 -F 3 < 69_hide_stuff.patch
 
     - name: Add KernelSU-Next and SUSFS Configuration Settings
@@ -259,56 +278,57 @@ runs:
       run: |
         set -euo pipefail
         cd "$CONFIG/kernel_platform"
-        cat >> ./common/arch/arm64/configs/gki_defconfig <<'EOF'
-        CONFIG_KSU=y
-        CONFIG_KSU_KPROBES_HOOK=n
-        CONFIG_KSU_SUSFS=y
-        CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
-        CONFIG_KSU_SUSFS_SUS_PATH=y
-        CONFIG_KSU_SUSFS_SUS_MOUNT=y
-        CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
-        CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
-        CONFIG_KSU_SUSFS_SUS_KSTAT=y
-        CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n
-        CONFIG_KSU_SUSFS_TRY_UMOUNT=y
-        CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
-        CONFIG_KSU_SUSFS_SPOOF_UNAME=y
-        CONFIG_KSU_SUSFS_ENABLE_LOG=y
-        CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
-        CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
-        CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-        CONFIG_KSU_SUSFS_SUS_SU=n
-        CONFIG_TMPFS_XATTR=y
-        CONFIG_TMPFS_POSIX_ACL=y
-        EOF
+        # Remove indentation to avoid leading spaces
+        cat >> common/arch/arm64/configs/gki_defconfig <<EOF
+CONFIG_KSU=y
+CONFIG_KSU_KPROBES_HOOK=n
+CONFIG_KSU_SUSFS=y
+CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
+CONFIG_KSU_SUSFS_SUS_PATH=y
+CONFIG_KSU_SUSFS_SUS_MOUNT=y
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+CONFIG_KSU_SUSFS_SUS_KSTAT=y
+CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n
+CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
+CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+CONFIG_KSU_SUSFS_ENABLE_LOG=y
+CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+CONFIG_KSU_SUSFS_SUS_SU=n
+CONFIG_TMPFS_XATTR=y
+CONFIG_TMPFS_POSIX_ACL=y
+EOF
 
     - name: Add Oneplus BBR
       shell: bash
       run: |
+        set -euo pipefail
         cd "$CONFIG/kernel_platform"
         {
           echo "CONFIG_TCP_CONG_ADVANCED=y"
           echo "CONFIG_TCP_CONG_BBR=y"
-          echo "CONFIG_TCP_CONG_BIC=n"
-          echo "CONFIG_TCP_CONG_WESTWOOD=n"
-          echo "CONFIG_TCP_CONG_HTCP=n"
           echo "CONFIG_NET_SCH_FQ=y"
           echo "CONFIG_NET_SCH_FQ_CODEL=y"
-        } >> ./common/arch/arm64/configs/gki_defconfig
+        } >> common/arch/arm64/configs/gki_defconfig
 
     - name: Add TTL Target Support
       shell: bash
       run: |
+        set -euo pipefail
         cd "$CONFIG/kernel_platform"
         {
           echo "CONFIG_IP_NF_TARGET_TTL=y"
           echo "CONFIG_IP6_NF_TARGET_HL=y"
           echo "CONFIG_IP6_NF_MATCH_HL=y"
-        } >> ./common/arch/arm64/configs/gki_defconfig
+        } >> common/arch/arm64/configs/gki_defconfig
 
     - name: Add Build based configs
       shell: bash
       run: |
+        set -euo pipefail
         cd "$CONFIG/kernel_platform"
         {
           echo "CONFIG_LTO_CLANG_THIN=y"
@@ -316,14 +336,14 @@ runs:
           echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y"
           echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n"
           echo "CONFIG_OPTIMIZE_INLINING=y"
-        } >> ./common/arch/arm64/configs/gki_defconfig
+        } >> common/arch/arm64/configs/gki_defconfig
 
     - name: Save Build Metadata
       id: save_metadata
       shell: bash
       run: |
         set -euo pipefail
-        CONFIG_DIR="$GITHUB_WORKSPACE/${CONFIG}"
+        CONFIG_DIR="$GITHUB_WORKSPACE/$CONFIG"
         ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
         mkdir -p "$ARTIFACTS_DIR"
         cd "$CONFIG_DIR/kernel_platform/common"
@@ -359,7 +379,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        KERNEL_PATH="$GITHUB_WORKSPACE/${CONFIG}/kernel_platform"
+        KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
         cd "$KERNEL_PATH/common"
         mkdir -p out
         CUSTOM_LOCALVERSION="-${ANDROID_VER}-OP-Wild"
@@ -394,7 +414,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        KERNEL_PATH="$GITHUB_WORKSPACE/${CONFIG}/kernel_platform"
+        KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
         COMMON="$KERNEL_PATH/common"
         cd "$COMMON"
         : > "$COMMON/.scmversion"
@@ -406,14 +426,14 @@ runs:
         export CROSS_COMPILE=aarch64-linux-android-
         export CROSS_COMPILE_COMPAT=arm-linux-androideabi-
         export LD=ld.lld HOSTLD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip HOSTCC=clang HOSTCXX=clang++
-        export CC="clang"
+        export CC=clang
         OUT=out
         mkdir -p "$OUT"
         make O="$OUT" gki_defconfig
         if [ -n "${CUSTOM_LOCALVERSION:-}" ]; then
           scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${CUSTOM_LOCALVERSION}"
           scripts/config --file "$OUT/.config" -d LOCALVERSION_AUTO || true
-        fi        
+        fi
         if [ "${{ inputs.optimize_level }}" = "O3" ]; then
           scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE
           scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3
@@ -439,7 +459,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        KERNEL_PATH="$GITHUB_WORKSPACE/${CONFIG}/kernel_platform"
+        KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
         COMMON="$KERNEL_PATH/common"
         OUT="$COMMON/out"
         IMG="$OUT/arch/arm64/boot/Image"
@@ -466,7 +486,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        CONFIG_DIR="$GITHUB_WORKSPACE/${CONFIG}"
+        CONFIG_DIR="$GITHUB_WORKSPACE/$CONFIG"
         KERNEL_PATH="$CONFIG_DIR/kernel_platform"
         COMMON_OUT="$KERNEL_PATH/common/out"
         IMAGE_PATH="$COMMON_OUT/arch/arm64/boot/Image"
@@ -486,8 +506,9 @@ runs:
         cp "$KERNEL_PATH/common/out/.config" "$ARTIFACTS_DIR/${{ inputs.model }}.config"
         cp "$KERNEL_PATH/common/build.log" "$ARTIFACTS_DIR/${{ inputs.model }}.build.log"
         cp "$KERNEL_PATH/common/out/warnings.txt" "$ARTIFACTS_DIR/${{ inputs.model }}.warnings.txt"
+        cp "$KERNEL_PATH/common/out/arch/arm64/boot/Image" "$ARTIFACTS_DIR/Image"
         echo "Creating zip file: $ZIP_NAME"
-        zip -r "$ARTIFACTS_DIR/$ZIP_NAME" ./* >/dev/null
+        ( cd "$GITHUB_WORKSPACE/AnyKernel3" && zip -r "$ARTIFACTS_DIR/$ZIP_NAME" ./* >/dev/null )
         (cd "$ARTIFACTS_DIR" && sha256sum "$ZIP_NAME" > "${ZIP_NAME}.sha256")
         (cd "$ARTIFACTS_DIR" && { cat "$KERNEL_PATH/common/out/Image.sha256"; sha256sum "$ZIP_NAME"; } > SHA256SUMS.txt)
 
@@ -525,6 +546,4 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: kernel-${{ env.CONFIG }}
-        path: |
-          ${{ env.CONFIG }}/artifacts/*
-        path: ${{ env.CONFIG }}/artifacts/*
+        path: ${{ env.CONFIG }}/artifacts/
