@@ -185,6 +185,12 @@ jobs:
             manifest: oneplus_nord_4_v.xml
             android_version: android14
             kernel_version: '6.1'
+          - model: OP-Nord-5
+            soc: cliffs
+            branch: oneplus/sm8635
+            manifest: oneplus_nord_5.xml
+            android_version: android14
+            kernel_version: "6.1"
           - model: OP-PAD-2
             soc: pineapple
             branch: oneplus/sm8650
@@ -197,6 +203,12 @@ jobs:
             manifest: oneplus_ace3_pro_v.xml
             android_version: android14
             kernel_version: '6.1'
+          - model: OP-Nord-CE4-LITE
+            soc: blair
+            branch: oneplus/sm6375
+            manifest: oneplus_nord_ce4_lite_5g_v.xml
+            android_version: android14
+            kernel_version: "6.1"
           - model: OP-PAD-Pro
             soc: pineapple
             branch: oneplus/sm8650
@@ -291,6 +303,12 @@ jobs:
             manifest: oneplus_10t_v.xml
             android_version: android12
             kernel_version: '5.10'
+          - model: OP-Nord-4-CE
+            soc: crow
+            branch: oneplus/sm7550
+            manifest: oneplus_nord_ce4_v.xml
+            android_version: android13
+            kernel_version: "5.15"
           - model: OP10pro
             soc: waipio
             branch: oneplus/sm8450
