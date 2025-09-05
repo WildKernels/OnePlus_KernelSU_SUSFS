@@ -494,24 +494,30 @@ runs:
           echo "ERROR: Built Image not found"
           exit 1
         fi
+    
+        # Put Image into AnyKernel3
         cp "$IMAGE_PATH" "$GITHUB_WORKSPACE/AnyKernel3/Image"
         cd "$GITHUB_WORKSPACE/AnyKernel3"
+    
+        # Optional hmbird patch logic
         if [ "${{ inputs.model }}" = "OPAce5Pro" ] || [ "${{ inputs.model }}" = "OP13" ]; then
           cp "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/bins/"* ./tools/ 2>/dev/null || true
           patch -F 3 < "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch"
         fi
+    
         ZIP_NAME="AnyKernel3_${{ inputs.model }}_${{ inputs.android_version }}-${{ inputs.kernel_version }}_Next_${KSUVER}_${SUSVER}.zip"
         ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
         mkdir -p "$ARTIFACTS_DIR"
-        cp "$KERNEL_PATH/common/out/.config" "$ARTIFACTS_DIR/${{ inputs.model }}.config"
-        cp "$KERNEL_PATH/common/build.log" "$ARTIFACTS_DIR/${{ inputs.model }}.build.log"
-        cp "$KERNEL_PATH/common/out/warnings.txt" "$ARTIFACTS_DIR/${{ inputs.model }}.warnings.txt"
-        cp "$KERNEL_PATH/common/out/arch/arm64/boot/Image" "$ARTIFACTS_DIR/Image"
-        echo "Creating zip file: $ZIP_NAME"
+    
+        echo "Creating flashable zip: $ZIP_NAME"
         ( cd "$GITHUB_WORKSPACE/AnyKernel3" && zip -r "$ARTIFACTS_DIR/$ZIP_NAME" ./* >/dev/null )
-        (cd "$ARTIFACTS_DIR" && sha256sum "$ZIP_NAME" > "${ZIP_NAME}.sha256")
-        (cd "$ARTIFACTS_DIR" && { cat "$KERNEL_PATH/common/out/Image.sha256"; sha256sum "$ZIP_NAME"; } > SHA256SUMS.txt)
-
+    
+        # Keep only the flashable zip and the model metadata file (assumed already created earlier)
+        find "$ARTIFACTS_DIR" -maxdepth 1 -type f ! -name "$ZIP_NAME" ! -name "${{ inputs.model }}.txt" -delete
+    
+        # Output for later steps (optional)
+        echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+    
     - name: Final Build Summary
       shell: bash
       run: |
@@ -535,15 +541,16 @@ runs:
           echo "- Android: ${{ inputs.android_version }}"
           echo "- Kernel Version: ${{ steps.save_metadata.outputs.kernel_version }}"
           echo "- KSU Version: ${KSUVER:-unknown}"
-          echo "- SUSFS Version: ${SUSVER:-unknown}"
+          echo "- SUSFS Version: ${SUSVER:-unknown }}"
           echo "- Optimization: ${{ inputs.optimize_level }}"
           echo "- Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "- Warnings: ${{ steps.collect_stats.outputs.warnings }}"
         } >> "$GITHUB_STEP_SUMMARY"
-
+    
     - name: Upload Artifacts
       if: success() && steps.create_zip.conclusion == 'success'
       uses: actions/upload-artifact@v4
       with:
         name: kernel-${{ env.CONFIG }}
         path: ${{ env.CONFIG }}/artifacts/
+
