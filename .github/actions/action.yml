@@ -189,73 +189,73 @@ runs:
         cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
         cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
         cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-        cd KernelSU-Next
-        susfs_version=$(awk -F'"' '/SUSFS_VERSION/ {print $2}' ../common/include/linux/susfs.h || true)
-        if [ -z "$susfs_version" ]; then
-          echo "Failed to detect SUSFS version"
-          exit 1
-        fi
-        echo "SUSVER=$susfs_version" >> "$GITHUB_ENV"
+        cd ./KernelSU-Next
+        susfs_version=$(grep '#define SUSFS_VERSION' ../common/include/linux/susfs.h | awk -F'"' '{print $2}')
+        echo "SUSVER=$susfs_version" >> $GITHUB_ENV
         BASE_VERSION=10200
-        cd kernel
-        KSU_VERSION=$(( $(git rev-list --count HEAD) + BASE_VERSION ))
-        sed -i "s/^DKSU_VERSION=.*/DKSU_VERSION=${KSU_VERSION}/" Makefile
+        cd ./kernel
+        KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" $BASE_VERSION)
+        sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
         cd ..
-        echo "KSUVER=$KSU_VERSION" >> "$GITHUB_ENV"
+        echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
         echo "KernelSU Next Version: $KSU_VERSION"
-        echo "SUSFS Version: $susfs_version"
+        echo "SusFS Version: $susfs_version"
         case "$susfs_version" in
-          v1.5.5|v1.5.6|v1.5.7)
-            cp "../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch" ./ksun_susfs_latest.patch
+          "v1.5.5"|"v1.5.6"|"v1.5.7")
+            cp "../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch" "./ksun_susfs_latest.patch"
             ;;
-          v1.5.8)
-            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch .
+          "v1.5.8")
+            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
             patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch  || true
-            for f in fix_apk_sign.c.patch fix_core_hook.c.patch fix_selinux.c.patch fix_ksud.c.patch; do
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/$f" .
-              patch -p1 --forward --fuzz=3 < "$f"
-            done
+            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_apk_sign.c.patch" ./
+            patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
+            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_core_hook.c.patch" ./
+            patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
+            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_selinux.c.patch" ./
+            patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
+            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_ksud.c.patch" ./
+            patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
             ;;
-          v1.5.9)
-            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch .
-            patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
-            for f in $(find ./kernel -maxdepth 2 -name '*.c' -printf '%f\n' | sed 's/\.c$//' ); do
-              p="../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_${f}.c.patch"
-              [ -f "$p" ] && patch -p1 --forward < "$p" || true
+          "v1.5.9")
+            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+            patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
+            for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
+              echo "Patching file: $file.c with fix_$file.c.patch"
+              patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch"
             done
             patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
             ;;
           *)
-            echo "Unsupported SUSFS version: $susfs_version"
+            echo "Invalid version: $susfs_version"
             exit 1
             ;;
         esac
-        if [ -f ksun_susfs_latest.patch ]; then
-          patch -p1 --forward < ksun_susfs_latest.patch || true
-        fi
+        patch -p1 --forward < ksun_susfs_latest.patch || true
         cd ../common
         if [ "${{ inputs.android_version }}" = "android15" ] && [ "${{ inputs.kernel_version }}" = "6.6" ]; then
-          if ! grep -qxF '#include <trace/hooks/fs.h>' fs/namespace.c; then
-            sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' fs/namespace.c
+          if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
+            sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
           fi
         fi
         patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
         KERNEL_VERSION="${{ inputs.kernel_version }}"
         MIN_VERSION="5.16"
         if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
-          echo "Applying ptrace patch (kernel <= $MIN_VERSION)"
-          patch -p1 -F 3 < "../../../kernel_patches/gki_ptrace.patch" || true
+          echo "Patching ptrace!"
+          patch -p1 -F 3 < "../../../kernel_patches/gki_ptrace.patch"
         else
-          echo "Kernel > $MIN_VERSION, skipping ptrace patch"
+          echo "Kernel >= $MIN_VERSION, skipping ptrace patch"
         fi
-        if [ "${{ inputs.model }}" = "OPAce5Pro" ] || [ "${{ inputs.model }}" = "OP13" ]; then
-          echo "Applying hmbird patches..."
-          echo 'obj-y += hmbird_patch.o' >> drivers/Makefile
+        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
+          echo "Patching hmbird!"
+          echo 'obj-y += hmbird_patch.o' >> ./drivers/Makefile
           patch -p1 -F 3 < "../../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch"
-          ( cd kernel/sched && rm -f ext.c ext.h build_policy.c slim.h slim_sysctl.c && \
-            patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch" )
+          echo "Patching hmbird files!"
+          cd ./kernel/sched
+          rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c
+          patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
         else
-          echo "Skipping hmbird patches for model ${{ inputs.model }}"
+          echo "Not OPAce5Pro / OP13 , skipping fengchi patch"
         fi
 
     - name: Apply KSUN Hooks
@@ -270,9 +270,9 @@ runs:
       run: |
         set -euo pipefail
         cd "$CONFIG/kernel_platform/common"
-        cp ../../../kernel_patches/69_hide_stuff.patch .
+        cp ../../../kernel_patches/69_hide_stuff.patch ./
         patch -p1 -F 3 < 69_hide_stuff.patch
-
+        
     - name: Add KernelSU-Next and SUSFS Configuration Settings
       shell: bash
       run: |
