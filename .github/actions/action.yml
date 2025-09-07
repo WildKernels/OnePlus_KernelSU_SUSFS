@@ -428,6 +428,7 @@ runs:
         if [ -n "${CUSTOM_LOCALVERSION:-}" ]; then
           scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${CUSTOM_LOCALVERSION}"
           scripts/config --file "$OUT/.config" -d LOCALVERSION_AUTO || true
+          sed -i 's/scm_version="$(scm_version --short)"/scm_version=""/' scripts/setlocalversion
         fi
         if [ "${{ inputs.optimize_level }}" = "O3" ]; then
           scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE
@@ -461,7 +462,9 @@ runs:
         WARNINGS=$(grep -i -E 'warning:' "$COMMON/build.log" | wc -l || true)
         echo "$WARNINGS" > "$OUT/warnings.txt"
         file "$IMG" > "$OUT/Image.file"
-        strings "$IMG" | grep "Linux version"
+        KERNEL_UNAME=$(strings "$IMG" | grep -E 'Linux version.*#' | tail -n1)
+        echo "Kernel Uname: $KERNEL_UNAME"
+        echo "KERNEL_UNAME=$KERNEL_UNAME" >> "$GITHUB_ENV"
         if ! file "$IMG" | grep -qi 'ARM64'; then
           echo "Image does not appear to be ARM64:"
           file "$IMG"
@@ -521,6 +524,7 @@ runs:
           echo "Android: ${{ env.ANDROID_VER }}"
           echo "Kernel base: ${{ env.KERNEL_VER }}"
           echo "Kernel full: ${{ env.KERNEL_FULL_VER }}"
+          echo "Kernel Uname: ${{ env.KERNEL_UNAME }}"
           echo "KSU Version: ${KSUVER:-unknown}"
           echo "SUSFS Version: ${SUSVER:-unknown}"
           echo "Optimization: ${{ inputs.optimize_level }}"
@@ -534,6 +538,7 @@ runs:
           echo "- Model: ${{ inputs.model }}"
           echo "- Android: ${{ env.ANDROID_VER }}"
           echo "- Kernel Version: ${{ steps.save_metadata.outputs.kernel_version }}"
+          echo "- Kernel Uname: ${{ env.KERNEL_UNAME }}"
           echo "- KSU Version: ${KSUVER:-unknown}"
           echo "- SUSFS Version: ${SUSVER:-unknown }}"
           echo "- Optimization: ${{ inputs.optimize_level }}"
