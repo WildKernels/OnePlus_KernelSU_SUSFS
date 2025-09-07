@@ -109,33 +109,32 @@ jobs:
         id: get-susfs-branch
         run: |
           KERNEL_STRING="${{ matrix.android_version }}-${{ matrix.kernel_version }}"
+          SUSFS_BRANCH=""
           case "$KERNEL_STRING" in
             "android12-5.10")
-              SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
               ;;
             "android13-5.10")
-              SUSFS_BRANCH="${{ inputs.android13-5_10_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android13-5_10_susfs_branch_or_commit }}"
               ;;
             "android13-5.15")
-              SUSFS_BRANCH="${{ inputs.android13-5_15_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
               ;;
             "android14-5.15")
-              SUSFS_BRANCH="${{ inputs.android14-5_15_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android14-5_15_susfs_branch_or_commit }}"
               ;;
             "android14-6.1")
-              SUSFS_BRANCH="${{ inputs.android14-6_1_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
               ;;
             "android15-6.6")
-              SUSFS_BRANCH="${{ inputs.android15-6_6_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
               ;;
             *)
               echo "Invalid kernel version or unsupported: $KERNEL_STRING"
               exit 1
               ;;
           esac
-          if [[ -z "$SUSFS_BRANCH" ]]; then
-            SUSFS_BRANCH="gki-${{ matrix.android_version }}-${{ matrix.kernel_version }}"
-          fi
+
           echo "susfs_branch=$SUSFS_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Checkout Code
@@ -226,33 +225,32 @@ jobs:
         id: get-susfs-branch
         run: |
           KERNEL_STRING="${{ matrix.android_version }}-${{ matrix.kernel_version }}"
+          SUSFS_BRANCH=""
           case "$KERNEL_STRING" in
             "android12-5.10")
-              SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
               ;;
             "android13-5.10")
-              SUSFS_BRANCH="${{ inputs.android13-5_10_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android13-5_10_susfs_branch_or_commit }}"
               ;;
             "android13-5.15")
-              SUSFS_BRANCH="${{ inputs.android13-5_15_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
               ;;
             "android14-5.15")
-              SUSFS_BRANCH="${{ inputs.android14-5_15_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android14-5_15_susfs_branch_or_commit }}"
               ;;
             "android14-6.1")
-              SUSFS_BRANCH="${{ inputs.android14-6_1_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
               ;;
             "android15-6.6")
-              SUSFS_BRANCH="${{ inputs.android15-6_6_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
               ;;
             *)
               echo "Invalid kernel version or unsupported: $KERNEL_STRING"
               exit 1
               ;;
           esac
-          if [[ -z "$SUSFS_BRANCH" ]]; then
-            SUSFS_BRANCH="gki-${{ matrix.android_version }}-${{ matrix.kernel_version }}"
-          fi
+          
           echo "susfs_branch=$SUSFS_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Checkout Code
@@ -331,33 +329,32 @@ jobs:
         id: get-susfs-branch
         run: |
           KERNEL_STRING="${{ matrix.android_version }}-${{ matrix.kernel_version }}"
+          SUSFS_BRANCH=""
           case "$KERNEL_STRING" in
             "android12-5.10")
-              SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
               ;;
             "android13-5.10")
-              SUSFS_BRANCH="${{ inputs.android13-5_10_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android13-5_10_susfs_branch_or_commit }}"
               ;;
             "android13-5.15")
-              SUSFS_BRANCH="${{ inputs.android13-5_15_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
               ;;
             "android14-5.15")
-              SUSFS_BRANCH="${{ inputs.android14-5_15_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android14-5_15_susfs_branch_or_commit }}"
               ;;
             "android14-6.1")
-              SUSFS_BRANCH="${{ inputs.android14-6_1_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
               ;;
             "android15-6.6")
-              SUSFS_BRANCH="${{ inputs.android15-6_6_susfs_branch }}"
+              SUSFS_BRANCH="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
               ;;
             *)
               echo "Invalid kernel version or unsupported: $KERNEL_STRING"
               exit 1
               ;;
           esac
-          if [[ -z "$SUSFS_BRANCH" ]]; then
-            SUSFS_BRANCH="gki-${{ matrix.android_version }}-${{ matrix.kernel_version }}"
-          fi
+          
           echo "susfs_branch=$SUSFS_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Checkout Code
