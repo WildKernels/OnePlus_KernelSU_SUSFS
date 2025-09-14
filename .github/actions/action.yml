@@ -1,36 +1,36 @@
-name: Build and Release OnePlus Kernels
+姓名: 构建和发布OnePlus内核
 
-permissions:
-  contents: write
-  actions: write
+权限:
+  contents: 写
+  actions: 写
 
-inputs:
+输入:
   model:
-    required: true
-    type: string
+    required: 正确
+    type: 线
   soc:
-    required: true
-    type: string
+    required: 正确
+    type: 线
   branch:
-    required: true
-    type: string
+    required: 正确
+    type: 线
   manifest:
-    required: true
-    type: string
+    required: 正确
+    type: 线
   ksun_branch:
-    required: true
-    type: string
-    default: stable
+    required: 正确
+    type: 线
+    default: 稳定的
   susfs_commit_hash_or_branch:
-    required: false
-    type: string
+    required: 假的
+    type: 线
     default: ""
   optimize_level:
-    required: false
-    type: string
+    required: 假的
+    type: 线
     default: O2  # Choices: O2 or O3
 
-outputs:
+输出:
   kernel_version:
     value: ${{ steps.save_metadata.outputs.kernel_version }}
   ksu_version:
@@ -42,88 +42,88 @@ outputs:
   warnings:
     value: ${{ steps.collect_stats.outputs.warnings }}
 
-runs:
-  using: composite
+跑步次数:
+  using: 复合材料
   steps:
-    - name: Validate Inputs
-      shell: bash
+    - 姓名: 验证输入
+      shell: 猛击
       run: |
-        set -euo pipefail
-        model='${{ inputs.model }}'
-        if [[ -z "$model" ]]; then
-          echo "Empty model not allowed"; exit 1
-        fi
-        echo "Input validation OK."
+set-euo管道故障
+model='${{inputs.model}}'
+if[[-z"$model"]]；则
+echo“不允许空模型”；退出1
+Fi
+echo"输入确认OK"
 
-    - name: Install Minimal Dependencies
-      shell: bash
+    - 姓名: 安装最小相依性
+      shell: 猛击
       run: |
-        set -euo pipefail
-        echo "::group::Install deps"
-        sudo apt-get -o Acquire::Retries=3 update -qq
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-          git curl ca-certificates build-essential clang lld flex bison \
-          libelf-dev libssl-dev libncurses-dev zlib1g-dev liblz4-tool \
-          libxml2-utils rsync unzip dwarves file python3
-        sudo apt-get clean
-        echo "::endgroup::"
+set-euo管道故障
+echo"：：group：：Install deps"
+sudo apt-get-o获取：：重试次数=3更新-qq
+sudo DEBIAN_FRONTEND=非交互式apt-get安装-y--no-install-commends\
+git curl ca-certificates build-inessary clang lld flex bison\
+libelf-dev libssl-dev libncurses-dev zlib1g-dev liblz4-tool\
+libxml2-utils rsync unzip侏儒文件python3
+sudo apt-get clean
+echo“”：：endgroup：：“”
 
-    - name: Setup Base Environment
-      shell: bash
+    - 姓名: 安装基础环境
+      shell: 猛击
       run: |
-        set -euo pipefail
-        # Derive a unique build directory name
-        CONFIG="${{ inputs.model }}"
-        echo "CONFIG=$CONFIG" >> "$GITHUB_ENV"
-        # Install repo tool if missing
-        REPO="/usr/local/bin/repo"
-        if [ ! -x "$REPO" ]; then
-          curl -s https://storage.googleapis.com/git-repo-downloads/repo -o "$REPO"
-          chmod +x "$REPO"
-        fi
-        echo "REPO=$REPO" >> "$GITHUB_ENV"
+set-euo管道故障
+#导出唯一的生成目录名
+config="${{inputs.model}}"
+echo"CONFIG=$CONFIG">>"$GITHUB_ENV"
+#如果缺少repo工具，请安装
+repo="/usr/local/bin/repo"
+如果[！-x"$REPO"]；然后
+curl-s https://storage.googleapis.com/git-repo-downloads/repo-o"$REPO"
+chmod+x"$REPO"
+Fi
+echo"REPO=$REPO">>"$GITHUB_ENV"
 
-    - name: Initialize and Sync Kernel Source
-      shell: bash
+    - 姓名: 初始化和同步内核源
+      shell: 猛击
       run: |
-        set -euo pipefail
-        echo "Creating folder for configuration: $CONFIG"
-        mkdir -p "$CONFIG"
-        cd "$CONFIG"
-        echo "Initializing and syncing kernel source..."
-        if [[ "${{ inputs.manifest }}" == https://* ]]; then
-          mkdir -p .repo/manifests
-          curl --fail --show-error --location --proto '=https' \
-            "${{ inputs.manifest }}" -o .repo/manifests/temp_manifest.xml
-          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git \
-            -b oneplus/sm8650 -m temp_manifest.xml --repo-rev=v2.16 \
-            --depth=1 --no-clone-bundle --no-tags
-        else
-          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git \
-            -b "${{ inputs.branch }}" -m "${{ inputs.manifest }}" \
-            --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
-        fi
-        "$REPO" --version
-        success=false
-        for i in 1 2 3; do
-          if "$REPO" sync -c --no-clone-bundle --no-tags --optimized-fetch \
-             -j"$(nproc --all)" --fail-fast; then
-            success=true
-            break
-          fi
-          echo "repo sync attempt $i failed; retrying..."
-          sleep 30
-        done
-        $success || { echo "repo sync failed after 3 attempts"; exit 1; }
+set-euo管道故障
+echo"为配置创建文件夹：$CONFIG"
+mkdir-p"$CONFIG"
+CD"$CONFIG"
+echo"初始化和同步内核源..."
+if[["${{inputs.manifest}}"==https://*]]；然后
+mkdir-p.repo/manifest
+curl--fail-show-error-location-proto'=https'\
+"${inputs.manifest}}"-o.repo/manifest/temp_manifest.xml
+"$REPO"init-u https://github.com/OnePlusOSS/kernel_manifest.git\
+-b oneplus/sm8650-m temp_manifest.xml--repo-rev=v2.16\
+--深度=1--无克隆捆绑--无标签
+其他
+"$REPO"init-u https://github.com/OnePlusOSS/kernel_manifest.git\
+-b"${{输入。分支}}"-m"${{输入。清单}}"\
+--repo-rev=v2.16--深度=1--无克隆绑定--无标签
+Fi
+"$REPO"--版本
+成功=false
+对于123中的i；do
+如果“$REPO”sync-c--no-clone-bundle--no-tag--simotized-fetch\
+-j"$(nproc-all)"--fail-fast；然后
+success=true
+打破
+Fi
+echo"repo同步尝试$i失败；正在重试..."
+睡眠30
+已完成
+$success||{echo“三次repo同步失败”；退出1；}
 
-    - name: Get Kernel Version Info
-      shell: bash
+    - 姓名: 获取内核版本信息
+      shell: 猛击
       run: |
-        set -euo pipefail
-        CONFIG_DIR="$GITHUB_WORKSPACE/$CONFIG"
-        ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
-        mkdir -p "$ARTIFACTS_DIR"
-        cd "$CONFIG_DIR/kernel_platform/common"
+set-euo管道故障
+config_DIR="$GITHUB_WORKSPACE/$CONFIG"
+artifacts_DIR="$CONFIG_DIR/artifacts"
+mkdir-p"$ARTIFACTS_DIR"
+CD"$CONFIG_DIR/kernel_platform/common"
         CONFIG_FILES=("build.config.common" "build.config.constants")
         BRANCH_LINE=""
         for f in "${CONFIG_FILES[@]}"; do
@@ -377,7 +377,7 @@ runs:
         KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
         cd "$KERNEL_PATH/common"
         mkdir -p out
-        CUSTOM_LOCALVERSION="-${ANDROID_VER}-OP-Wild"
+        CUSTOM_LOCALVERSION="-${ANDROID_VER}-ZIYU"
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
 
     - name: Detect Clang (toolchain for build)
@@ -427,129 +427,128 @@ runs:
         make O="$OUT" gki_defconfig
         if [ -n "${CUSTOM_LOCALVERSION:-}" ]; then
           scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${CUSTOM_LOCALVERSION}"
-          scripts/config --file "$OUT/.config" -d LOCALVERSION_AUTO || true
-          sed -i 's/scm_version="$(scm_version --short)"/scm_version=""/' scripts/setlocalversion
-        fi
-        if [ "${{ inputs.optimize_level }}" = "O3" ]; then
-          scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE
-          scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3
-          export KCFLAGS="-Wno-error -pipe -O3 -fno-stack-protector"
-        else
-          scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE
-          scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE_O3
-          export KCFLAGS="-Wno-error -pipe -O2 -fno-stack-protector"
-        fi
-        export KCPPFLAGS="-DCONFIG_OPTIMIZE_INLINING"
-        make O="$OUT" olddefconfig
-        echo "Starting build with $(nproc --all) threads..."
-        set -o pipefail
-        make -j"$(nproc --all)" O="$OUT" 2>&1 | tee build.log
-        IMG="$OUT/arch/arm64/boot/Image"
-        if [ ! -f "$IMG" ]; then
-          echo "Kernel Image missing"; exit 1
-        fi
-        sha256sum "$IMG" | tee "$OUT/Image.sha256"
+scripts/config-file"$OUT/.config"-d localversion_AUTO||true
+SED-i's/scm_version="$(scm_version-short)"/scm_version=""/'脚本/setlocalversion
+Fi
+如果["${{inputs.optimize_level}}"="O3"]；则
+scripts/config-file"$OUT/.config"-d CC_OPTIMIZE_FOR_PERFORMANCE
+scripts/config-file"$OUT/.config"-e CC_OPTIMIZE_FOR_PERFORMANCE_O3
+导出KCFLAGS="-Wno-Error-pipe-O3-fno-stack-protector"
+其他
+scripts/config-file"$OUT/.config"-e CC_OPTIMIZE_FOR_PERFORMANCE
+scripts/config-file"$OUT/.config"-d CC_OPTIMIZE_FOR_PERFORMANCE_O3
+导出KCFLAGS="-Wno-错误-管道-O2-fno-堆栈保护器"
+Fi
+导出KCPPFLAGS="-DCONFIG_OPTIMIZE_inlining"
+使O="$OUT"olddefconfig
+回声"正在使用$(nproc-all)线程开始生成..."
+set-o管道故障
+make-j"$(nproc-all)"O="$OUT"2>&1|tee build.log
+IMG="$OUT/arch/arm64/boot/映像"
+如果[！-f"$IMG"]；然后
+回显“缺少内核映像”；退出1
+Fi
+sha256sum"$IMG"|T形"$OUT/Image.sha256"
 
-    - name: Collect Build Stats / Validate Image
-      id: collect_stats
-      shell: bash
-      run: |
-        set -euo pipefail
-        KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
-        COMMON="$KERNEL_PATH/common"
-        OUT="$COMMON/out"
-        IMG="$OUT/arch/arm64/boot/Image"
-        WARNINGS=$(grep -i -E 'warning:' "$COMMON/build.log" | wc -l || true)
-        echo "$WARNINGS" > "$OUT/warnings.txt"
-        file "$IMG" > "$OUT/Image.file"
-        KERNEL_UNAME=$(strings "$IMG" | grep -E 'Linux version.*#' | tail -n1)
-        echo "Kernel Uname: $KERNEL_UNAME"
-        echo "KERNEL_UNAME=$KERNEL_UNAME" >> "$GITHUB_ENV"
-        if ! file "$IMG" | grep -qi 'ARM64'; then
-          echo "Image does not appear to be ARM64:"
-          file "$IMG"
-          exit 1
-        fi
-        MIN_SIZE=$((6*1024*1024))
-        ACTUAL_SIZE=$(stat -c %s "$IMG")
-        if [ "$ACTUAL_SIZE" -lt "$MIN_SIZE" ]; then
-          echo "Image size $ACTUAL_SIZE < $MIN_SIZE (suspicious)"; exit 1
-        fi
-        IMAGE_SHA256=$(cut -d' ' -f1 "$OUT/Image.sha256")
-        echo "Image sha256: $IMAGE_SHA256"
-        echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
-        echo "image_sha256=$IMAGE_SHA256" >> "$GITHUB_OUTPUT"
+    - 姓名: 收集构建统计信息/验证映像
+身份标识: collect_stats:collect_stats
+壳: 猛击:猛击
+跑: |
+set-euo管道故障
+kernel_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
+常见的="$KERNEL_PATH/common"
+从……里面出去="$COMMON/out"
+IMG="$OUT/arch/arm64/boot/映像"
+警告=$(grep-i-E'警告：'"$COMMON/build.log"|wc-l||true)
+回声"$WARNINGS">"$OUT/warnings.txt"
+文件"$IMG">"$OUT/Image.file"
+kernel_UNAME=$(字符串"$IMG"|grep-E'Linux版本.*#'|tail-n1)
+回声"内核未命名：$kernel_UNAME"
+回声"KERNEL_UNAME=$KERNEL_UNAME">>"$GITHUB_ENV"
+if！文件"$IMG"|grep-qi'ARM64'；则
+回声"图像似乎不是ARM64："
+文件"$IMG"
+出口1
+Fi
+min_SIZE=$((6*1024*1024))
+actual_SIZE=$(STAT-C%s"$IMG")
+如果["$ACTUAL_SIZE"-<"$MIN_SIZE"]；则
+回声"图像大小$actual_SIZE<$MIN_SIZE(可疑)"；退出1
+Fi
+image_SHA256=$(剪切-d"-f1"$OUT/Image.sha256")
+回声"图像sha256：$IMAGE_SHA256"
+回声"警告=$WARNINGS">>"$GITHUB_OUTPUT"
+回声"image_sha256=$IMAGE_SHA256">>"$GITHUB_OUTPUT"
 
-    - name: Create Kernel ZIP
-      id: create_zip
-      shell: bash
-      run: |
-        set -euo pipefail
-        CONFIG_DIR="$GITHUB_WORKSPACE/$CONFIG"
-        IMAGE_PATH="$CONFIG_DIR/kernel_platform/common/out/arch/arm64/boot/Image"
-        if [ ! -f "$IMAGE_PATH" ]; then
-          echo "ERROR: Built Image not found"
-          exit 1
-        fi
+    - 姓名: 创建内核ZIP
+身份标识: 创建zip(_Z):创建zip(_Z)
+壳: 猛击:猛击
+跑: |
+set-euo管道故障
+config_DIR="$GITHUB_WORKSPACE/$CONFIG"
+image_PATH="$CONFIG_DIR/kernel_platform/common/out/arch/arm64/boot/Image"
+如果[！-f"$IMAGE_PATH"]；则
+回声"错误：未找到生成图像"
+出口1
+Fi
     
-        # Put Image into AnyKernel3
-        cp "$IMAGE_PATH" "$GITHUB_WORKSPACE/AnyKernel3/Image"
-        cd "$GITHUB_WORKSPACE/AnyKernel3"
+#将图像放入AnyKernel3#将映像放入AnyKernel3
+CP"$IMAGE_PATH""$GITHUB_WORKSPACE/AnyKernel3/Image""$IMAGE_PATH" "$GITHUB_WORKSPACE/AnyKernel3/Image"
+CD"$GITHUB_WORKSPACE/AnyKernel3""$GITHUB_WORKSPACE/AnyKernel3"
     
-        # Optional hmbird patch logic
-        if [ "${{ inputs.model }}" = "OPAce5Pro" ] || [ "${{ inputs.model }}" = "OP13" ]; then
-          cp "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/bins/"* ./tools/ 2>/dev/null || true
-          patch -F 3 < "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch"
-        fi
+#可选的hmbird补丁逻辑#可选的hmbird补丁逻辑
+如果["${{inputs.model}}"="${{inputs.model}}"]="OPAce5Pro""${{inputs.Model}}"="OP13"]||[ "${{inputs.model}}"="OP13" ]；然后[ "${{inputs.model}}"="OP13" ]；然后
+CP"$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/bin/"*./tools/2>/dev/null||true"$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/bin/"*./tools/2>/dev/null||true
+patch-F3<"$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/AK3_hmbird_patch。补丁""$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/AK3_hmbird_patch。补丁"
+Fi
     
-        ZIP_NAME="AnyKernel3_${{ inputs.model }}_${{ env.KERNEL_FULL_VER }}_Next_${KSUVER}_${SUSVER}.zip"
-        ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
-        mkdir -p "$ARTIFACTS_DIR"
+zip_NAME="AnyKernel3_${{inputs.model}}_${{env.Kernel_FULL_VER}}_Next_${KSUVER}_${SUSVER}.zip""AnyKernel3_${{inputs.model}}_${{env.Kernel_FULL_VER}}_Next_${KSUVER}_${SUSVER}.zip"
+artifacts_DIR="$CONFIG_DIR/工件""$CONFIG_DIR/工件"
+mkdir-p"$ARTIFACTS_DIR""$ARTIFACTS_DIR"
     
-        echo "Creating flashable zip: $ZIP_NAME"
-        ( cd "$GITHUB_WORKSPACE/AnyKernel3" && zip -r "$ARTIFACTS_DIR/$ZIP_NAME" ./* >/dev/null )
+echo“创建可闪存zip: $ZIP_NAME"创建可闪存zip：$ZIP_NAME""
+(cd"$GITHUB_WORKSPACE/AnyKernel3"&&zip-r"$ARTIFACTS_DIR/$ZIP_NAME"./*>/dev/null)"$GITHUB_WORKSPACE/AnyKernel3"&&zip-r"$ARTIFACTS_DIR/$ZIP_NAME"./*>/dev/null)
     
-        # Keep only the flashable zip and the model metadata file (assumed already created earlier)
-        find "$ARTIFACTS_DIR" -maxdepth 1 -type f ! -name "$ZIP_NAME" ! -name "${{ inputs.model }}.txt" -delete
+#只保留可闪存zip和模型元数据文件(假设已在之前创建)#keep only flashable zip和model metadata文件(假定先前已创建)
+查找"$ARTIFACTS_DIR"-最大深度1-类型f！-name"$ZIP_NAME"！-name"${{输入。 型号}}.文本"-删除"$ARTIFACTS_DIR"-最大深度1-type f！-name"$ZIP_NAME"！-name"${{inputs.model}}.txt"-delete
     
-        # Output for later steps (optional)
-        echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+#后续步骤的输出(可选)#后续步骤的输出(可选)
+回声"zip_name=$ZIP_NAME">>"$GITHUB_OUTPUT""zip_name=$ZIP_NAME">>"$GITHUB_OUTPUT"
     
-    - name: Final Build Summary
-      shell: bash
-      run: |
-        set -euo pipefail
+    - 姓名: 最终构建摘要
+壳: 猛击:猛击
+跑: |
+set-euo管道故障
         {
-          echo "Model: ${{ inputs.model }}"
-          echo "Android: ${{ env.ANDROID_VER }}"
-          echo "Kernel base: ${{ env.KERNEL_VER }}"
-          echo "Kernel full: ${{ env.KERNEL_FULL_VER }}"
-          echo "Kernel Uname: ${{ env.KERNEL_UNAME }}"
-          echo "KSU Version: ${KSUVER:-unknown}"
-          echo "SUSFS Version: ${SUSVER:-unknown}"
-          echo "Optimization: ${{ inputs.optimize_level }}"
-          echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
-          echo "Compiler: ${CLANG_VERSION:-unknown}"
-          echo "Warnings: ${{ steps.collect_stats.outputs.warnings }}"
-        } | tee summary.txt
+回声"模型：${{inputs.model}}"
+回声"Android：${{env.ANDROID_VER}}"
+回声"内核库：${{env.KERNEL_VER}}"
+回声"内核已满：${{env.KERNEL_FULL_VER}}"
+回声"内核未命名：${{env.KERNEL_UNAME}}"
+回声"KSU版本：${KSUVER：-unknown}"
+回声"SUSFS版本：${SUSER：-unknown}"
+回声"优化：${{inputs.optimize_level}}"
+回声"图像SHA256：${{steps.Collect_stats.outs.Image_sha256}}"
+回声"编译器：${CLANG_VERSION：-未知}"
+回声"警告：${{steps.collect_stats.outputs.warnings}}"
+}|tee summary.txt
         {
-          echo "### Kernel Build Summary"
-          echo ""
-          echo "- Model: ${{ inputs.model }}"
-          echo "- Android: ${{ env.ANDROID_VER }}"
-          echo "- Kernel Version: ${{ steps.save_metadata.outputs.kernel_version }}"
-          echo "- Kernel Uname: ${{ env.KERNEL_UNAME }}"
-          echo "- KSU Version: ${KSUVER:-unknown}"
-          echo "- SUSFS Version: ${SUSVER:-unknown }}"
-          echo "- Optimization: ${{ inputs.optimize_level }}"
-          echo "- Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
-          echo "- Warnings: ${{ steps.collect_stats.outputs.warnings }}"
-        } >> "$GITHUB_STEP_SUMMARY"
+回声"###内核生成摘要"
+回显“”
+回声“”-模型：${{输入.模型}}
+回声"-安卓：${{env.ANDROID_VER}}"
+回声"-内核版本：${{步。save_metadata.输出.Kernel_version}}"
+回声"-内核未命名：${{env.KERNEL_UNAME}}"
+echo”-KSU版本：${KSUVER：-未知}”
+回声"-SUSFS版本：${SUSVER：-未知}}”
+回声"-优化：${{inputs.optimize_level}}"
+回声"-图像SHA256：${{steps。collect_stats。outs.Image_sha256}}"
+回声"-警告：${{steps.collect_stats.outputs.warnings}}"
+}>>"$GITHUB_STEP_SUMMARY"
     
-    - name: Upload Artifacts
-      if: success() && steps.create_zip.conclusion == 'success'
-      uses: actions/upload-artifact@v4
-      with:
-        name: kernel-${{ env.CONFIG }}
-        path: ${{ env.CONFIG }}/artifacts/
-
+    - 姓名: 上传工件
+如果: success()&&steps.create_zip.conclusion=='成功'success()&&steps.create_zip.conclusion=='成功''成功'
+uses: 操作/上载工件@v4
+和……一起:
+姓名: 内核-${{env.CONFIG}}{{env.CONFIG}}
+路径: ${{env.CONFIG}}/工件/{{env.CONFIG}}/工件/
