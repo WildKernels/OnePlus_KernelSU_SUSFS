@@ -72,6 +72,12 @@ jobs:
             manifest: oneplus_13.xml
             android_version: android15
             kernel_version: '6.6'
+          - model: OP13-GLO
+            soc: sun
+            branch: oneplus/sm8750
+            manifest: ‎oneplus_13_global.xml
+            android_version: android15
+            kernel_version: '6.6'
           - model: OPAce5Pro
             soc: sun
             branch: oneplus/sm8750
