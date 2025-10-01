@@ -93,15 +93,10 @@ runs:
         echo "Initializing and syncing kernel source..."
         if [[ "${{ inputs.manifest }}" == https://* ]]; then
           mkdir -p .repo/manifests
-          curl --fail --show-error --location --proto '=https' \
-            "${{ inputs.manifest }}" -o .repo/manifests/temp_manifest.xml
-          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git \
-            -b oneplus/sm8650 -m temp_manifest.xml --repo-rev=v2.16 \
-            --depth=1 --no-clone-bundle --no-tags
+          curl --fail --show-error --location --proto '=https' "${{ inputs.manifest }}" -o .repo/manifests/temp_manifest.xml
+          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git -b oneplus/sm8650 -m temp_manifest.xml --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
         else
-          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git \
-            -b "${{ inputs.branch }}" -m "${{ inputs.manifest }}" \
-            --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
+          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git -b "${{ inputs.branch }}" -m "${{ inputs.manifest }}" --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
         fi
         "$REPO" --version
         success=false
@@ -245,6 +240,15 @@ runs:
             done
             patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
             ;;
+          "v1.5.10")
+            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+            patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
+            for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
+              echo "Patching file: $file.c with fix_$file.c.patch"
+              patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch"
+            done
+            patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
+            ;;
           *)
             echo "Invalid version: $susfs_version"
             exit 1
@@ -266,7 +270,7 @@ runs:
         else
           echo "Kernel >= $MIN_VERSION, skipping ptrace patch"
         fi
-        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
+        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ] || [ "${{ inputs.model }}" == "OP13-GLO" ]; then
           echo "Patching hmbird!"
           echo 'obj-y += hmbird_patch.o' >> ./drivers/Makefile
           patch -p1 -F 3 < "../../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch"
@@ -275,7 +279,7 @@ runs:
           rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c
           patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
         else
-          echo "Not OPAce5Pro / OP13 , skipping fengchi patch"
+          echo "Not OPAce5Pro / OP13 / OP13-GLO , skipping fengchi patch"
         fi
 
     - name: Apply KSUN Hooks
@@ -283,7 +287,7 @@ runs:
       run: |
         set -euo pipefail
         cd "$CONFIG/kernel_platform/common"
-        patch -p1 < ../../../kernel_patches/next/scope_min_manual_hooks_v1.5.patch
+        patch -p1 < ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch
         
     - name: Add KernelSU-Next and SUSFS Configuration Settings
       shell: bash
@@ -489,7 +493,7 @@ runs:
         cd "$GITHUB_WORKSPACE/AnyKernel3"
     
         # Optional hmbird patch logic
-        if [ "${{ inputs.model }}" = "OPAce5Pro" ] || [ "${{ inputs.model }}" = "OP13" ]; then
+        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ] || [ "${{ inputs.model }}" == "OP13-GLO" ]; then
           cp "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/bins/"* ./tools/ 2>/dev/null || true
           patch -F 3 < "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch"
         fi
