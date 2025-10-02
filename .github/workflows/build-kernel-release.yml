@@ -461,6 +461,7 @@ jobs:
           - [+] CONFIG_TMPFS_XATTR Support [Mountify Support]
           - [+] BBR v1 Support
           - [+] HMBIRD scx support for OnePlus 13 & OnePlus Ace 5 Pro
+          - [+] Baseband Guard Support (BBG).
           EOF
           
           # Output for debugging
