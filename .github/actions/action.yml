@@ -180,6 +180,16 @@ runs:
         rm -f msm-kernel/android/abi_gki_protected_exports_* || true
         df -h
 
+    - name: Add BBG
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd "$CONFIG/kernel_platform"
+        echo "Adding BBG..."
+        wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
+        echo "CONFIG_BBG=y" >> common/arch/arm64/configs/gki_defconfig
+        sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/landlock/landlock,baseband_guard/ } }' common/security/Kconfig
+
     - name: Add KernelSU Next
       shell: bash
       run: |
@@ -231,16 +241,7 @@ runs:
             cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_ksud.c.patch" ./
             patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
             ;;
-          "v1.5.9")
-            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-            patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
-            for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
-              echo "Patching file: $file.c with fix_$file.c.patch"
-              patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch"
-            done
-            patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
-            ;;
-          "v1.5.10")
+          "v1.5.9"|"v1.5.10"|"v1.5.11")
             cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
             patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
             for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
@@ -270,7 +271,7 @@ runs:
         else
           echo "Kernel >= $MIN_VERSION, skipping ptrace patch"
         fi
-        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ] || [ "${{ inputs.model }}" == "OP13-GLO" ]; then
+        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13-CN" ] || [ "${{ inputs.model }}" == "OP13-GLO" ]; then
           echo "Patching hmbird!"
           echo 'obj-y += hmbird_patch.o' >> ./drivers/Makefile
           patch -p1 -F 3 < "../../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch"
@@ -279,7 +280,7 @@ runs:
           rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c
           patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
         else
-          echo "Not OPAce5Pro / OP13 / OP13-GLO , skipping fengchi patch"
+          echo "Not OPAce5Pro / OP13-CN / OP13-GLO , skipping fengchi patch"
         fi
 
     - name: Apply KSUN Hooks
@@ -493,7 +494,7 @@ runs:
         cd "$GITHUB_WORKSPACE/AnyKernel3"
     
         # Optional hmbird patch logic
-        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ] || [ "${{ inputs.model }}" == "OP13-GLO" ]; then
+        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13-CN" ] || [ "${{ inputs.model }}" == "OP13-GLO" ]; then
           cp "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/bins/"* ./tools/ 2>/dev/null || true
           patch -F 3 < "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch"
         fi
