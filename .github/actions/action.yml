@@ -197,11 +197,9 @@ runs:
         cd "$CONFIG/kernel_platform"
         echo "Adding KernelSU Next..."
         if [ "${{ inputs.ksun_branch }}" = "stable" ]; then
-          curl --fail --location --proto '=https' \
-            -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
+          curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
         else
-          curl --fail --location --proto '=https' \
-            -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "${{ inputs.ksun_branch }}"
+          curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "${{ inputs.ksun_branch }}"
         fi
         git submodule update --init --recursive
 
@@ -456,8 +454,8 @@ runs:
         COMMON="$KERNEL_PATH/common"
         OUT="$COMMON/out"
         IMG="$OUT/arch/arm64/boot/Image"
-        WARNINGS=$(grep -i -E 'warning:' "$COMMON/build.log" | wc -l || true)
-        echo "$WARNINGS" > "$OUT/warnings.txt"
+        WARNINGS_COUNT=$(grep -i -E 'warning:' "$COMMON/build.log" | wc -l || true)
+        echo "$WARNINGS_COUNT" > "$OUT/warnings.txt"
         file "$IMG" > "$OUT/Image.file"
         KERNEL_UNAME=$(strings "$IMG" | grep -E 'Linux version.*#' | tail -n1)
         echo "Kernel Uname: $KERNEL_UNAME"
@@ -474,7 +472,7 @@ runs:
         fi
         IMAGE_SHA256=$(cut -d' ' -f1 "$OUT/Image.sha256")
         echo "Image sha256: $IMAGE_SHA256"
-        echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
+        echo "warnings_count=$WARNINGS_COUNT" >> "$GITHUB_OUTPUT"
         echo "image_sha256=$IMAGE_SHA256" >> "$GITHUB_OUTPUT"
 
     - name: Create Kernel ZIP
@@ -527,7 +525,7 @@ runs:
           echo "Optimization: ${{ inputs.optimize_level }}"
           echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "Compiler: ${CLANG_VERSION:-unknown}"
-          echo "Warnings: ${{ steps.collect_stats.outputs.warnings }}"
+          echo "Warnings Count: ${{ steps.collect_stats.outputs.warnings_count }}"
         } | tee summary.txt
         {
           echo "### Kernel Build Summary"
@@ -537,10 +535,10 @@ runs:
           echo "- Kernel Version: ${{ steps.save_metadata.outputs.kernel_version }}"
           echo "- Kernel Uname: ${{ env.KERNEL_UNAME }}"
           echo "- KSU Version: ${KSUVER:-unknown}"
-          echo "- SUSFS Version: ${SUSVER:-unknown }}"
+          echo "- SUSFS Version: ${SUSVER:-unknown }"
           echo "- Optimization: ${{ inputs.optimize_level }}"
           echo "- Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
-          echo "- Warnings: ${{ steps.collect_stats.outputs.warnings }}"
+          echo "- Warnings Count: ${{ steps.collect_stats.outputs.warnings_count }}"
         } >> "$GITHUB_STEP_SUMMARY"
     
     - name: Upload Artifacts

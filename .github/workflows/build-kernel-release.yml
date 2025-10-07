@@ -13,12 +13,9 @@ on:
         type: boolean
         default: false
       ksun_branch:
-        description: 'Choose KernelSU Next Branch'
+        description: 'Enter KernelSU Next Branch or commit hash (blank for stable tag)'
         required: true
-        type: choice
-        options:
-          - stable
-          - next
+        type: string
         default: next
       optimize_level:
         description: "Compiler optimization level"
@@ -399,7 +396,7 @@ jobs:
           
       - name: Generate and Create New Tag
         run: |
-          BASE_TAG="v1.5.10-r0"
+          BASE_TAG="v1.5.11-r0"
           LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
           if [ -z "$LATEST_TAG" ]; then
             LATEST_TAG="$BASE_TAG"
@@ -422,7 +419,7 @@ jobs:
         run: |
           echo "=== Start building the release notes ==="
           cat << EOF > release_notes.md
-          This release contains KernelSU Next and SUSFS v1.5.10
+          This release contains KernelSU Next and SUSFS v1.5.11
           
           Module: 
           -> https://github.com/sidex15/ksu_module_susfs  
@@ -453,7 +450,7 @@ jobs:
           
           ### Features
           - [+] KernelSU-Next / WildKSU Manager Support
-          - [+] SUSFS v1.5.10
+          - [+] SUSFS v1.5.11
           - [+] Wireguard Support
           - [+] Magic Mount Support
           - [+] Ptrace message leak fix for kernels < 5.16
