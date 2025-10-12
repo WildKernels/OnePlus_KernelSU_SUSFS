@@ -443,6 +443,8 @@ runs:
 
     - name: Build Kernel
       shell: bash
+      env:
+        PYTHONWARNINGS: "ignore:invalid escape sequence"
       run: |
         set -euo pipefail
         echo "::group::Build kernel"
@@ -450,6 +452,10 @@ runs:
         COMMON="$KERNEL_PATH/common"
         cd "$COMMON"
         : > "$COMMON/.scmversion"
+    
+        # Ensure Python warnings are suppressed for scripts invoked by make
+        export PYTHONWARNINGS="${PYTHONWARNINGS}"
+    
         if [ -n "${CLANG_BIN_PATH:-}" ] && [ -x "${CLANG_BIN_PATH}/clang" ]; then
           export PATH="${CLANG_BIN_PATH}:$PATH"
         fi
@@ -462,14 +468,14 @@ runs:
         OUT=out
         mkdir -p "$OUT"
         make O="$OUT" gki_defconfig
-        
+    
         # LOCALVERSION branding
         if [ -n "${CUSTOM_LOCALVERSION:-}" ]; then
           scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${CUSTOM_LOCALVERSION}"
           scripts/config --file "$OUT/.config" -d LOCALVERSION_AUTO || true
           sed -i 's/scm_version="$(scm_version --short)"/scm_version=""/' scripts/setlocalversion
-        fi   
-            
+        fi
+    
         # Optimize level config and flags
         if [ "${{ inputs.optimize_level }}" = "O3" ]; then
           scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE
