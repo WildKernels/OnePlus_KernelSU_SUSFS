@@ -50,7 +50,6 @@ runs:
       run: |
         set -euo pipefail
         echo "::group::Validate inputs"
-    
         model='${{ inputs.model }}'
         soc='${{ inputs.soc }}'
         branch='${{ inputs.branch }}'
@@ -92,7 +91,7 @@ runs:
         case "$optimize" in
           O2|O3) ;;
           *) echo "optimize_level must be O2 or O3; got '$optimize'"; exit 1 ;;
-        esac    
+        esac
         echo "Input validation OK."
         echo "::endgroup::"
 
@@ -207,6 +206,8 @@ runs:
         cd susfs4ksu
         if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1; then
           git checkout "$SUSFS_BRANCH"
+          SUSFS_COMMIT_SHA=$(git rev-parse HEAD)
+          echo "SUSFS_COMMIT_SHA=$SUSFS_COMMIT_SHA" >> $GITHUB_ENV
         else
           echo "Error: SUSFS branch or ref '$SUSFS_BRANCH' not found."
           exit 1
@@ -243,6 +244,10 @@ runs:
           curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "${{ inputs.ksun_branch }}"
         fi
         git submodule update --init --recursive
+        cd KernelSU-Next
+        KSUN_COMMIT_SHA=$(git rev-parse HEAD)
+        echo "KSUN_COMMIT_SHA=$KSUN_COMMIT_SHA" >> $GITHUB_ENV
+        cd ..
 
     - name: Apply SUSFS Patches
       shell: bash
@@ -337,7 +342,6 @@ runs:
         patch -p1 --forward < "../../../kernel_patches/maps/xx_maps_sus_kernel.patch"
         cd "../KernelSU-Next"
         patch -p1 --forward < "../../../kernel_patches/maps/xx_maps_ksu.patch"
-
 
     - name: Add KernelSU-Next and SUSFS Configuration Settings
       shell: bash
@@ -580,7 +584,7 @@ runs:
     
         # Output for later steps (optional)
         echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
-    
+
     - name: Final Build Summary
       shell: bash
       run: |
@@ -591,10 +595,10 @@ runs:
           echo "Kernel base: ${{ env.KERNEL_VER }}"
           echo "Kernel full: ${{ env.KERNEL_FULL_VER }}"
           echo "Kernel Uname: ${{ env.KERNEL_UNAME }}"
-          echo "KSU Version: ${KSUVER:-unknown}"
-          echo "KSU branch/commit: ${{ inputs.ksun_branch || 'stable' }}"
+          echo "KSUN Version: ${KSUVER:-unknown}"
+          echo "KSUN commit SHA: ${{ env.KSUN_COMMIT_SHA }}"
           echo "SUSFS Version: ${SUSVER:-unknown}"
-          echo "SUSFS branch/commit: ${{ inputs.susfs_commit_hash_or_branch || env.SUSFS_KERNEL_BRANCH }}"
+          echo "SUSFS commit SHA: ${{ env.SUSFS_COMMIT_SHA }}"
           echo "Optimization: ${{ inputs.optimize_level }}"
           echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "Compiler: ${CLANG_VERSION:-unknown}"
@@ -607,15 +611,15 @@ runs:
           echo "- Android: ${{ env.ANDROID_VER }}"
           echo "- Kernel Version: ${{ steps.save_metadata.outputs.kernel_version }}"
           echo "- Kernel Uname: ${{ env.KERNEL_UNAME }}"
-          echo "- KSU Version: ${KSUVER:-unknown}"
-          echo "- KSU branch/commit: [${{ inputs.ksun_branch || 'stable' }}](https://github.com/KernelSU-Next/KernelSU-Next/tree/${{ inputs.ksun_branch || 'stable' }})"
-          echo "- SUSFS Version: ${SUSVER:-unknown }"
-          echo "- SUSFS branch/commit: [${{ inputs.susfs_commit_hash_or_branch || env.SUSFS_KERNEL_BRANCH }}](https://gitlab.com/simonpunk/susfs4ksu/-/tree/${{ inputs.susfs_commit_hash_or_branch || env.SUSFS_KERNEL_BRANCH }})"
+          echo "- KSUN Version: ${KSUVER:-unknown}"
+          echo "- KSUN commit SHA: [${{ env.KSUN_COMMIT_SHA }}](https://github.com/KernelSU-Next/KernelSU-Next/commit/${{ env.KSUN_COMMIT_SHA }})"
+          echo "- SUSFS Version: ${SUSVER:-unknown}"
+          echo "- SUSFS commit SHA: [${{ env.SUSFS_COMMIT_SHA }}](https://gitlab.com/simonpunk/susfs4ksu/-/commit/${{ env.SUSFS_COMMIT_SHA }})"
           echo "- Optimization: ${{ inputs.optimize_level }}"
           echo "- Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "- Warnings Count: ${{ steps.collect_stats.outputs.warnings_count }}"
         } >> "$GITHUB_STEP_SUMMARY"
-    
+
     - name: Upload Artifacts
       if: success() && steps.create_zip.conclusion == 'success'
       uses: actions/upload-artifact@v4
