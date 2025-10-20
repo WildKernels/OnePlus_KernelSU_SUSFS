@@ -1,0 +1,9 @@
+{
+  "model": "OP13r",
+  "soc": "pineapple",
+  "branch": "oneplus/sm8650",
+  "manifest": "oneplus_13r.xml",
+  "android_version": "android14",
+  "kernel_version": "6.1",
+  "hmbird": false
+}

@@ -1,0 +1,9 @@
+{
+  "model": "OP10pro",
+  "soc": "waipio",
+  "branch": "oneplus/sm8450",
+  "manifest": "oneplus_10_pro_v.xml",
+  "android_version": "android12",
+  "kernel_version": "5.10",
+  "hmbird": false
+}

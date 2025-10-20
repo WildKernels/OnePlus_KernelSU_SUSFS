@@ -1,0 +1,9 @@
+{
+  "model": "OP-ACE-3V",
+  "soc": "pineapple",
+  "branch": "oneplus/sm7675",
+  "manifest": "oneplus_ace_3v_v.xml",
+  "android_version": "android14",
+  "kernel_version": "6.1",
+  "hmbird": false
+}

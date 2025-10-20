@@ -1,0 +1,9 @@
+{
+  "model": "OP-NORD-5",
+  "soc": "cliffs",
+  "branch": "oneplus/sm8635",
+  "manifest": "oneplus_nord_5.xml",
+  "android_version": "android14",
+  "kernel_version": "6.1",
+  "hmbird": false
+}

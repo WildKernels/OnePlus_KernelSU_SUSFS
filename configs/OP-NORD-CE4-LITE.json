@@ -1,0 +1,9 @@
+{
+  "model": "OP-NORD-CE4-LITE",
+  "soc": "blair",
+  "branch": "oneplus/sm6375",
+  "manifest": "oneplus_nord_ce4_lite_5g_v.xml",
+  "android_version": "android14",
+  "kernel_version": "6.1",
+  "hmbird": false
+}

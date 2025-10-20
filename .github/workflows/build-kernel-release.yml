@@ -12,6 +12,45 @@ on:
         required: true
         type: boolean
         default: false
+      op_model:
+        description: 'Select the OnePlus kernels to build'
+        required: true
+        type: choice
+        options:
+          - ALL
+          - android15-6.6
+          - android14-6.1
+          - android14-5.15
+          - android13-5.15
+          - android13-5.10
+          - android12-5.10
+          - OP13-CPH
+          - OP13-PJZ
+          - OP13r
+          - OP13S
+          - OP13T
+          - OP12
+          - OP12r
+          - OP11
+          - OP11r
+          - OP10pro
+          - OP10t
+          - OP-Nord-5
+          - OP-NORD-4
+          - OP-NORD-4-CE
+          - OP-NORD-CE4-LITE
+          - OP-ACE-5-PRO
+          - OP-ACE-5
+          - OP-ACE-3-PRO
+          - OP-ACE-3V
+          - OP-ACE-2-PRO
+          - OP-ACE-2
+          - OP-OPEN
+          - OP-PAD-3
+          - OP-PAD-2-PRO
+          - OP-PAD-2
+          - OP-PAD-PRO
+        default: ALL
       ksun_branch:
         description: 'Enter KernelSU Next Branch or commit hash (blank for stable tag)'
         required: true
@@ -49,172 +88,73 @@ on:
         default: ''
 
 jobs:
+  set-op-model:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout Code (to access configs/)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            configs/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup OnePlus Model
+        id: set-matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -a models=()
+          while IFS= read -r -d '' file; do
+            model=$(basename "$file" .json)
+            models+=("$model")
+          done < <(find configs/ -name "*.json" -print0)
+        
+          if [ ${#models[@]} -eq 0 ]; then
+            echo "Error: No config files found in configs/ directory!"
+            exit 1
+          fi
+        
+          echo "[" > matrix.json
+          for i in "${!models[@]}"; do
+            model="${models[$i]}"
+            file="configs/$model.json"
+            if [ -f "$file" ]; then
+              jq -r '.' "$file" >> matrix.json
+              if [ $((i+1)) -lt ${#models[@]} ]; then
+                echo "," >> matrix.json
+              fi
+            fi
+          done
+          echo "]" >> matrix.json
+        
+          input="${{ github.event.inputs.op_model }}"
+          jq_filter="."
+        
+          if [[ "$input" == "ALL" ]]; then
+            :
+          elif [[ "$input" == android*-* ]]; then
+            IFS='-' read -r av kv <<< "$input"
+            jq_filter="map(select(.android_version == \"$av\" and .kernel_version == \"$kv\"))"
+          else
+            jq_filter="map(select(.model == \"$input\"))"
+          fi
+        
+          filtered=$(jq -c "$jq_filter" matrix.json)
+          wrapped=$(jq -n --argjson items "$filtered" '{ include: $items }')
+        
+          echo "matrix<<MATRIX_EOF" >> "$GITHUB_OUTPUT"
+          echo "$wrapped" >> "$GITHUB_OUTPUT"
+          echo "MATRIX_EOF" >> "$GITHUB_OUTPUT"
+
   build:
     name: build (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ inputs.ksun_branch }})
+    needs: set-op-model
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-        # batch-1
-        - model: OP11
-          soc: kalama
-          branch: oneplus/sm8550
-          manifest: oneplus_11_v.xml
-          android_version: android13
-          kernel_version: '5.15'
-        - model: OP13-PJZ
-          soc: sun
-          branch: oneplus/sm8750
-          manifest: oneplus_13.xml
-          android_version: android15
-          kernel_version: '6.6'
-        - model: OP13-CPH
-          soc: sun
-          branch: oneplus/sm8750
-          manifest: oneplus_13_global.xml
-          android_version: android15
-          kernel_version: '6.6'
-        - model: OPAce5Pro
-          soc: sun
-          branch: oneplus/sm8750
-          manifest: oneplus_ace5_pro.xml
-          android_version: android15
-          kernel_version: '6.6'
-        - model: OP13S
-          soc: sun
-          branch: oneplus/sm8750
-          manifest: oneplus_13s.xml
-          android_version: android15
-          kernel_version: '6.6'
-        - model: OP-PAD-3
-          soc: sun
-          branch: oneplus/sm8750
-          manifest: oneplus_pad_3.xml
-          android_version: android15
-          kernel_version: '6.6'
-        - model: OP13T
-          soc: sun
-          branch: oneplus/sm8750
-          manifest: oneplus_13t.xml
-          android_version: android15
-          kernel_version: '6.6'
-        - model: OP-PAD-2-PRO
-          soc: sun
-          branch: oneplus/sm8750
-          manifest: oneplus_pad_2_pro.xml
-          android_version: android15
-          kernel_version: '6.6'
-        # batch-2
-        - model: OP12
-          soc: pineapple
-          branch: oneplus/sm8650
-          manifest: oneplus12_v.xml
-          android_version: android14
-          kernel_version: '6.1'
-        - model: OP13r
-          soc: pineapple
-          branch: oneplus/sm8650
-          manifest: oneplus_13r.xml
-          android_version: android14
-          kernel_version: '6.1'
-        - model: OP-ACE-5
-          soc: pineapple
-          branch: oneplus/sm8650
-          manifest: oneplus_ace5.xml
-          android_version: android14
-          kernel_version: '6.1'
-        - model: OP-ACE-3V
-          soc: pineapple
-          branch: oneplus/sm7675
-          manifest: oneplus_ace_3v_v.xml
-          android_version: android14
-          kernel_version: '6.1'
-        - model: OP-NORD-4
-          soc: pineapple
-          branch: oneplus/sm7675
-          manifest: oneplus_nord_4_v.xml
-          android_version: android14
-          kernel_version: '6.1'
-        - model: OP-Nord-5
-          soc: cliffs
-          branch: oneplus/sm8635
-          manifest: oneplus_nord_5.xml
-          android_version: android14
-          kernel_version: "6.1"
-        - model: OP-PAD-2
-          soc: pineapple
-          branch: oneplus/sm8650
-          manifest: oneplus_pad2_v.xml
-          android_version: android14
-          kernel_version: '6.1'
-        - model: OP-Ace3-Pro
-          soc: pineapple
-          branch: oneplus/sm8650
-          manifest: oneplus_ace3_pro_v.xml
-          android_version: android14
-          kernel_version: '6.1'
-        - model: OP-Nord-CE4-LITE
-          soc: blair
-          branch: oneplus/sm6375
-          manifest: oneplus_nord_ce4_lite_5g_v.xml
-          android_version: android14
-          kernel_version: "6.1"
-        - model: OP-PAD-Pro
-          soc: pineapple
-          branch: oneplus/sm8650
-          manifest: oneplus_pad_pro_v.xml
-          android_version: android14
-          kernel_version: '6.1'
-        # batch-3
-        - model: OP11r
-          soc: waipio
-          branch: oneplus/sm8475
-          manifest: oneplus_11r_v.xml
-          android_version: android12
-          kernel_version: '5.10'
-        - model: OP-OPEN
-          soc: kalama
-          branch: oneplus/sm8550
-          manifest: oneplus_open_v.xml
-          android_version: android13
-          kernel_version: '5.15'
-        - model: OP-ACE-2
-          soc: waipio
-          branch: oneplus/sm8475
-          manifest: oneplus_ace2_v.xml
-          android_version: android12
-          kernel_version: '5.10'
-        - model: OP10t
-          soc: waipio
-          branch: oneplus/sm8475
-          manifest: oneplus_10t_v.xml
-          android_version: android12
-          kernel_version: '5.10'
-        - model: OP-Nord-4-CE
-          soc: crow
-          branch: oneplus/sm7550
-          manifest: oneplus_nord_ce4_v.xml
-          android_version: android13
-          kernel_version: "5.15"
-        - model: OP10pro
-          soc: waipio
-          branch: oneplus/sm8450
-          manifest: oneplus_10_pro_v.xml
-          android_version: android12
-          kernel_version: '5.10'
-        - model: OP-ACE-2-PRO
-          soc: kalama
-          branch: oneplus/sm8550
-          manifest: oneplus_ace2_pro_v.xml
-          android_version: android13
-          kernel_version: '5.15'
-        - model: OP12r
-          soc: kalama
-          branch: oneplus/sm8550
-          manifest: oneplus_12r_v.xml
-          android_version: android13
-          kernel_version: '5.15'
+      matrix: ${{ fromJSON(needs.set-op-model.outputs.matrix) }}
     steps:
       - name: Resolve SUSFS branch from inputs
         id: susfs
@@ -245,10 +185,7 @@ jobs:
       - name: Build Kernel
         uses: ./.github/actions
         with:
-          model: ${{ matrix.model }}
-          soc: ${{ matrix.soc }}
-          branch: ${{ matrix.branch }}
-          manifest: ${{ matrix.manifest }}
+          op_config_json: ${{ toJSON(matrix) }}
           ksun_branch: ${{ inputs.ksun_branch }}
           susfs_commit_hash_or_branch: ${{ steps.susfs.outputs.susfs_branch }}
           optimize_level: ${{ inputs.optimize_level }}

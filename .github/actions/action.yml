@@ -5,16 +5,8 @@ permissions:
   actions: write
 
 inputs:
-  model:
-    required: true
-    type: string
-  soc:
-    required: true
-    type: string
-  branch:
-    required: true
-    type: string
-  manifest:
+  op_config_json:
+    description: 'JSON string containing full device config'
     required: true
     type: string
   ksun_branch:
@@ -45,15 +37,24 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Parse op_config_json
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo '${{ inputs.op_config_json }}' > /tmp/config.json
+        jq -r 'to_entries[] | "OP_\(.key | ascii_upcase)=\(.value)"' /tmp/config.json >> "$GITHUB_ENV"
+        echo "Parsed config:"
+        jq '.' /tmp/config.json
+
     - name: Validate Inputs
       shell: bash
       run: |
         set -euo pipefail
         echo "::group::Validate inputs"
-        model='${{ inputs.model }}'
-        soc='${{ inputs.soc }}'
-        branch='${{ inputs.branch }}'
-        manifest='${{ inputs.manifest }}'
+        model="$OP_MODEL"
+        soc="$OP_SOC"
+        branch="$OP_BRANCH"
+        manifest="$OP_MANIFEST"
         optimize='${{ inputs.optimize_level }}'
     
         # Non-empty checks
@@ -113,7 +114,7 @@ runs:
       run: |
         set -euo pipefail
         # Derive a unique build directory name
-        CONFIG="${{ inputs.model }}"
+        CONFIG="$OP_MODEL"
         echo "CONFIG=$CONFIG" >> "$GITHUB_ENV"
         # Install repo tool if missing
         REPO="/usr/local/bin/repo"
@@ -131,12 +132,12 @@ runs:
         mkdir -p "$CONFIG"
         cd "$CONFIG"
         echo "Initializing and syncing kernel source..."
-        if [[ "${{ inputs.manifest }}" == https://* ]]; then
+        if [[ "$OP_MANIFEST" == https://* ]]; then
           mkdir -p .repo/manifests
-          curl --fail --show-error --location --proto '=https' "${{ inputs.manifest }}" -o .repo/manifests/temp_manifest.xml
+          curl --fail --show-error --location --proto '=https' "$OP_MANIFEST" -o .repo/manifests/temp_manifest.xml
           "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git -b oneplus/sm8650 -m temp_manifest.xml --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
         else
-          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git -b "${{ inputs.branch }}" -m "${{ inputs.manifest }}" --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
+          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git -b "$OP_BRANCH" -m "$OP_MANIFEST" --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
         fi
         "$REPO" --version
         success=false
@@ -181,7 +182,7 @@ runs:
         SUBLEVEL=$(grep '^SUBLEVEL *=' Makefile | awk '{print $3}')
         FULL_VERSION="$VERSION.$PATCHLEVEL.$SUBLEVEL"
         cd "$ARTIFACTS_DIR"
-        echo "$ANDROID_VERSION-$FULL_VERSION" > "${{ inputs.model }}.txt"
+        echo "$ANDROID_VERSION-$FULL_VERSION" > "${OP_MODEL}.txt"
         echo "ANDROID_VER=$ANDROID_VERSION" >> "$GITHUB_ENV"
         echo "KERNEL_VER=$VERSION.$PATCHLEVEL" >> "$GITHUB_ENV"
         echo "KERNEL_FULL_VER=$ANDROID_VERSION-$FULL_VERSION" >> "$GITHUB_ENV"
@@ -349,7 +350,7 @@ runs:
         else
           echo "Kernel >= $MIN_VERSION, skipping ptrace patch"
         fi
-        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13-PJZ" ] || [ "${{ inputs.model }}" == "OP13-CPH" ]; then
+        if [ "$OP_HMBIRD" = true ]; then
           echo "Patching hmbird!"
           echo 'obj-y += hmbird_patch.o' >> ./drivers/Makefile
           patch -p1 -F 3 < "../../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch"
@@ -358,7 +359,7 @@ runs:
           rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c
           patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
         else
-          echo "Not OPAce5Pro / OP13-PJZ / OP13-CPH , skipping fengchi patch"
+          echo "Not OP-ACE-5-PRO / OP13-PJZ / OP13-CPH , skipping fengchi patch"
         fi
 
     - name: Apply KSUN Hooks
@@ -619,12 +620,12 @@ runs:
         cd "$GITHUB_WORKSPACE/AnyKernel3"
     
         # Optional hmbird patch logic
-        if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13-PJZ" ] || [ "${{ inputs.model }}" == "OP13-CPH" ]; then
+        if [ "$OP_HMBIRD" = true ]; then
           cp "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/bins/"* ./tools/ 2>/dev/null || true
           patch -F 3 < "$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch"
         fi
         
-        ZIP_NAME="AnyKernel3_${{ inputs.model }}_${{ env.KERNEL_FULL_VER }}_Next_${KSUVER}_${SUSVER}.zip"
+        ZIP_NAME="AnyKernel3_${OP_MODEL}_${{ env.KERNEL_FULL_VER }}_Next_${KSUVER}_${SUSVER}.zip"
         ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
         mkdir -p "$ARTIFACTS_DIR"
     
@@ -632,7 +633,7 @@ runs:
         ( cd "$GITHUB_WORKSPACE/AnyKernel3" && zip -r "$ARTIFACTS_DIR/$ZIP_NAME" ./* >/dev/null )
     
         # Keep only the flashable zip and the model metadata file (assumed already created earlier)
-        find "$ARTIFACTS_DIR" -maxdepth 1 -type f ! -name "$ZIP_NAME" ! -name "${{ inputs.model }}.txt" -delete
+        find "$ARTIFACTS_DIR" -maxdepth 1 -type f ! -name "$ZIP_NAME" ! -name "${OP_MODEL}.txt" -delete
     
         # Output for later steps (optional)
         echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
@@ -642,7 +643,7 @@ runs:
       run: |
         set -euo pipefail
         {
-          echo "Model: ${{ inputs.model }}"
+          echo "Model: ${OP_MODEL}"
           echo "Android: ${{ env.ANDROID_VER }}"
           echo "Kernel base: ${{ env.KERNEL_VER }}"
           echo "Kernel full: ${{ env.KERNEL_FULL_VER }}"
@@ -659,7 +660,7 @@ runs:
         {
           echo "### Kernel Build Summary"
           echo ""
-          echo "- Model: ${{ inputs.model }}"
+          echo "- Model: ${OP_MODEL}"
           echo "- Android: ${{ env.ANDROID_VER }}"
           echo "- Kernel Version: ${{ steps.save_metadata.outputs.kernel_version }}"
           echo "- Kernel Uname: ${{ env.KERNEL_UNAME }}"

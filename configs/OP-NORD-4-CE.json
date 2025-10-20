@@ -1,0 +1,9 @@
+{
+  "model": "OP-NORD-4-CE",
+  "soc": "crow",
+  "branch": "oneplus/sm7550",
+  "manifest": "oneplus_nord_ce4_v.xml",
+  "android_version": "android13",
+  "kernel_version": "5.15",
+  "hmbird": false
+}

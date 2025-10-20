@@ -1,0 +1,9 @@
+{
+  "model": "OP-PAD-3",
+  "soc": "sun",
+  "branch": "oneplus/sm8750",
+  "manifest": "oneplus_pad_3.xml",
+  "android_version": "android15",
+  "kernel_version": "6.6",
+  "hmbird": false
+}
