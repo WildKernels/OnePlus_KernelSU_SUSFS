@@ -23,6 +23,10 @@ on:
           - OOS16
           - OOS15
           - OOS14
+          - android15-6.6
+          - android14-6.1
+          - android13-5.15
+          - android12-5.10
         default: OOS15
       ksun_branch:
         description: 'Enter KernelSU Next Branch or commit hash (blank for stable tag)'
@@ -78,53 +82,101 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          FILTERED_FOR_ANDROID=false
           input="${{ github.event.inputs.op_model }}"
-          declare -a json_files=()
+          find_args=()
+          [ -d "configs/oos14/" ] && find_args+=("configs/oos14/")
+          [ -d "configs/oos15/" ] && find_args+=("configs/oos15/")
+          [ -d "configs/oos16/" ] && find_args+=("configs/oos16/")
+        
+          if [ ${#find_args[@]} -gt 0 ]; then
+            echo "[" > matrix.json
+            mapfile -t all_json_files < <(find "${find_args[@]}" -name "*.json" -print0 | xargs -0 -n1)
+            for i in "${!all_json_files[@]}"; do
+              file="${all_json_files[$i]}"
+              if [ -f "$file" ]; then
+                jq -r '.' "$file" >> matrix.json
+                if [ $((i+1)) -lt ${#all_json_files[@]} ]; then
+                  echo "," >> matrix.json
+                fi
+              fi
+            done
+            echo "]" >> matrix.json
+          else
+            echo "[]" >> matrix.json
+          fi
+        
+          jq_filter="."
         
           case "$input" in
             OOS14+15+16)
-              mapfile -t json_files < <(find configs/oos14/ configs/oos15/ configs/oos16/ -name "*.json" -print0 | xargs -0 -n1)
               ;;
             OOS15+16)
-              mapfile -t json_files < <(find configs/oos15/ configs/oos16/ -name "*.json" -print0 | xargs -0 -n1)
+              jq_filter="map(select(.os_version == \"OOS15\" or .os_version == \"OOS16\"))"
               ;;
             OOS14+15)
-              mapfile -t json_files < <(find configs/oos14/ configs/oos15/ -name "*.json" -print0 | xargs -0 -n1)
+              jq_filter="map(select(.os_version == \"OOS14\" or .os_version == \"OOS15\"))"
               ;;
             OOS16)
-              mapfile -t json_files < <(find configs/oos16/ -name "*.json" -print0 | xargs -0 -n1)
+              jq_filter="map(select(.os_version == \"OOS16\"))"
               ;;
             OOS15)
-              mapfile -t json_files < <(find configs/oos15/ -name "*.json" -print0 | xargs -0 -n1)
+              jq_filter="map(select(.os_version == \"OOS15\"))"
               ;;
             OOS14)
-              mapfile -t json_files < <(find configs/oos14/ -name "*.json" -print0 | xargs -0 -n1)
+              jq_filter="map(select(.os_version == \"OOS14\"))"
+              ;;
+            android*-*.*)
+              android_filter_dirs=()
+              [ -d "configs/oos15/" ] && android_filter_dirs+=("configs/oos15/")
+              [ -d "configs/oos16/" ] && android_filter_dirs+=("configs/oos16/")
+        
+              if [ ${#android_filter_dirs[@]} -gt 0 ]; then
+                mapfile -t android_json_files < <(find "${android_filter_dirs[@]}" -name "*.json" -print0 | xargs -0 -n1)
+        
+                if [ ${#android_json_files[@]} -gt 0 ]; then
+                  echo "[" > temp_android_matrix.json
+                  for i in "${!android_json_files[@]}"; do
+                    file="${android_json_files[$i]}"
+                    if [ -f "$file" ]; then
+                      jq -r '.' "$file" >> temp_android_matrix.json
+                      if [ $((i+1)) -lt ${#android_json_files[@]} ]; then
+                        echo "," >> temp_android_matrix.json
+                      fi
+                    fi
+                  done
+                  echo "]" >> temp_android_matrix.json
+                  IFS='-' read -r av kv <<< "$input"
+                  filtered_android=$(jq -c --arg av "$av" --arg kv "$kv" 'map(select(.android_version == $av and .kernel_version == $kv))' temp_android_matrix.json)
+                  echo "$filtered_android" > matrix.json
+                  FILTERED_FOR_ANDROID=true
+                else
+                  echo "[]" > matrix.json
+                  FILTERED_FOR_ANDROID=true
+                fi
+              else
+                echo "[]" > matrix.json
+                FILTERED_FOR_ANDROID=true
+              fi
               ;;
             *)
-              echo "Invalid op_model input: $input"
-              exit 1
+              echo "Warning: Unknown input '$input'. Using empty filter." >&2
+              jq_filter="map(select(false))"
               ;;
           esac
         
-          if [ ${#json_files[@]} -eq 0 ]; then
-            echo "Error: No config files found for input '$input' in the specified directories!" >&2
-            exit 1
+          if [[ "$FILTERED_FOR_ANDROID" != true ]]; then
+            filtered=$(jq -c "$jq_filter" matrix.json)
+          else
+            filtered=$(cat matrix.json)
           fi
         
-          echo "[" > matrix.json
-          for i in "${!json_files[@]}"; do
-            file="${json_files[$i]}"
-            if [ -f "$file" ]; then
-              json_content=$(cat "$file")
-              echo "$json_content" >> matrix.json
-              if [ $((i+1)) -lt ${#json_files[@]} ]; then
-                echo "," >> matrix.json
-              fi
-            fi
-          done
-          echo "]" >> matrix.json
+          if ! jq -e '. | length > 0' <<< "$filtered" >/dev/null 2>&1; then
+              echo "Error: No config files found for input '$input' after applying filters!" >&2
+              exit 1
+          fi
         
-          wrapped=$(jq -n --argjson items "$(cat matrix.json)" '{ include: $items }')
+          wrapped=$(jq -n --argjson items "$filtered" '{ include: $items }')
         
           echo "matrix<<MATRIX_EOF" >> "$GITHUB_OUTPUT"
           echo "$wrapped" >> "$GITHUB_OUTPUT"
