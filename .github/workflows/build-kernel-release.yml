@@ -71,8 +71,6 @@ jobs:
           
           echo "::group::SUSFS Configuration"
           
-          # Default SUSFS branch for all kernel versions
-          # Using "next" as a logical placeholder - will be resolved to gki-androidX-Y.Z in composite action
           DEFAULT_SUSFS='{
             "android12-5.10": "next",
             "android13-5.10": "next",
@@ -82,7 +80,6 @@ jobs:
             "android15-6.6": "next"
           }'
           
-          # Parse user input or use defaults
           INPUT='${{ inputs.susfs_config }}'
           
           if [ -z "$INPUT" ] || [ "$INPUT" = "{}" ]; then
@@ -91,13 +88,11 @@ jobs:
           else
             echo "🔧 Parsing custom SUSFS configuration..."
             
-            # Validate JSON
             if ! echo "$INPUT" | jq empty 2>/dev/null; then
               echo "::error::Invalid JSON in susfs_config input"
               exit 1
             fi
             
-            # Merge user input with defaults (user input overrides defaults)
             SUSFS_MAP=$(jq -n \
               --argjson defaults "$DEFAULT_SUSFS" \
               --argjson input "$INPUT" \
@@ -115,7 +110,6 @@ jobs:
               "  - \(.key): \(.value)"
             end'
           
-          # Output for next job
           echo "susfs_map<<SUSFS_EOF" >> "$GITHUB_OUTPUT"
           echo "$SUSFS_MAP" >> "$GITHUB_OUTPUT"
           echo "SUSFS_EOF" >> "$GITHUB_OUTPUT"
@@ -167,7 +161,7 @@ jobs:
               ;;
             android*-*.*)
               IFS='-' read -r av kv <<< "$input"
-              jq_filter="map(select(.os_version == \"OOS15\" or .os_version == \"OOS16\")) | map(select(.android_version == \"$av\" and .kernel_version == \"$kv\"))"
+              jq_filter="map(select(.android_version == \"$av\" and .kernel_version == \"$kv\"))"
               FILTERED_FOR_ANDROID=true
               ;;
             *)
@@ -217,7 +211,6 @@ jobs:
           ### SUSFS Configuration
           EOF
           
-          # Parse and display SUSFS config in table format
           echo '${{ steps.parse-susfs.outputs.susfs_map }}' | jq -r '
             "| Kernel Version | SUSFS Branch |",
             "|----------------|--------------|",
@@ -238,6 +231,27 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.set-op-model.outputs.matrix) }}
     steps:
+      - name: 🧹 Emergency Disk Cleanup
+        run: |
+          echo "::group::Disk Usage Before Cleanup"
+          df -h
+          echo "::endgroup::"
+          
+          echo "::group::Removing Unnecessary Software"
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          docker rmi $(docker images -q) 2>/dev/null || true
+          echo "::endgroup::"
+          
+          echo "::group::Disk Usage After Cleanup"
+          df -h
+          AVAIL=$(df -h / | awk 'NR==2 {print $4}')
+          echo "✅ Available space: $AVAIL"
+          echo "::endgroup::"
+
       - name: 🔍 Resolve SUSFS branch from config
         id: susfs
         shell: bash
@@ -249,7 +263,6 @@ jobs:
           
           echo "Looking up SUSFS branch for: $key"
           
-          # Extract the branch for this kernel version
           susfs_branch=$(echo "$SUSFS_MAP" | jq -r --arg key "$key" '.[$key] // "next"')
           
           if [ -z "$susfs_branch" ]; then
@@ -264,6 +277,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: 📦 Disk usage (pre-build)
+        run: |
+          echo "::group::Disk usage pre-build"
+          df -h /
+          du -sh "$GITHUB_WORKSPACE" || true
+          sudo rm -rf /tmp/* || true
+          echo "::endgroup::"
+
+      - name: ♻️ Configure ccache (bounded)
+        if: ${{ inputs.clean_build != true }}
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            echo "::group::ccache configuration"
+            ccache -o max_size=2.0G
+            ccache -o compression=true
+            ccache -s
+            echo "::endgroup::"
+          fi
 
       - name: 🔨 Build Kernel
         id: build
@@ -349,6 +381,18 @@ jobs:
           **SHA256:** \`${{ steps.build.outputs.image_sha256 }}\`
           EOF
           fi
+
+      - name: 🧹 Final cleanup and space report
+        if: always()
+        run: |
+          echo "::group::Cleanup"
+          sudo rm -rf "$GITHUB_WORKSPACE/out" "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/kernel/out" || true
+          if command -v ccache >/dev/null 2>&1; then
+            ccache -C || true
+          fi
+          sudo rm -rf /tmp/* || true
+          df -h /
+          echo "::endgroup::"
 
   trigger-release:
     needs: [build]
