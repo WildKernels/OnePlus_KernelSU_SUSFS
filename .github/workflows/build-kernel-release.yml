@@ -39,6 +39,10 @@ on:
         type: choice
         options: [O2, O3]
         default: O2
+      clean_build:
+        description: 'Clean build (no ccache)'
+        type: boolean
+        default: false
       android12-5_10_susfs_branch_or_commit:
         description: 'Enter SusFS Branch or commit hash for android12-5.10'
         type: string
@@ -69,19 +73,22 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      device_count: ${{ steps.set-matrix.outputs.count }}
     steps:
-      - name: Checkout Code (to access configs/)
+      - name: 📥 Checkout Code (to access configs/)
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
             configs/
           sparse-checkout-cone-mode: false
 
-      - name: Setup OnePlus Model
+      - name: 🔍 Generate build matrix
         id: set-matrix
         shell: bash
         run: |
           set -euo pipefail
+          echo "::group::Matrix generation"
+          
           FILTERED_FOR_ANDROID=false
           input="${{ github.event.inputs.op_model }}"
         
@@ -124,23 +131,46 @@ jobs:
               FILTERED_FOR_ANDROID=true
               ;;
             *)
-              echo "Warning: Unknown input '$input'. Using empty filter." >&2
+              echo "::warning::Unknown input '$input'. Using empty filter."
               jq_filter="map(select(false))"
               ;;
           esac
         
           filtered=$(jq -c "$jq_filter" matrix.json)
+          count=$(jq 'length' <<<"$filtered")
         
-          if ! jq -e '. | length > 0' <<< "$filtered" >/dev/null 2>&1; then
-              echo "Error: No config files found for input '$input' after applying filters!" >&2
-              exit 1
+          if [ "$count" -eq 0 ]; then
+            echo "::error::No config files found for input '$input' after applying filters!"
+            exit 1
           fi
         
           wrapped=$(jq -n --argjson items "$filtered" '{ include: $items }')
         
+          echo "✅ Found $count device(s) to build"
+          echo ""
+          echo "Devices:"
+          jq -r '.[] | "  - \(.model) (\(.android_version)-\(.kernel_version))"' <<<"$filtered"
+        
           echo "matrix<<MATRIX_EOF" >> "$GITHUB_OUTPUT"
           echo "$wrapped" >> "$GITHUB_OUTPUT"
           echo "MATRIX_EOF" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          
+          echo "::endgroup::"
+
+      - name: 📊 Build plan summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🎯 Build Plan
+          
+          **Target:** \`${{ github.event.inputs.op_model }}\`  
+          **Devices:** ${{ steps.set-matrix.outputs.count }}  
+          **Configuration:**
+          - KSU Branch: \`${{ inputs.ksun_branch }}\`
+          - Optimization: \`${{ inputs.optimize_level }}\`
+          - Clean Build: ${{ inputs.clean_build }}
+          - Create Release: ${{ inputs.make_release }}
+          EOF
 
   build:
     name: build (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ matrix.os_version }}, ${{ inputs.ksun_branch }})
@@ -164,25 +194,96 @@ jobs:
             ["android14-6.1"]="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
             ["android15-6.6"]="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
           )
-          # Only validate mapping presence; allow empty string value to be passed through.
           if [[ -z "${map[$key]+_exists}" ]]; then
-            echo "Unsupported combo (no mapping): $key" >&2
+            echo "::error::Unsupported combo (no mapping): $key"
             exit 1
           fi
           echo "susfs_branch=${map[$key]}" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout Code
+      - name: 📥 Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Build Kernel
+      - name: 🔨 Build Kernel
+        id: build
         uses: ./.github/actions
         with:
           op_config_json: ${{ toJSON(matrix) }}
           ksun_branch: ${{ inputs.ksun_branch }}
           susfs_commit_hash_or_branch: ${{ steps.susfs.outputs.susfs_branch }}
           optimize_level: ${{ inputs.optimize_level }}
+          clean: ${{ inputs.clean_build }}
+
+      - name: 📊 Build statistics
+        if: always()
+        run: |
+          echo "::group::Build Statistics"
+          
+          echo "Device: ${{ matrix.model }}"
+          echo "Status: ${{ job.status }}"
+          
+          if [ "${{ steps.build.outcome }}" = "success" ]; then
+            echo ""
+            echo "✅ Build completed successfully"
+            echo ""
+            echo "Outputs:"
+            echo "  - Kernel: ${{ steps.build.outputs.kernel_version }}"
+            echo "  - KSU Next: v${{ steps.build.outputs.ksu_version }}"
+            echo "  - SUSFS: ${{ steps.build.outputs.susfs_version }}"
+            echo "  - Build time: ${{ steps.build.outputs.build_time }}s"
+            
+            if [ "${{ inputs.clean_build }}" != "true" ]; then
+              echo "  - ccache hit rate: ${{ steps.build.outputs.ccache_hit_rate }}"
+              echo "  - ccache direct rate: ${{ steps.build.outputs.ccache_direct_rate }}"
+            else
+              echo "  - ccache: disabled (clean build)"
+            fi
+            
+            if [ -n "${{ steps.build.outputs.warnings }}" ]; then
+              echo "  - Warnings: ${{ steps.build.outputs.warnings }}"
+            fi
+          else
+            echo "❌ Build failed"
+          fi
+          
+          echo "::endgroup::"
+
+      - name: 📝 Job summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          
+          ### ${{ matrix.model }} - ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}
+          
+          EOF
+          
+          if [ "${{ steps.build.outcome }}" = "success" ]; then
+            cat >> $GITHUB_STEP_SUMMARY << EOF
+          | Metric | Value |
+          |--------|-------|
+          | **Kernel** | ${{ steps.build.outputs.kernel_version }} |
+          | **KSU Next** | v${{ steps.build.outputs.ksu_version }} |
+          | **SUSFS** | ${{ steps.build.outputs.susfs_version }} |
+          | **Build Time** | ${{ steps.build.outputs.build_time }}s |
+          EOF
+            
+            if [ "${{ inputs.clean_build }}" != "true" ]; then
+              cat >> $GITHUB_STEP_SUMMARY << EOF
+          | **ccache Hit Rate** | ${{ steps.build.outputs.ccache_hit_rate }} |
+          | **ccache Direct Rate** | ${{ steps.build.outputs.ccache_direct_rate }} |
+          EOF
+            fi
+            
+            if [ -n "${{ steps.build.outputs.warnings }}" ]; then
+              echo "| **Warnings** | ${{ steps.build.outputs.warnings }} |" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            cat >> $GITHUB_STEP_SUMMARY << EOF
+          
+          **SHA256:** \`${{ steps.build.outputs.image_sha256 }}\`
+          EOF
+          fi
 
   trigger-release:
     needs: [build]
@@ -194,12 +295,12 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       RELEASE_NAME: '*TEST BUILD* OnePlus Kernels With KernelSU Next & SUSFS v1.5.12 *TEST BUILD*'
     steps:
-      - name: Checkout code
+      - name: 📥 Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           
-      - name: Generate and Create New Tag
+      - name: 🏷️ Generate and Create New Tag
         run: |
           BASE_TAG="v1.5.12-r0"
           LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
@@ -214,12 +315,12 @@ jobs:
           git tag $NEW_TAG
           git push origin $NEW_TAG
 
-      - name: Download Artifacts
+      - name: 📥 Download Artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./downloaded-artifacts
 
-      - name: Generate Device List and Final Release Notes
+      - name: 📝 Generate Device List and Final Release Notes
         id: generate-notes
         run: |
           echo "=== Start building the release notes ==="
@@ -241,7 +342,6 @@ jobs:
           |-------|------------|----------------|
           EOF
           
-          # Generate table rows
           for file in $(find downloaded-artifacts -name "*.txt" -type f | sort); do
             if [ -f "$file" ]; then
               full_model=$(basename "$file" .txt)
@@ -256,7 +356,6 @@ jobs:
             fi
           done
           
-          # Add features and finalize
           cat << 'EOF' >> release_notes.md
           
           ### Features
@@ -269,15 +368,15 @@ jobs:
           - [+] CONFIG_TMPFS_XATTR Support [Mountify Support]
           - [+] BBR v1 Support
           - [+] HMBIRD scx support for OnePlus 13 & OnePlus Ace 5 Pro
-          - [+] Baseband Guard Support (BBG).
-          - [+] IP Set Support.
+          - [+] Baseband Guard Support (BBG)
+          - [+] IP Set Support
+          - [+] ccache-accelerated builds for faster compilation
           EOF
           
-          # Output for debugging
           echo "--- Final Release Notes ---"
           cat release_notes.md
 
-      - name: Create GitHub Release
+      - name: 🚀 Create GitHub Release
         run: |
           gh release create "${{ env.NEW_TAG }}" \
             --repo "${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}" \
@@ -285,11 +384,35 @@ jobs:
             --notes-file release_notes.md \
             --prerelease
 
-      - name: Upload Release Assets Dynamically
+      - name: 📤 Upload Release Assets Dynamically
         run: |
           for file in ./downloaded-artifacts/*/*.zip; do
             if [ -f "$file" ]; then
               echo "Uploading $file..."
               gh release upload "${{ env.NEW_TAG }}" "$file" --clobber
+            fi
+          done
+
+      - name: 📊 Release summary
+        if: success()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          
+          ---
+          
+          ## 🎉 Release Created Successfully
+          
+          **Tag:** [\`${{ env.NEW_TAG }}\`](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.NEW_TAG }})  
+          **Kernels:** $(find ./downloaded-artifacts -name "*.zip" | wc -l)
+          
+          ### 📦 Assets
+          EOF
+          
+          for zip in ./downloaded-artifacts/*/*.zip; do
+            if [ -f "$zip" ]; then
+              name=$(basename "$zip")
+              size=$(stat -c%s "$zip")
+              size_mb=$(echo "scale=2; $size / 1024 / 1024" | bc)
+              echo "- \`$name\` (${size_mb} MB)" >> $GITHUB_STEP_SUMMARY
             fi
           done
