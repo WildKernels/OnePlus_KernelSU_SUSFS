@@ -43,28 +43,8 @@ on:
         description: 'Clean build (no ccache)'
         type: boolean
         default: false
-      android12-5_10_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android12-5.10'
-        type: string
-        default: ''
-      android13-5_10_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android13-5.10'
-        type: string
-        default: ''
-      android13-5_15_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android13-5.15'
-        type: string
-        default: ''
-      android14-5_15_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android14-5.15'
-        type: string
-        default: ''
-      android14-6_1_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android14-6.1'
-        type: string
-        default: ''
-      android15-6_6_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android15-6.6'
+      susfs_config:
+        description: 'SUSFS config (JSON format, blank=all "next". Examples in README)'
         type: string
         default: ''
 
@@ -74,6 +54,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       device_count: ${{ steps.set-matrix.outputs.count }}
+      susfs_map: ${{ steps.parse-susfs.outputs.susfs_map }}
     steps:
       - name: 📥 Checkout Code (to access configs/)
         uses: actions/checkout@v4
@@ -81,6 +62,59 @@ jobs:
           sparse-checkout: |
             configs/
           sparse-checkout-cone-mode: false
+
+      - name: 🔍 Parse SUSFS Configuration
+        id: parse-susfs
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "::group::SUSFS Configuration"
+          
+          # Default SUSFS branch for all kernel versions
+          DEFAULT_SUSFS='{
+            "android12-5.10": "next",
+            "android13-5.10": "next",
+            "android13-5.15": "next",
+            "android14-5.15": "next",
+            "android14-6.1": "next",
+            "android15-6.6": "next"
+          }'
+          
+          # Parse user input or use defaults
+          INPUT='${{ inputs.susfs_config }}'
+          
+          if [ -z "$INPUT" ] || [ "$INPUT" = "{}" ]; then
+            echo "ℹ️  Using default SUSFS configuration (all 'next')"
+            SUSFS_MAP="$DEFAULT_SUSFS"
+          else
+            echo "🔧 Parsing custom SUSFS configuration..."
+            
+            # Validate JSON
+            if ! echo "$INPUT" | jq empty 2>/dev/null; then
+              echo "::error::Invalid JSON in susfs_config input"
+              exit 1
+            fi
+            
+            # Merge user input with defaults (user input overrides defaults)
+            SUSFS_MAP=$(jq -n \
+              --argjson defaults "$DEFAULT_SUSFS" \
+              --argjson input "$INPUT" \
+              '$defaults * $input')
+            
+            echo "✅ Custom SUSFS configuration applied"
+          fi
+          
+          echo ""
+          echo "📋 Final SUSFS Configuration:"
+          echo "$SUSFS_MAP" | jq -r 'to_entries[] | "  - \(.key): \(.value)"'
+          
+          # Output for next job
+          echo "susfs_map<<SUSFS_EOF" >> "$GITHUB_OUTPUT"
+          echo "$SUSFS_MAP" >> "$GITHUB_OUTPUT"
+          echo "SUSFS_EOF" >> "$GITHUB_OUTPUT"
+          
+          echo "::endgroup::"
 
       - name: 🔍 Generate build matrix
         id: set-matrix
@@ -160,17 +194,29 @@ jobs:
 
       - name: 📊 Build plan summary
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
           ## 🎯 Build Plan
           
-          **Target:** \`${{ github.event.inputs.op_model }}\`  
+          **Target:** `${{ github.event.inputs.op_model }}`  
           **Devices:** ${{ steps.set-matrix.outputs.count }}  
-          **Configuration:**
-          - KSU Branch: \`${{ inputs.ksun_branch }}\`
-          - Optimization: \`${{ inputs.optimize_level }}\`
-          - Clean Build: ${{ inputs.clean_build }}
-          - Create Release: ${{ inputs.make_release }}
+          
+          ### Configuration
+          | Setting | Value |
+          |---------|-------|
+          | KSU Branch | `${{ inputs.ksun_branch }}` |
+          | Optimization | `${{ inputs.optimize_level }}` |
+          | Clean Build | ${{ inputs.clean_build }} |
+          | Create Release | ${{ inputs.make_release }} |
+          
+          ### SUSFS Configuration
           EOF
+          
+          # Parse and display SUSFS config in table format
+          echo '${{ steps.parse-susfs.outputs.susfs_map }}' | jq -r '
+            "| Kernel Version | SUSFS Branch |",
+            "|----------------|--------------|",
+            (to_entries[] | "| \(.key) | `\(.value)` |")
+          ' >> $GITHUB_STEP_SUMMARY
 
   build:
     name: build (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ matrix.os_version }}, ${{ inputs.ksun_branch }})
@@ -180,25 +226,27 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.set-op-model.outputs.matrix) }}
     steps:
-      - name: Resolve SUSFS branch from inputs
+      - name: 🔍 Resolve SUSFS branch from config
         id: susfs
         shell: bash
         run: |
           set -euo pipefail
+          
           key="${{ matrix.android_version }}-${{ matrix.kernel_version }}"
-          declare -A map=(
-            ["android12-5.10"]="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
-            ["android13-5.10"]="${{ inputs.android13-5_10_susfs_branch_or_commit }}"
-            ["android13-5.15"]="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
-            ["android14-5.15"]="${{ inputs.android14-5_15_susfs_branch_or_commit }}"
-            ["android14-6.1"]="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
-            ["android15-6.6"]="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
-          )
-          if [[ -z "${map[$key]+_exists}" ]]; then
-            echo "::error::Unsupported combo (no mapping): $key"
-            exit 1
+          SUSFS_MAP='${{ needs.set-op-model.outputs.susfs_map }}'
+          
+          echo "Looking up SUSFS branch for: $key"
+          
+          # Extract the branch for this kernel version
+          susfs_branch=$(echo "$SUSFS_MAP" | jq -r --arg key "$key" '.[$key] // "next"')
+          
+          if [ -z "$susfs_branch" ]; then
+            echo "::warning::No SUSFS branch found for $key, using 'next'"
+            susfs_branch="next"
           fi
-          echo "susfs_branch=${map[$key]}" >> "$GITHUB_OUTPUT"
+          
+          echo "✅ SUSFS branch for $key: '$susfs_branch'"
+          echo "susfs_branch=$susfs_branch" >> "$GITHUB_OUTPUT"
 
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
@@ -221,6 +269,8 @@ jobs:
           echo "::group::Build Statistics"
           
           echo "Device: ${{ matrix.model }}"
+          echo "Kernel: ${{ matrix.android_version }}-${{ matrix.kernel_version }}"
+          echo "SUSFS Branch: ${{ steps.susfs.outputs.susfs_branch }}"
           echo "Status: ${{ job.status }}"
           
           if [ "${{ steps.build.outcome }}" = "success" ]; then
@@ -255,6 +305,9 @@ jobs:
           cat >> $GITHUB_STEP_SUMMARY << EOF
           
           ### ${{ matrix.model }} - ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}
+          
+          **Kernel:** ${{ matrix.android_version }}-${{ matrix.kernel_version }}  
+          **SUSFS Branch:** \`${{ steps.susfs.outputs.susfs_branch }}\`
           
           EOF
           
