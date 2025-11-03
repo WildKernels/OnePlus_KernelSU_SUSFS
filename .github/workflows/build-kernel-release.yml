@@ -46,19 +46,11 @@ on:
       android12-5_10_susfs_branch_or_commit:
         description: 'Enter SusFS Branch or commit hash for android12-5.10'
         type: string
-        default: ''
-      android13-5_10_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android13-5.10'
-        type: string
-        default: ''
+        default: ''      
       android13-5_15_susfs_branch_or_commit:
         description: 'Enter SusFS Branch or commit hash for android13-5.15'
         type: string
-        default: ''
-      android14-5_15_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android14-5.15'
-        type: string
-        default: ''
+        default: ''      
       android14-6_1_susfs_branch_or_commit:
         description: 'Enter SusFS Branch or commit hash for android14-6.1'
         type: string
