@@ -449,7 +449,7 @@ runs:
         echo "   Shared cache and statistics preserved for concurrent jobs"
         echo "::endgroup::"
 
-        - name: Clone AnyKernel3 and Other Dependencies
+    - name: Clone AnyKernel3 and Other Dependencies
       shell: bash
       run: |
         set -euo pipefail
