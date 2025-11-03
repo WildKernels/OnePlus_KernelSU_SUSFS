@@ -12,7 +12,7 @@ inputs:
   susfs_commit_hash_or_branch:
     required: false
     type: string
-    default: "" 
+    default: "master" 
   optimize_level:
     required: false
     type: string
