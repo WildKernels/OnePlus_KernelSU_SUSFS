@@ -12,7 +12,7 @@ inputs:
   susfs_commit_hash_or_branch:
     required: false
     type: string
-    default: "next"  # ← Changed from "" to "next"
+    default: "" 
   optimize_level:
     required: false
     type: string
@@ -461,11 +461,24 @@ runs:
         # Determine SUSFS branch/commit to use
         SUSFS_INPUT="${{ inputs.susfs_commit_hash_or_branch }}"
         
-        # Treat empty string or "next" as default
-        if [ -z "$SUSFS_INPUT" ] || [ "$SUSFS_INPUT" = "next" ]; then
-          SUSFS_BRANCH="next"
-          echo "ℹ️  Using default SUSFS branch: next"
+        # Default SUSFS branches for each kernel version
+        declare -A DEFAULT_SUSFS=(
+          ["android12-5.10"]="gki-android12-5.10"
+          ["android13-5.10"]="gki-android13-5.10"
+          ["android13-5.15"]="gki-android13-5.15"
+          ["android14-5.15"]="gki-android14-5.15"
+          ["android14-6.1"]="gki-android14-6.1"
+          ["android15-6.6"]="gki-android15-6.6"
+        )
+        
+        # Determine which SUSFS branch to use
+        if [ -z "$SUSFS_INPUT" ]; then
+          # Empty input: use kernel-specific default
+          KERNEL_KEY="${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}"
+          SUSFS_BRANCH="${DEFAULT_SUSFS[$KERNEL_KEY]:-master}"
+          echo "ℹ️  Using default SUSFS branch for $KERNEL_KEY: $SUSFS_BRANCH"
         else
+          # User provided custom branch/commit
           SUSFS_BRANCH="$SUSFS_INPUT"
           echo "🔧 Using custom SUSFS ref: $SUSFS_BRANCH"
         fi
