@@ -163,45 +163,40 @@ jobs:
           cat >> $GITHUB_STEP_SUMMARY << 'EOF'
           ## 🎯 Build Plan
           
-          **Target:** `${{ github.event.inputs.op_model }}`  
+          **Target:** `${{ inputs.op_model }}`  
           **Devices:** ${{ steps.set-matrix.outputs.count }}  
           
-          ### Configuration
-          | Setting | Value |
-          |---------|-------|
-          | KSU Branch | `${{ inputs.ksun_branch }}` |
-          | Optimization | `${{ inputs.optimize_level }}` |
-          | Clean Build | ${{ inputs.clean_build }} |
-          | Create Release | ${{ inputs.make_release }} |
+          **Configuration:**
+          - KSU Branch: `${{ inputs.ksun_branch }}`
+          - Optimization: `${{ inputs.optimize_level }}`
+          - Clean Build: ${{ inputs.clean_build && '✅ Yes' || '❌ No' }}
+          - Create Release: ${{ inputs.make_release && '✅ Yes' || '❌ No' }}
           
-          ### SUSFS Configuration
-          | Kernel Version | SUSFS Branch/Commit |
-          |----------------|---------------------|
+          **SUSFS Configuration:**
           EOF
           
           # Display SUSFS config for each kernel version
+          declare -A susfs_inputs=(
+            ["android12-5.10"]="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
+            ["android13-5.10"]="${{ inputs.android13-5_10_susfs_branch_or_commit }}"
+            ["android13-5.15"]="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
+            ["android14-5.15"]="${{ inputs.android14-5_15_susfs_branch_or_commit }}"
+            ["android14-6.1"]="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
+            ["android15-6.6"]="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
+          )
+          
           for key in "android12-5.10" "android13-5.10" "android13-5.15" "android14-5.15" "android14-6.1" "android15-6.6"; do
-            input_key=$(echo "$key" | tr '.-' '__')
-            input_name="android${key#android}_susfs_branch_or_commit"
-            
-            case "$key" in
-              "android12-5.10") value="${{ inputs.android12-5_10_susfs_branch_or_commit }}" ;;
-              "android13-5.10") value="${{ inputs.android13-5_10_susfs_branch_or_commit }}" ;;
-              "android13-5.15") value="${{ inputs.android13-5_15_susfs_branch_or_commit }}" ;;
-              "android14-5.15") value="${{ inputs.android14-5_15_susfs_branch_or_commit }}" ;;
-              "android14-6.1") value="${{ inputs.android14-6_1_susfs_branch_or_commit }}" ;;
-              "android15-6.6") value="${{ inputs.android15-6_6_susfs_branch_or_commit }}" ;;
-            esac
+            value="${susfs_inputs[$key]}"
             
             if [ -z "$value" ]; then
-              echo "| $key | \`(auto: gki-$key)\` |" >> $GITHUB_STEP_SUMMARY
+              echo "- $key: 🔄 auto (\`gki-$key\`)" >> $GITHUB_STEP_SUMMARY
             else
-              echo "| $key | \`$value\` |" >> $GITHUB_STEP_SUMMARY
+              echo "- $key: 📌 \`$value\`" >> $GITHUB_STEP_SUMMARY
             fi
           done
           
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> **Note:** Empty values auto-map to the matching gki-androidX-Y.Z branch during build." >> $GITHUB_STEP_SUMMARY
+          echo "> **💡 Note:** Empty values auto-map to matching \`gki-androidX-Y.Z\` branches." >> $GITHUB_STEP_SUMMARY
 
   build:
     name: build (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ matrix.os_version }}, ${{ inputs.ksun_branch }})
