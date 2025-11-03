@@ -449,7 +449,7 @@ runs:
         echo "   Shared cache and statistics preserved for concurrent jobs"
         echo "::endgroup::"
 
-    - name: Clone AnyKernel3 and Other Dependencies
+        - name: Clone AnyKernel3 and Other Dependencies
       shell: bash
       run: |
         set -euo pipefail
@@ -463,10 +463,8 @@ runs:
         
         # Default SUSFS branches for each kernel version
         declare -A DEFAULT_SUSFS=(
-          ["android12-5.10"]="gki-android12-5.10"
-          ["android13-5.10"]="gki-android13-5.10"
-          ["android13-5.15"]="gki-android13-5.15"
-          ["android14-5.15"]="gki-android14-5.15"
+          ["android12-5.10"]="gki-android12-5.10"          
+          ["android13-5.15"]="gki-android13-5.15"          
           ["android14-6.1"]="gki-android14-6.1"
           ["android15-6.6"]="gki-android15-6.6"
         )
