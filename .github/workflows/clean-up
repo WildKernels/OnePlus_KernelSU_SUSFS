@@ -1,0 +1,1165 @@
+name: Cleanup Workflow & Cache 🧹 
+
+on:
+  workflow_dispatch:
+    inputs:
+      cleanup_type:
+        type: choice
+        description: 'Cleanup target'
+        required: true
+        default: 'cache_only'
+        options:
+          - cache_only          # Only clean caches
+          - runs_only           # Only clean workflow runs
+          - full_cleanup        # Both caches and runs
+          - analyze_only        # Just analyze, don't delete
+      
+      device_filter:
+        type: choice
+        description: 'Device cache to clean'
+        required: false
+        default: 'ALL'
+        options:
+          - ALL
+          # Kernel Versions
+          - android15-6.6
+          - android14-6.1
+          - android14-5.15
+          - android13-5.15
+          - android13-5.10
+          - android12-5.10
+          # OnePlus Phones
+          - OP13-CPH
+          - OP13-PJZ
+          - OP13r
+          - OP13S
+          - OP13T
+          - OP12
+          - OP12r
+          - OP11
+          - OP11r
+          - OP10pro
+          - OP10t
+          # OnePlus Nord Series
+          - OP-Nord-5
+          - OP-NORD-4
+          - OP-NORD-4-CE
+          - OP-NORD-CE4-LITE
+          # OnePlus Ace Series
+          - OP-ACE-5-PRO
+          - OP-ACE-5
+          - OP-ACE-3-PRO
+          - OP-ACE-3V
+          - OP-ACE-2-PRO
+          - OP-ACE-2
+          # OnePlus Tablets & Others
+          - OP-OPEN
+          - OP-PAD-3
+          - OP-PAD-2-PRO
+          - OP-PAD-2
+          - OP-PAD-PRO
+      
+      cache_pattern:
+        type: choice
+        description: 'Cache type to clean'
+        required: false
+        default: 'all_caches'
+        options:
+          - all_caches          # All cache types
+          - ccache_only         # Only ccache (kernel builds)
+          - ccache_stale        # Only stale ccache (>14 days)
+          - apt_only            # Only apt packages
+          - kernel_only         # Only kernel-related caches
+          - old_only            # Only caches older than 7 days
+      
+      cache_age_days:
+        description: 'Delete caches older than N days'
+        required: false
+        default: '7'
+      
+      keep_recent_runs:
+        description: 'Keep N most recent successful runs'
+        required: false
+        default: '3'
+      
+      days_to_keep:
+        description: 'Keep runs from last N days'
+        required: false
+        default: '7'
+      
+      dry_run:
+        description: 'Dry run (show what would be deleted)'
+        required: false
+        type: boolean
+        default: false
+      
+      force_cleanup:
+        description: 'Force cleanup even if usage is low'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    outputs:
+      should_cleanup: ${{ steps.analysis.outputs.should_cleanup }}
+      total_cache_size: ${{ steps.analysis.outputs.total_size }}
+      cache_count: ${{ steps.analysis.outputs.cache_count }}
+      usage_percent: ${{ steps.analysis.outputs.usage_percent }}
+      ccache_count: ${{ steps.analysis.outputs.ccache_count }}
+      ccache_size: ${{ steps.analysis.outputs.ccache_size }}
+    steps:
+      - name: 📊 Analyze Repository Health
+        id: analysis
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const forceCleanup = '${{ inputs.force_cleanup }}' === 'true';
+            
+            console.log('🔍 Analyzing repository cache health...\n');
+            
+            let page = 1;
+            let totalCacheSize = 0;
+            let cacheCount = 0;
+            let oldestCache = null;
+            let newestCache = null;
+            
+            const cachesByType = {
+              ccache: { size: 0, count: 0 },
+              apt: { size: 0, count: 0 },
+              kernel: { size: 0, count: 0 },
+              other: { size: 0, count: 0 }
+            };
+            
+            const cachesByDevice = new Map();
+            const cacheAgeDistribution = {
+              fresh: 0,      // < 7 days
+              recent: 0,     // 7-14 days
+              old: 0,        // 14-30 days
+              stale: 0       // > 30 days
+            };
+            
+            // Collect all cache data
+            while (true) {
+              const res = await github.rest.actions.getActionsCacheList({
+                owner,
+                repo,
+                per_page: 100,
+                page: page
+              });
+              
+              const caches = res.data.actions_caches;
+              if (!caches || caches.length === 0) break;
+              
+              for (const cache of caches) {
+                totalCacheSize += cache.size_in_bytes;
+                cacheCount++;
+                
+                const cacheDate = new Date(cache.created_at);
+                const ageDays = Math.floor((new Date() - cacheDate) / (1000 * 60 * 60 * 24));
+                
+                // Age distribution
+                if (ageDays < 7) cacheAgeDistribution.fresh++;
+                else if (ageDays < 14) cacheAgeDistribution.recent++;
+                else if (ageDays < 30) cacheAgeDistribution.old++;
+                else cacheAgeDistribution.stale++;
+                
+                if (!oldestCache || cacheDate < new Date(oldestCache.created_at)) {
+                  oldestCache = cache;
+                }
+                if (!newestCache || cacheDate > new Date(newestCache.created_at)) {
+                  newestCache = cache;
+                }
+                
+                // Categorize by type
+                if (cache.key.startsWith('ccache-')) {
+                  cachesByType.ccache.size += cache.size_in_bytes;
+                  cachesByType.ccache.count++;
+                  
+                  // Extract device name from ccache key
+                  const match = cache.key.match(/ccache-([^-]+)-/);
+                  if (match) {
+                    const device = match[1];
+                    if (!cachesByDevice.has(device)) {
+                      cachesByDevice.set(device, { 
+                        size: 0, 
+                        count: 0,
+                        lastAccessed: cache.last_accessed_at,
+                        oldestCache: ageDays,
+                        newestCache: ageDays
+                      });
+                    }
+                    const deviceData = cachesByDevice.get(device);
+                    deviceData.size += cache.size_in_bytes;
+                    deviceData.count++;
+                    deviceData.oldestCache = Math.max(deviceData.oldestCache, ageDays);
+                    deviceData.newestCache = Math.min(deviceData.newestCache, ageDays);
+                    if (new Date(cache.last_accessed_at) > new Date(deviceData.lastAccessed)) {
+                      deviceData.lastAccessed = cache.last_accessed_at;
+                    }
+                  }
+                } else if (cache.key.includes('apt')) {
+                  cachesByType.apt.size += cache.size_in_bytes;
+                  cachesByType.apt.count++;
+                } else if (cache.key.includes('kernel') || cache.key.includes('android')) {
+                  cachesByType.kernel.size += cache.size_in_bytes;
+                  cachesByType.kernel.count++;
+                } else {
+                  cachesByType.other.size += cache.size_in_bytes;
+                  cachesByType.other.count++;
+                }
+              }
+              
+              if (caches.length < 100) break;
+              page++;
+            }
+            
+            // Calculate metrics
+            const totalGB = (totalCacheSize / 1024 / 1024 / 1024).toFixed(2);
+            const limit = 10; // 10 GB GitHub limit
+            const usagePercent = ((totalCacheSize / (limit * 1024 * 1024 * 1024)) * 100).toFixed(1);
+            
+            // Determine if cleanup is needed
+            const shouldCleanup = forceCleanup || parseFloat(usagePercent) > 75;
+            
+            // Health status
+            let healthEmoji = '🟢';
+            let healthStatus = 'Healthy';
+            if (usagePercent > 90) {
+              healthEmoji = '🔴';
+              healthStatus = 'Critical';
+            } else if (usagePercent > 75) {
+              healthEmoji = '🟡';
+              healthStatus = 'Warning';
+            }
+            
+            // Output for next jobs
+            core.setOutput('should_cleanup', shouldCleanup.toString());
+            core.setOutput('total_size', totalCacheSize.toString());
+            core.setOutput('cache_count', cacheCount.toString());
+            core.setOutput('usage_percent', usagePercent);
+            core.setOutput('ccache_count', cachesByType.ccache.count.toString());
+            core.setOutput('ccache_size', cachesByType.ccache.size.toString());
+            
+            // Generate detailed summary
+            let summary = core.summary
+              .addHeading(`${healthEmoji} Cache Health Analysis - ${healthStatus}`)
+              .addRaw(`\n### 📊 Overall Statistics\n\n`)
+              .addTable([
+                [{data: 'Metric', header: true}, {data: 'Value', header: true}],
+                ['Total Caches', cacheCount.toString()],
+                ['Total Size', `${totalGB} GB`],
+                ['Limit', `${limit} GB`],
+                ['Usage', `${usagePercent}%`],
+                ['Available', `${(limit - parseFloat(totalGB)).toFixed(2)} GB`],
+                ['Status', healthStatus]
+              ]);
+            
+            // Cache breakdown by type
+            summary.addRaw(`\n### 🗂️ Cache Breakdown by Type\n\n`)
+              .addTable([
+                [{data: 'Type', header: true}, {data: 'Count', header: true}, {data: 'Size (GB)', header: true}, {data: 'Percentage', header: true}],
+                ['ccache (Kernel Builds)', 
+                  cachesByType.ccache.count.toString(),
+                  (cachesByType.ccache.size / 1024 / 1024 / 1024).toFixed(2),
+                  `${((cachesByType.ccache.size / totalCacheSize) * 100).toFixed(1)}%`
+                ],
+                ['Kernel-related',
+                  cachesByType.kernel.count.toString(),
+                  (cachesByType.kernel.size / 1024 / 1024 / 1024).toFixed(2),
+                  `${((cachesByType.kernel.size / totalCacheSize) * 100).toFixed(1)}%`
+                ],
+                ['APT Packages',
+                  cachesByType.apt.count.toString(),
+                  (cachesByType.apt.size / 1024 / 1024 / 1024).toFixed(2),
+                  `${((cachesByType.apt.size / totalCacheSize) * 100).toFixed(1)}%`
+                ],
+                ['Other',
+                  cachesByType.other.count.toString(),
+                  (cachesByType.other.size / 1024 / 1024 / 1024).toFixed(2),
+                  `${((cachesByType.other.size / totalCacheSize) * 100).toFixed(1)}%`
+                ]
+              ]);
+            
+            // ccache-specific statistics
+            if (cachesByType.ccache.count > 0) {
+              const avgCcacheSize = cachesByType.ccache.size / cachesByType.ccache.count;
+              const avgCcacheSizeMB = (avgCcacheSize / 1024 / 1024).toFixed(2);
+              const ccachePercent = ((cachesByType.ccache.size / totalCacheSize) * 100).toFixed(1);
+              
+              summary.addRaw(`\n### ⚡ ccache Statistics\n\n`)
+                .addTable([
+                  [{data: 'Metric', header: true}, {data: 'Value', header: true}],
+                  ['Total ccache Entries', cachesByType.ccache.count.toString()],
+                  ['Total ccache Size', `${(cachesByType.ccache.size / 1024 / 1024 / 1024).toFixed(2)} GB`],
+                  ['Average Cache Size', `${avgCcacheSizeMB} MB`],
+                  ['Percentage of Total', `${ccachePercent}%`],
+                  ['Unique Devices', cachesByDevice.size.toString()]
+                ]);
+              
+              // ccache recommendations
+              if (parseFloat(ccachePercent) > 80) {
+                summary.addRaw(`\n⚠️ **ccache dominates storage** (${ccachePercent}%)\n`)
+                  .addRaw(`- Consider reducing \`CCACHE_MAXSIZE\` in build workflow\n`)
+                  .addRaw(`- Clean stale device caches not actively built\n`)
+                  .addRaw(`- Use \`clean_build\` option occasionally to verify builds\n`);
+              }
+            }
+            
+            // Age distribution
+            summary.addRaw(`\n### 📅 Cache Age Distribution\n\n`)
+              .addTable([
+                [{data: 'Age Range', header: true}, {data: 'Count', header: true}, {data: 'Percentage', header: true}],
+                ['Fresh (< 7 days)', cacheAgeDistribution.fresh.toString(), `${((cacheAgeDistribution.fresh / cacheCount) * 100).toFixed(1)}%`],
+                ['Recent (7-14 days)', cacheAgeDistribution.recent.toString(), `${((cacheAgeDistribution.recent / cacheCount) * 100).toFixed(1)}%`],
+                ['Old (14-30 days)', cacheAgeDistribution.old.toString(), `${((cacheAgeDistribution.old / cacheCount) * 100).toFixed(1)}%`],
+                ['Stale (> 30 days)', cacheAgeDistribution.stale.toString(), `${((cacheAgeDistribution.stale / cacheCount) * 100).toFixed(1)}%`]
+              ]);
+            
+            // Top devices by cache size
+            if (cachesByDevice.size > 0) {
+              const topDevices = Array.from(cachesByDevice.entries())
+                .sort((a, b) => b[1].size - a[1].size)
+                .slice(0, 15);
+              
+              summary.addRaw(`\n### 📱 Top 15 Devices by Cache Size\n\n`)
+                .addTable([
+                  [{data: 'Device', header: true}, {data: 'Caches', header: true}, {data: 'Size (GB)', header: true}, {data: 'Age Range (days)', header: true}],
+                  ...topDevices.map(([device, data]) => [
+                    device,
+                    data.count.toString(),
+                    (data.size / 1024 / 1024 / 1024).toFixed(2),
+                    `${data.newestCache}-${data.oldestCache}`
+                  ])
+                ]);
+              
+              // Identify inactive devices
+              const now = new Date();
+              const inactiveThreshold = 30; // days
+              const inactiveDevices = Array.from(cachesByDevice.entries())
+                .filter(([_, data]) => {
+                  const daysSinceAccess = Math.floor((now - new Date(data.lastAccessed)) / (1000 * 60 * 60 * 24));
+                  return daysSinceAccess > inactiveThreshold;
+                })
+                .sort((a, b) => b[1].size - a[1].size);
+              
+              if (inactiveDevices.length > 0) {
+                summary.addRaw(`\n### 🚫 Inactive Devices (Not accessed in ${inactiveThreshold}+ days)\n\n`)
+                  .addTable([
+                    [{data: 'Device', header: true}, {data: 'Size (GB)', header: true}, {data: 'Days Since Access', header: true}],
+                    ...inactiveDevices.slice(0, 10).map(([device, data]) => [
+                      device,
+                      (data.size / 1024 / 1024 / 1024).toFixed(2),
+                      Math.floor((now - new Date(data.lastAccessed)) / (1000 * 60 * 60 * 24)).toString()
+                    ])
+                  ]);
+                
+                const inactiveSizeGB = inactiveDevices.reduce((sum, [_, data]) => sum + data.size, 0) / 1024 / 1024 / 1024;
+                summary.addRaw(`\n💡 **Potential savings:** ${inactiveSizeGB.toFixed(2)} GB by cleaning inactive devices\n`);
+              }
+            }
+            
+            // Age information
+            if (oldestCache && newestCache) {
+              const oldestDate = new Date(oldestCache.created_at);
+              const newestDate = new Date(newestCache.created_at);
+              const daysDiff = Math.floor((newestDate - oldestDate) / (1000 * 60 * 60 * 24));
+              
+              summary.addRaw(`\n### 📅 Cache Age Information\n\n`)
+                .addTable([
+                  [{data: 'Metric', header: true}, {data: 'Value', header: true}],
+                  ['Oldest Cache', oldestDate.toISOString().split('T')[0]],
+                  ['Newest Cache', newestDate.toISOString().split('T')[0]],
+                  ['Age Range', `${daysDiff} days`]
+                ]);
+            }
+            
+            // Recommendations
+            summary.addRaw(`\n### 💡 Recommendations\n\n`);
+            
+            if (parseFloat(usagePercent) > 90) {
+              summary.addRaw(`- 🔴 **URGENT:** Cache usage is critical (${usagePercent}%)\n`)
+                .addRaw(`- Run cleanup immediately with \`device_filter: ALL\`\n`)
+                .addRaw(`- Consider cleaning old device caches\n`)
+                .addRaw(`- Review ccache size limits in build workflows\n`);
+            } else if (parseFloat(usagePercent) > 75) {
+              summary.addRaw(`- 🟡 **WARNING:** Cache usage is high (${usagePercent}%)\n`)
+                .addRaw(`- Schedule cleanup soon\n`)
+                .addRaw(`- Consider targeting specific devices\n`);
+            } else {
+              summary.addRaw(`- 🟢 Cache usage is healthy (${usagePercent}%)\n`)
+                .addRaw(`- Regular weekly cleanup recommended\n`)
+                .addRaw(`- No immediate action required\n`);
+            }
+            
+            // Stale cache recommendations
+            if (cacheAgeDistribution.stale > 0) {
+              const staleSizeEstimate = (cacheAgeDistribution.stale / cacheCount) * totalCacheSize;
+              const staleSizeGB = (staleSizeEstimate / 1024 / 1024 / 1024).toFixed(2);
+              summary.addRaw(`\n- 📦 **${cacheAgeDistribution.stale} stale caches** (>30 days old)\n`)
+                .addRaw(`- Estimated size: ~${staleSizeGB} GB\n`)
+                .addRaw(`- Run with \`cache_pattern: ccache_stale\` to clean\n`);
+            }
+            
+            if (shouldCleanup && !forceCleanup) {
+              summary.addRaw(`\n⚠️ **Automatic cleanup will proceed** (usage > 75%)\n`);
+            } else if (forceCleanup) {
+              summary.addRaw(`\n⚡ **Force cleanup enabled** - proceeding regardless of usage\n`);
+            }
+            
+            summary.write();
+            
+            console.log(`\n✅ Analysis complete:`);
+            console.log(`   - Total: ${totalGB} GB (${usagePercent}%)`);
+            console.log(`   - Caches: ${cacheCount}`);
+            console.log(`   - ccache: ${cachesByType.ccache.count} (${(cachesByType.ccache.size / 1024 / 1024 / 1024).toFixed(2)} GB)`);
+            console.log(`   - Devices: ${cachesByDevice.size}`);
+            console.log(`   - Cleanup needed: ${shouldCleanup}`);
+
+  cleanup-caches:
+    runs-on: ubuntu-latest
+    needs: analyze
+    if: |
+      always() &&
+      (inputs.cleanup_type == 'cache_only' || inputs.cleanup_type == 'full_cleanup') &&
+      (inputs.cleanup_type != 'analyze_only')
+    
+    steps:
+      - name: 🗑️ Smart Cache Cleanup
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const deviceFilter = '${{ inputs.device_filter }}';
+            const cachePattern = '${{ inputs.cache_pattern }}';
+            const dryRun = '${{ inputs.dry_run }}' === 'true';
+            const cacheAgeDays = parseInt('${{ inputs.cache_age_days }}');
+            const shouldCleanup = '${{ needs.analyze.outputs.should_cleanup }}' === 'true';
+            const forceCleanup = '${{ inputs.force_cleanup }}' === 'true';
+            
+            console.log(`🎯 Configuration:`);
+            console.log(`   - Device Filter: ${deviceFilter}`);
+            console.log(`   - Cache Pattern: ${cachePattern}`);
+            console.log(`   - Age Threshold: ${cacheAgeDays} days`);
+            console.log(`   - Dry Run: ${dryRun}`);
+            console.log(`   - Should Cleanup: ${shouldCleanup}`);
+            console.log(`   - Force Cleanup: ${forceCleanup}\n`);
+            
+            // Check if we should proceed
+            if (!shouldCleanup && !forceCleanup && !dryRun) {
+              console.log('ℹ️ Cache usage is healthy, skipping cleanup');
+              console.log('💡 Use force_cleanup=true to cleanup anyway');
+              core.summary
+                .addHeading('ℹ️ Cleanup Skipped')
+                .addRaw(`Cache usage is healthy (${${{ needs.analyze.outputs.usage_percent }}}%)\n\n`)
+                .addRaw('No cleanup needed at this time.\n')
+                .write();
+              return;
+            }
+            
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - cacheAgeDays);
+            
+            // For stale ccache pattern, use 14 days
+            const staleCutoffDate = new Date();
+            staleCutoffDate.setDate(staleCutoffDate.getDate() - 14);
+            
+            let totalDeleted = 0;
+            let totalSize = 0;
+            let page = 1;
+            const deletedCaches = [];
+            const skippedCaches = [];
+            
+            // Track statistics by category
+            const deletionStats = {
+              ccache: { count: 0, size: 0 },
+              apt: { count: 0, size: 0 },
+              kernel: { count: 0, size: 0 },
+              other: { count: 0, size: 0 }
+            };
+            
+            // Helper function to check if cache should be deleted
+            function shouldDeleteCache(cache) {
+              const cacheKey = cache.key;
+              const cacheDate = new Date(cache.created_at);
+              const ageDays = Math.floor((new Date() - cacheDate) / (1000 * 60 * 60 * 24));
+              
+              // Device filter logic
+              const deviceMatch = 
+                deviceFilter === 'ALL' ||
+                cacheKey.includes(deviceFilter) ||
+                cacheKey.includes(`-${deviceFilter}-`) ||
+                cacheKey.startsWith(`${deviceFilter}-`);
+              
+              if (!deviceMatch) {
+                return { delete: false, reason: 'device_filter' };
+              }
+              
+              // Age filter for 'old_only' pattern
+              if (cachePattern === 'old_only' && cacheDate >= cutoffDate) {
+                return { delete: false, reason: 'too_new' };
+              }
+              
+              // Cache pattern logic
+              let patternMatch = false;
+              let category = 'other';
+              
+              switch (cachePattern) {
+                case 'ccache_only':
+                  patternMatch = cacheKey.startsWith('ccache-');
+                  category = 'ccache';
+                  break;
+                  
+                case 'ccache_stale':
+                  patternMatch = cacheKey.startsWith('ccache-') && cacheDate < staleCutoffDate;
+                  category = 'ccache';
+                  break;
+                  
+                case 'apt_only':
+                  patternMatch = cacheKey.includes('apt-cache') || cacheKey.includes('apt-');
+                  category = 'apt';
+                  break;
+                  
+                case 'kernel_only':
+                  patternMatch = cacheKey.includes('kernel-') || 
+                               cacheKey.includes('android') ||
+                               cacheKey.startsWith('ccache-');
+                  if (cacheKey.startsWith('ccache-')) category = 'ccache';
+                  else category = 'kernel';
+                  break;
+                  
+                case 'old_only':
+                  patternMatch = cacheDate < cutoffDate;
+                  if (cacheKey.startsWith('ccache-')) category = 'ccache';
+                  else if (cacheKey.includes('apt')) category = 'apt';
+                  else if (cacheKey.includes('kernel')) category = 'kernel';
+                  break;
+                  
+                case 'all_caches':
+                default:
+                  patternMatch = true;
+                  if (cacheKey.startsWith('ccache-')) category = 'ccache';
+                  else if (cacheKey.includes('apt')) category = 'apt';
+                  else if (cacheKey.includes('kernel')) category = 'kernel';
+              }
+              
+              return { 
+                delete: patternMatch, 
+                reason: patternMatch ? 'match' : 'pattern_mismatch',
+                category: category
+              };
+            }
+            
+            // Fetch and process caches
+            console.log('🔍 Scanning caches...\n');
+            
+            while (true) {
+              const res = await github.rest.actions.getActionsCacheList({
+                owner,
+                repo,
+                per_page: 100,
+                page: page
+              });
+              
+              const caches = res.data.actions_caches;
+              if (!caches || caches.length === 0) break;
+              
+              for (const cache of caches) {
+                const decision = shouldDeleteCache(cache);
+                const sizeMB = (cache.size_in_bytes / 1024 / 1024).toFixed(2);
+                const agedays = Math.floor((new Date() - new Date(cache.created_at)) / (1000 * 60 * 60 * 24));
+                
+                if (decision.delete) {
+                  deletedCaches.push({
+                    key: cache.key,
+                    size: sizeMB,
+                    sizeBytes: cache.size_in_bytes,
+                    age: agedays,
+                    created: cache.created_at,
+                    id: cache.id,
+                    category: decision.category
+                  });
+                  
+                  if (dryRun) {
+                    console.log(`🔍 Would delete: ${cache.key}`);
+                    console.log(`   Size: ${sizeMB} MB | Age: ${agedays} days | Type: ${decision.category}`);
+                  } else {
+                    console.log(`🗑️ Deleting: ${cache.key}`);
+                    console.log(`   Size: ${sizeMB} MB | Age: ${agedays} days | Type: ${decision.category}`);
+                    
+                    try {
+                      await github.rest.actions.deleteActionsCacheById({
+                        owner,
+                        repo,
+                        cache_id: cache.id
+                      });
+                      totalDeleted++;
+                      totalSize += cache.size_in_bytes;
+                      
+                      // Update category stats
+                      deletionStats[decision.category].count++;
+                      deletionStats[decision.category].size += cache.size_in_bytes;
+                    } catch (error) {
+                      console.log(`   ⚠️ Failed: ${error.message}`);
+                      skippedCaches.push({
+                        key: cache.key,
+                        reason: error.message
+                      });
+                    }
+                  }
+                } else if (decision.reason !== 'device_filter') {
+                  // Only log non-device-filter skips in verbose mode
+                  // console.log(`⏭️ Skipping: ${cache.key} (${decision.reason})`);
+                }
+              }
+              
+              if (caches.length < 100) break;
+              page++;
+            }
+            
+            const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
+            const sizeGB = (totalSize / 1024 / 1024 / 1024).toFixed(2);
+            
+            console.log(`\n✅ ${dryRun ? 'Would delete' : 'Deleted'} ${totalDeleted} caches`);
+            console.log(`📊 Space ${dryRun ? 'would be' : ''} freed: ${sizeMB} MB (${sizeGB} GB)`);
+            
+            // Generate detailed summary
+            let summary = core.summary
+              .addHeading(`🧹 Cache Cleanup ${dryRun ? 'Preview' : 'Summary'}`)
+              .addTable([
+                [{data: 'Metric', header: true}, {data: 'Value', header: true}],
+                ['Caches ' + (dryRun ? 'to Delete' : 'Deleted'), totalDeleted.toString()],
+                ['Space ' + (dryRun ? 'to Free' : 'Freed'), `${sizeMB} MB (${sizeGB} GB)`],
+                ['Device Filter', deviceFilter],
+                ['Cache Pattern', cachePattern],
+                ['Age Threshold', `${cacheAgeDays} days`]
+              ]);
+            
+            // Deletion breakdown by type
+            if (totalDeleted > 0 || dryRun) {
+              summary.addHeading('📊 Deletion Breakdown by Type', 3)
+                .addTable([
+                  [{data: 'Type', header: true}, {data: 'Count', header: true}, {data: 'Size (GB)', header: true}, {data: 'Percentage', header: true}],
+                  ['ccache', 
+                    deletionStats.ccache.count.toString(),
+                    (deletionStats.ccache.size / 1024 / 1024 / 1024).toFixed(2),
+                    totalSize > 0 ? `${((deletionStats.ccache.size / totalSize) * 100).toFixed(1)}%` : '0%'
+                  ],
+                  ['Kernel-related',
+                    deletionStats.kernel.count.toString(),
+                    (deletionStats.kernel.size / 1024 / 1024 / 1024).toFixed(2),
+                    totalSize > 0 ? `${((deletionStats.kernel.size / totalSize) * 100).toFixed(1)}%` : '0%'
+                  ],
+                  ['APT Packages',
+                    deletionStats.apt.count.toString(),
+                    (deletionStats.apt.size / 1024 / 1024 / 1024).toFixed(2),
+                    totalSize > 0 ? `${((deletionStats.apt.size / totalSize) * 100).toFixed(1)}%` : '0%'
+                  ],
+                  ['Other',
+                    deletionStats.other.count.toString(),
+                    (deletionStats.other.size / 1024 / 1024 / 1024).toFixed(2),
+                    totalSize > 0 ? `${((deletionStats.other.size / totalSize) * 100).toFixed(1)}%` : '0%'
+                  ]
+                ]);
+            }
+            
+            // Add top 20 largest caches
+            if (deletedCaches.length > 0) {
+              const topCaches = deletedCaches
+                .sort((a, b) => parseFloat(b.size) - parseFloat(a.size))
+                .slice(0, 20);
+              
+              summary.addHeading('📦 Top 20 Largest Caches ' + (dryRun ? 'to Delete' : 'Deleted'), 3)
+                .addTable([
+                  [{data: 'Cache Key', header: true}, {data: 'Size (MB)', header: true}, {data: 'Age (days)', header: true}, {data: 'Type', header: true}],
+                  ...topCaches.map(c => [c.key, c.size, c.age.toString(), c.category])
+                ]);
+            }
+            
+            // Add oldest caches
+            if (deletedCaches.length > 0) {
+              const oldestCaches = deletedCaches
+                .sort((a, b) => b.age - a.age)
+                .slice(0, 10);
+              
+              summary.addHeading('📅 Top 10 Oldest Caches ' + (dryRun ? 'to Delete' : 'Deleted'), 3)
+                .addTable([
+                  [{data: 'Cache Key', header: true}, {data: 'Age (days)', header: true}, {data: 'Size (MB)', header: true}, {data: 'Type', header: true}],
+                  ...oldestCaches.map(c => [c.key, c.age.toString(), c.size, c.category])
+                ]);
+            }
+            
+            // Device breakdown for ccache deletions
+            if (deletionStats.ccache.count > 0) {
+              const deviceDeletions = new Map();
+              for (const cache of deletedCaches) {
+                if (cache.category === 'ccache') {
+                  const match = cache.key.match(/ccache-([^-]+)-/);
+                  if (match) {
+                    const device = match[1];
+                    if (!deviceDeletions.has(device)) {
+                      deviceDeletions.set(device, { count: 0, size: 0 });
+                    }
+                    const data = deviceDeletions.get(device);
+                    data.count++;
+                    data.size += cache.sizeBytes;
+                  }
+                }
+              }
+              
+              if (deviceDeletions.size > 0) {
+                const topDevices = Array.from(deviceDeletions.entries())
+                  .sort((a, b) => b[1].size - a[1].size)
+                  .slice(0, 10);
+                
+                summary.addHeading('📱 Top 10 Devices by Deleted ccache', 3)
+                  .addTable([
+                    [{data: 'Device', header: true}, {data: 'Caches', header: true}, {data: 'Size (GB)', header: true}],
+                    ...topDevices.map(([device, data]) => [
+                      device,
+                      data.count.toString(),
+                      (data.size / 1024 / 1024 / 1024).toFixed(2)
+                    ])
+                  ]);
+              }
+            }
+            
+            // Add failures if any
+            if (skippedCaches.length > 0) {
+              summary.addHeading('⚠️ Failed Deletions', 3)
+                .addTable([
+                  [{data: 'Cache Key', header: true}, {data: 'Reason', header: true}],
+                  ...skippedCaches.map(c => [c.key, c.reason])
+                ]);
+            }
+            
+            summary.write();
+
+  cleanup-runs:
+    runs-on: ubuntu-latest
+    needs: analyze
+    if: |
+      always() &&
+      (inputs.cleanup_type == 'runs_only' || inputs.cleanup_type == 'full_cleanup') &&
+      (inputs.cleanup_type != 'analyze_only')
+    
+    steps:
+      - name: 🗑️ Clean old workflow runs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const keepRecent = parseInt('${{ inputs.keep_recent_runs }}');
+            const daysToKeep = parseInt('${{ inputs.days_to_keep }}');
+            const dryRun = '${{ inputs.dry_run }}' === 'true';
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+            
+            console.log(`📅 Configuration:`);
+            console.log(`   - Keeping runs from: ${cutoffDate.toISOString()}`);
+            console.log(`   - Keeping ${keepRecent} most recent successful runs per workflow`);
+            console.log(`   - Dry Run: ${dryRun}\n`);
+            
+            const workflows = await github.rest.actions.listRepoWorkflows({
+              owner,
+              repo
+            });
+            
+            let totalDeleted = 0;
+            let totalFailed = 0;
+            const workflowStats = [];
+            
+            for (const workflow of workflows.data.workflows) {
+              console.log(`\n📋 Processing: ${workflow.name}`);
+              
+              let page = 1;
+              let successfulRuns = [];
+              let deletedInWorkflow = 0;
+              let failedInWorkflow = 0;
+              
+              const runsByStatus = {
+                success: 0,
+                failure: 0,
+                cancelled: 0,
+                skipped: 0,
+                other: 0
+              };
+              
+              while (true) {
+                const runs = await github.rest.actions.listWorkflowRuns({
+                  owner,
+                  repo,
+                  workflow_id: workflow.id,
+                  per_page: 100,
+                  page: page
+                });
+                
+                if (runs.data.workflow_runs.length === 0) break;
+                
+                for (const run of runs.data.workflow_runs) {
+                  const runDate = new Date(run.created_at);
+                  const ageDays = Math.floor((new Date() - runDate) / (1000 * 60 * 60 * 24));
+                  
+                  // Count by status
+                  runsByStatus[run.conclusion || 'other']++;
+                  
+                  // Track successful runs
+                  if (run.conclusion === 'success') {
+                    successfulRuns.push(run);
+                  }
+                  
+                  // Determine if should delete
+                  const isOld = runDate < cutoffDate;
+                  const isFailed = run.conclusion === 'failure';
+                  const isCancelled = run.conclusion === 'cancelled';
+                  const isSkipped = run.conclusion === 'skipped';
+                  const tooManySuccessful = run.conclusion === 'success' && 
+                                           successfulRuns.length > keepRecent;
+                  
+                  const shouldDelete = 
+                    (isFailed && isOld) ||
+                    (isCancelled && isOld) ||
+                    (isSkipped && isOld) ||
+                    (tooManySuccessful && isOld);
+                  
+                  if (shouldDelete) {
+                    if (dryRun) {
+                      console.log(`🔍 Would delete: #${run.run_number} (${run.conclusion}, ${ageDays}d old)`);
+                    } else {
+                      console.log(`🗑️ Deleting: #${run.run_number} (${run.conclusion}, ${ageDays}d old)`);
+                      
+                      try {
+                        await github.rest.actions.deleteWorkflowRun({
+                          owner,
+                          repo,
+                          run_id: run.id
+                        });
+                        deletedInWorkflow++;
+                        totalDeleted++;
+                      } catch (error) {
+                        console.log(`   ⚠️ Failed: ${error.message}`);
+                        failedInWorkflow++;
+                        totalFailed++;
+                      }
+                    }
+                  }
+                }
+                
+                if (runs.data.workflow_runs.length < 100) break;
+                page++;
+              }
+              
+              if (deletedInWorkflow > 0 || Object.values(runsByStatus).some(v => v > 0)) {
+                workflowStats.push({
+                  name: workflow.name,
+                  deleted: deletedInWorkflow,
+                  failed: failedInWorkflow,
+                  stats: runsByStatus
+                });
+              }
+            }
+            
+            console.log(`\n✅ Total runs ${dryRun ? 'to delete' : 'deleted'}: ${totalDeleted}`);
+            if (totalFailed > 0) {
+              console.log(`⚠️ Failed deletions: ${totalFailed}`);
+            }
+            
+            // Generate summary
+            let summary = core.summary
+              .addHeading(`🧹 Workflow Runs ${dryRun ? 'Preview' : 'Summary'}`)
+              .addTable([
+                [{data: 'Metric', header: true}, {data: 'Value', header: true}],
+                ['Runs ' + (dryRun ? 'to Delete' : 'Deleted'), totalDeleted.toString()],
+                ['Failed Deletions', totalFailed.toString()],
+                ['Kept Recent Successful', keepRecent.toString()],
+                ['Days Kept', daysToKeep.toString()]
+              ]);
+            
+            if (workflowStats.length > 0) {
+              summary.addHeading('📊 Per-Workflow Breakdown', 3)
+                .addTable([
+                  [
+                    {data: 'Workflow', header: true}, 
+                    {data: 'Deleted', header: true},
+                    {data: 'Success', header: true},
+                    {data: 'Failure', header: true},
+                    {data: 'Cancelled', header: true}
+                  ],
+                  ...workflowStats.map(w => [
+                    w.name,
+                    w.deleted.toString(),
+                    w.stats.success.toString(),
+                    w.stats.failure.toString(),
+                    w.stats.cancelled.toString()
+                  ])
+                ]);
+            }
+            
+            summary.write();
+
+  final-report:
+    runs-on: ubuntu-latest
+    needs: [analyze, cleanup-caches, cleanup-runs]
+    if: always()
+    
+    steps:
+      - name: 📊 Final Repository Health Report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const dryRun = '${{ inputs.dry_run }}' === 'true';
+            
+            console.log('📊 Generating final health report...\n');
+            
+            // Get current cache usage (after cleanup)
+            let page = 1;
+            let totalCacheSize = 0;
+            let cachesByType = {
+              ccache: 0,
+              apt: 0,
+              kernel: 0,
+              other: 0
+            };
+            let cacheCount = 0;
+            const buildFrequency = new Map();
+            const recentCutoff = new Date();
+            recentCutoff.setDate(recentCutoff.getDate() - 30);
+            
+            while (true) {
+              const res = await github.rest.actions.getActionsCacheList({
+                owner,
+                repo,
+                per_page: 100,
+                page: page
+              });
+              
+              const caches = res.data.actions_caches;
+              if (!caches || caches.length === 0) break;
+              
+              for (const cache of caches) {
+                totalCacheSize += cache.size_in_bytes;
+                cacheCount++;
+                
+                if (cache.key.startsWith('ccache-')) {
+                  cachesByType.ccache += cache.size_in_bytes;
+                  
+                  // Track build frequency
+                  const match = cache.key.match(/ccache-([^-]+)-/);
+                  if (match && new Date(cache.last_accessed_at) > recentCutoff) {
+                    const device = match[1];
+                    buildFrequency.set(device, (buildFrequency.get(device) || 0) + 1);
+                  }
+                } else if (cache.key.includes('apt')) {
+                  cachesByType.apt += cache.size_in_bytes;
+                } else if (cache.key.includes('kernel') || cache.key.includes('android')) {
+                  cachesByType.kernel += cache.size_in_bytes;
+                } else {
+                  cachesByType.other += cache.size_in_bytes;
+                }
+              }
+              
+              if (caches.length < 100) break;
+              page++;
+            }
+            
+            const totalGB = (totalCacheSize / 1024 / 1024 / 1024).toFixed(2);
+            const ccacheGB = (cachesByType.ccache / 1024 / 1024 / 1024).toFixed(2);
+            const aptGB = (cachesByType.apt / 1024 / 1024 / 1024).toFixed(2);
+            const kernelGB = (cachesByType.kernel / 1024 / 1024 / 1024).toFixed(2);
+            const otherGB = (cachesByType.other / 1024 / 1024 / 1024).toFixed(2);
+            
+            const limit = 10; // 10 GB
+            const usagePercent = ((totalCacheSize / (limit * 1024 * 1024 * 1024)) * 100).toFixed(1);
+            
+            // Calculate change if we have before data
+            const beforeSize = parseFloat('${{ needs.analyze.outputs.total_cache_size }}');
+            const beforeCount = parseInt('${{ needs.analyze.outputs.cache_count }}');
+            const beforePercent = parseFloat('${{ needs.analyze.outputs.usage_percent }}');
+            
+            let changeInfo = '';
+            if (beforeSize > 0 && !dryRun) {
+              const sizeChange = beforeSize - totalCacheSize;
+              const countChange = beforeCount - cacheCount;
+              const percentChange = beforePercent - parseFloat(usagePercent);
+              
+              const changeGB = (sizeChange / 1024 / 1024 / 1024).toFixed(2);
+              
+              changeInfo = `\n### 📈 Cleanup Impact\n\n` +
+                `- **Space Freed:** ${changeGB} GB\n` +
+                `- **Caches Removed:** ${countChange}\n` +
+                `- **Usage Reduced:** ${percentChange.toFixed(1)}%\n`;
+            }
+            
+            // Determine health status
+            let healthEmoji = '🟢';
+            let healthStatus = 'Healthy';
+            if (usagePercent > 90) {
+              healthEmoji = '🔴';
+              healthStatus = 'Critical - Immediate Cleanup Needed!';
+            } else if (usagePercent > 75) {
+              healthEmoji = '🟡';
+              healthStatus = 'Warning - Consider Cleanup Soon';
+            }
+            
+            let summary = core.summary
+              .addHeading(`${healthEmoji} Final Repository Health Report`)
+              .addRaw(dryRun ? '\n**⚠️ This was a DRY RUN - No changes were made**\n\n' : '\n')
+              .addTable([
+                [{data: 'Cache Type', header: true}, {data: 'Size (GB)', header: true}, {data: 'Percentage', header: true}],
+                ['ccache (Kernel Builds)', ccacheGB, totalCacheSize > 0 ? `${((cachesByType.ccache / totalCacheSize) * 100).toFixed(1)}%` : '0%'],
+                ['Kernel-related', kernelGB, totalCacheSize > 0 ? `${((cachesByType.kernel / totalCacheSize) * 100).toFixed(1)}%` : '0%'],
+                ['APT Packages', aptGB, totalCacheSize > 0 ? `${((cachesByType.apt / totalCacheSize) * 100).toFixed(1)}%` : '0%'],
+                ['Other', otherGB, totalCacheSize > 0 ? `${((cachesByType.other / totalCacheSize) * 100).toFixed(1)}%` : '0%'],
+                ['**Total**', `**${totalGB}**`, '**100%**']
+              ])
+              .addRaw(`\n### 📊 Current Usage Statistics\n\n`)
+              .addRaw(`- **Total Caches:** ${cacheCount}\n`)
+              .addRaw(`- **Limit:** ${limit} GB\n`)
+              .addRaw(`- **Current Usage:** ${totalGB} GB (${usagePercent}%)\n`)
+              .addRaw(`- **Available:** ${(limit - parseFloat(totalGB)).toFixed(2)} GB\n`)
+              .addRaw(`- **Status:** ${healthStatus}\n`)
+              .addRaw(changeInfo);
+            
+            // Build activity analysis
+            if (buildFrequency.size > 0) {
+              const activeDevices = Array.from(buildFrequency.entries())
+                .filter(([_, count]) => count >= 3)
+                .sort((a, b) => b[1] - a[1]);
+              
+              summary.addRaw(`\n### 📱 Build Activity Analysis (Last 30 Days)\n\n`)
+                .addRaw(`- **Active Devices:** ${activeDevices.length}\n`)
+                .addRaw(`- **Total Build Events:** ${Array.from(buildFrequency.values()).reduce((a, b) => a + b, 0)}\n`);
+              
+              if (activeDevices.length > 0) {
+                const topActive = activeDevices.slice(0, 10);
+                summary.addRaw(`\n**Top 10 Most Active Devices:**\n`)
+                  .addTable([
+                    [{data: 'Device', header: true}, {data: 'Build Events', header: true}],
+                    ...topActive.map(([device, count]) => [device, count.toString()])
+                  ]);
+              }
+            }
+            
+            summary.addRaw(`\n### 💡 Next Steps\n\n`);
+            
+            if (dryRun) {
+              summary.addRaw(`- ℹ️ This was a dry run - run again with \`dry_run: false\` to apply changes\n`);
+            } else if (parseFloat(usagePercent) > 75) {
+              summary.addRaw(`- ⚠️ **Action Required:** Usage still high, consider additional cleanup\n`)
+                .addRaw(`- Target specific devices or cache types\n`)
+                .addRaw(`- Review ccache size limits\n`);
+            } else {
+              summary.addRaw(`- ✅ Cache usage is now healthy\n`)
+                .addRaw(`- Schedule regular cleanup (weekly recommended)\n`)
+                .addRaw(`- Monitor usage trends\n`);
+            }
+            
+            summary.addRaw(`\n### 🔄 Cleanup Schedule Recommendations\n\n`)
+              .addRaw(`- **Daily:** If building > 10 devices regularly\n`)
+              .addRaw(`- **Weekly:** For moderate usage (5-10 devices)\n`)
+              .addRaw(`- **Monthly:** For light usage (< 5 devices)\n`)
+              .addRaw(`- **On-demand:** When usage exceeds 75%\n`);
+            
+            summary.write();
+            
+            console.log(`\n✅ Final report generated`);
+            console.log(`   - Current usage: ${totalGB} GB (${usagePercent}%)`);
+            console.log(`   - Status: ${healthStatus}`);
+
+      - name: 💡 Quick Action Commands
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          
+          ---
+          
+          ## 🚀 Quick Action Commands
+          
+          ### High Usage Cleanup (>75%)
+          ```bash
+          # Clean all old caches (>7 days)
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f cache_pattern=old_only \
+            -f cache_age_days=7
+          
+          # Clean stale ccache (>14 days)
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f cache_pattern=ccache_stale
+          
+          # Clean specific device
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f device_filter=OP13 \
+            -f cache_pattern=ccache_only
+          ```
+          
+          ### Regular Maintenance
+          ```bash
+          # Weekly cleanup (recommended)
+          gh workflow run cleanup.yml \
+            -f cleanup_type=full_cleanup \
+            -f cache_age_days=14
+          
+          # Analyze only (no changes)
+          gh workflow run cleanup.yml \
+            -f cleanup_type=analyze_only
+          
+          # Dry run preview
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f dry_run=true
+          ```
+          
+          ### Emergency Cleanup
+          ```bash
+          # Force cleanup everything old
+          gh workflow run cleanup.yml \
+            -f cleanup_type=full_cleanup \
+            -f force_cleanup=true \
+            -f cache_age_days=3
+          
+          # Clean all ccache immediately
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f cache_pattern=ccache_only \
+            -f force_cleanup=true
+          ```
+          
+          ### Device-Specific Cleanup
+          ```bash
+          # Clean by kernel version
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f device_filter=android15-6.6 \
+            -f cache_pattern=ccache_only
+          
+          # Clean specific phone model
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f device_filter=OP13 \
+            -f cache_pattern=all_caches
+          ```
+          
+          ### Workflow Runs Cleanup
+          ```bash
+          # Clean old workflow runs
+          gh workflow run cleanup.yml \
+            -f cleanup_type=runs_only \
+            -f days_to_keep=7 \
+            -f keep_recent_runs=3
+          ```
+          
+          ---
+          
+          **💡 Tip:** Use `dry_run=true` first to preview what will be deleted!
+          
+          EOF
