@@ -222,6 +222,9 @@ jobs:
               end
             )
           ' >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> **Note:** \`next\` auto-maps to the matching gki-androidX-Y.Z branch during build." >> $GITHUB_STEP_SUMMARY
 
   build:
     name: build (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ matrix.os_version }}, ${{ inputs.ksun_branch }})
@@ -243,7 +246,9 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
           sudo apt-get clean
-          docker rmi $(docker images -q) 2>/dev/null || true
+          if command -v docker >/dev/null 2>&1; then
+            docker rmi $(docker images -q) 2>/dev/null || true
+          fi
           echo "::endgroup::"
           
           echo "::group::Disk Usage After Cleanup"
@@ -282,7 +287,7 @@ jobs:
         run: |
           echo "::group::Disk usage pre-build"
           df -h /
-          du -sh "$GITHUB_WORKSPACE" || true
+          du -sh "$GITHUB_WORKSPACE" 2>/dev/null || true
           sudo rm -rf /tmp/* || true
           echo "::endgroup::"
 
@@ -386,12 +391,27 @@ jobs:
         if: always()
         run: |
           echo "::group::Cleanup"
-          sudo rm -rf "$GITHUB_WORKSPACE/out" "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/kernel/out" || true
-          if command -v ccache >/dev/null 2>&1; then
-            ccache -C || true
-          fi
+          
+          # Remove build artifacts but PRESERVE ccache
+          sudo rm -rf "$GITHUB_WORKSPACE/out" || true
+          sudo rm -rf "$GITHUB_WORKSPACE/build" || true
+          sudo rm -rf "$GITHUB_WORKSPACE/kernel/out" || true
+          sudo rm -rf "$GITHUB_WORKSPACE/.repo" || true
           sudo rm -rf /tmp/* || true
+          
+          # Show ccache stats (don't clear it!)
+          if command -v ccache >/dev/null 2>&1; then
+            echo ""
+            echo "📊 ccache statistics after build:"
+            ccache -s
+            echo ""
+            echo "💾 ccache preserved for next build"
+          fi
+          
+          echo ""
+          echo "💽 Final disk usage:"
           df -h /
+          
           echo "::endgroup::"
 
   trigger-release:
