@@ -12,7 +12,7 @@ inputs:
   susfs_commit_hash_or_branch:
     required: false
     type: string
-    default: "master" 
+    default: "" 
   optimize_level:
     required: false
     type: string
@@ -475,7 +475,7 @@ runs:
         if [ -z "$SUSFS_INPUT" ]; then
           # Empty input: use kernel-specific default
           KERNEL_KEY="${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}"
-          SUSFS_BRANCH="${DEFAULT_SUSFS[$KERNEL_KEY]:-master}"
+          SUSFS_BRANCH="${DEFAULT_SUSFS[$KERNEL_KEY]:-gki-android14-6.1}"
           echo "ℹ️  Using default SUSFS branch for $KERNEL_KEY: $SUSFS_BRANCH"
         else
           # User provided custom branch/commit
@@ -1179,6 +1179,11 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        
+        # Get commit SHAs with fallback
+        KSUN_SHA="${KSUN_COMMIT_SHA:-unknown}"
+        SUSFS_SHA="${SUSFS_COMMIT_SHA:-unknown}"
+        
         {
           echo "Model: ${{ env.OP_MODEL }}"
           echo "OS Version: ${{ env.OP_OS_VERSION }}"
@@ -1187,10 +1192,10 @@ runs:
           echo "Kernel full: ${{ env.KERNEL_FULL_VER }}"
           echo "Kernel Uname: ${{ env.KERNEL_UNAME }}"
           echo "KSUN Version: ${KSUVER:-unknown}"
-          echo "KSUN commit SHA: ${{ env.KSUN_COMMIT_SHA }}"
+          echo "KSUN commit SHA: $KSUN_SHA"
           echo "SUSFS Version: ${SUSVER:-unknown}"
           echo "SUSFS Branch: ${{ env.SUSFS_BRANCH_NAME }}"
-          echo "SUSFS commit SHA: ${{ env.SUSFS_COMMIT_SHA }}"
+          echo "SUSFS commit SHA: $SUSFS_SHA"
           echo "Optimization: ${{ inputs.optimize_level }}"
           echo "Clean Build: ${{ inputs.clean }}"
           echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
@@ -1213,23 +1218,38 @@ runs:
           echo "| **Model** | ${{ env.OP_MODEL }} |"
           echo "| **OS Version** | ${{ env.OP_OS_VERSION }} |"
           echo "| **Kernel Version** | ${{ steps.save_metadata.outputs.kernel_version }} |"
-          echo "| **Kernel Uname** | ${{ env.KERNEL_UNAME }} |"
+          echo "| **Kernel Uname** | \`${{ env.KERNEL_UNAME }}\` |"
           echo "| **KSUN Version** | ${KSUVER:-unknown} |"
-          echo "| **KSUN Commit** | [\`${KSUN_COMMIT_SHA:0:8}\`](https://github.com/KernelSU-Next/KernelSU-Next/commit/${{ env.KSUN_COMMIT_SHA }}) |"
+          
+          if [ "$KSUN_SHA" != "unknown" ]; then
+            echo "| **KSUN Commit** | [\`${KSUN_SHA:0:8}\`](https://github.com/KernelSU-Next/KernelSU-Next/commit/$KSUN_SHA) |"
+          else
+            echo "| **KSUN Commit** | unknown |"
+          fi
+          
           echo "| **SUSFS Version** | ${SUSVER:-unknown} |"
           echo "| **SUSFS Branch** | \`${{ env.SUSFS_BRANCH_NAME }}\` |"
-          echo "| **SUSFS Commit** | [\`${SUSFS_COMMIT_SHA:0:8}\`](https://gitlab.com/simonpunk/susfs4ksu/-/commit/${{ env.SUSFS_COMMIT_SHA }}) |"
+          
+          if [ "$SUSFS_SHA" != "unknown" ]; then
+            echo "| **SUSFS Commit** | [\`${SUSFS_SHA:0:8}\`](https://gitlab.com/simonpunk/susfs4ksu/-/commit/$SUSFS_SHA) |"
+          else
+            echo "| **SUSFS Commit** | unknown |"
+          fi
+          
           echo "| **Optimization** | ${{ inputs.optimize_level }} |"
           echo "| **Clean Build** | ${{ inputs.clean }} |"
           echo "| **Build Time** | ${{ steps.collect_stats.outputs.build_time }}s |"
+          
           if [ "${{ inputs.clean }}" != "true" ]; then
             echo "| **ccache Hit Rate** | ${{ steps.ccache_stats.outputs.hit_rate }} |"
             echo "| **ccache Direct Rate** | ${{ steps.ccache_stats.outputs.direct_rate }} |"
           fi
+          
           echo "| **Image SHA256** | \`${{ steps.collect_stats.outputs.image_sha256 }}\` |"
           echo "| **Warnings** | ${{ steps.collect_stats.outputs.warnings_count }} |"
-          echo "| **Compiler** | ${CLANG_VERSION:-unknown} |"
+          echo "| **Compiler** | \`${CLANG_VERSION:-unknown}\` |"
         } >> "$GITHUB_STEP_SUMMARY"
+
 
     - name: Upload Artifacts
       if: success() && steps.create_zip.conclusion == 'success'
