@@ -572,7 +572,6 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        echo "::group::Apply SUSFS patches"
         cd "$CONFIG/kernel_platform"
         echo "Applying SUSFS patches..."
         cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch ./common/
@@ -615,7 +614,7 @@ runs:
             patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
             ;;
           *)
-            echo "::error::Invalid version: $susfs_version"
+            echo "Invalid version: $susfs_version"
             exit 1
             ;;
         esac
@@ -627,6 +626,7 @@ runs:
           fi
         fi
       
+        # Fake kernel patch to fix failures
         fake_patched=0
         if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
           if ! grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
@@ -657,6 +657,7 @@ runs:
         
         patch -p1 < 50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch
       
+        # Revert Fake kernel patch
         if [ "$fake_patched" = 1 ]; then
           if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
             if grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
@@ -686,8 +687,8 @@ runs:
       
         KERNEL_VERSION="${{ env.KERNEL_VER }}"
         MIN_VERSION="5.16"
-        if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ] && [ "$KERNEL_VERSION" != "$MIN_VERSION" ]; then
-          echo "Patching ptrace for kernel < 5.16!"
+        if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
+          echo "Patching ptrace!"
           patch -p1 -F 3 < "../../../kernel_patches/gki_ptrace.patch"
         else
           echo "Kernel >= $MIN_VERSION, skipping ptrace patch"
@@ -702,8 +703,7 @@ runs:
           patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
         else
           echo "Not OP-ACE-5-PRO / OP13-PJZ / OP13-CPH , skipping fengchi patch"
-        fi
-        
+        fi        
         echo "✅ SUSFS patches applied"
         echo "::endgroup::"
 
