@@ -12,7 +12,7 @@ inputs:
   susfs_commit_hash_or_branch:
     required: false
     type: string
-    default: ""
+    default: "next"  # ← Changed from "" to "next"
   optimize_level:
     required: false
     type: string
@@ -479,26 +479,59 @@ runs:
         set -euo pipefail
         echo "::group::Clone dependencies"
         echo "Cloning AnyKernel3 and other dependencies..."
+        
         ANYKERNEL_BRANCH="gki-2.0"
-        if [[ -z "${{ inputs.susfs_commit_hash_or_branch }}" ]]; then
-          SUSFS_BRANCH="${{ env.SUSFS_KERNEL_BRANCH }}"
+        
+        # Determine SUSFS branch/commit to use
+        SUSFS_INPUT="${{ inputs.susfs_commit_hash_or_branch }}"
+        
+        # Treat empty string or "next" as default
+        if [ -z "$SUSFS_INPUT" ] || [ "$SUSFS_INPUT" = "next" ]; then
+          SUSFS_BRANCH="next"
+          echo "ℹ️  Using default SUSFS branch: next"
         else
-          SUSFS_BRANCH="${{ inputs.susfs_commit_hash_or_branch }}"
+          SUSFS_BRANCH="$SUSFS_INPUT"
+          echo "🔧 Using custom SUSFS ref: $SUSFS_BRANCH"
         fi
+        
         echo "Using AnyKernel3 branch: $ANYKERNEL_BRANCH"
-        echo "Using SUSFS branch: $SUSFS_BRANCH"
+        echo "Using SUSFS branch/commit: $SUSFS_BRANCH"
+        
         git clone --depth=1 https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
         git clone --depth=1 https://github.com/TheWildJames/kernel_patches.git
         git clone https://gitlab.com/simonpunk/susfs4ksu.git
+        
         cd susfs4ksu
-        if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1; then
+        
+        # Try to checkout the specified branch/commit
+        if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1; then
+          # It's a remote branch
+          echo "✅ Checking out remote branch: $SUSFS_BRANCH"
           git checkout "$SUSFS_BRANCH"
-          SUSFS_COMMIT_SHA=$(git rev-parse HEAD)
-          echo "SUSFS_COMMIT_SHA=$SUSFS_COMMIT_SHA" >> $GITHUB_ENV
+        elif git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1; then
+          # It's a local ref or commit hash
+          echo "✅ Checking out ref/commit: $SUSFS_BRANCH"
+          git checkout "$SUSFS_BRANCH"
         else
-          echo "::error::SUSFS branch or ref '$SUSFS_BRANCH' not found."
+          echo "::error::SUSFS branch or commit '$SUSFS_BRANCH' not found in repository"
+          echo ""
+          echo "Available remote branches:"
+          git branch -r | head -n 20
           exit 1
         fi
+        
+        SUSFS_COMMIT_SHA=$(git rev-parse HEAD)
+        SUSFS_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+        
+        echo "SUSFS_COMMIT_SHA=$SUSFS_COMMIT_SHA" >> $GITHUB_ENV
+        echo "SUSFS_BRANCH_NAME=$SUSFS_BRANCH_NAME" >> $GITHUB_ENV
+        
+        echo ""
+        echo "✅ SUSFS checked out successfully"
+        echo "   Branch/Ref: $SUSFS_BRANCH_NAME"
+        echo "   Commit: $SUSFS_COMMIT_SHA"
+        
+        cd ..
         echo "✅ Dependencies cloned"
         echo "::endgroup::"
 
@@ -1160,13 +1193,14 @@ runs:
         {
           echo "Model: ${{ env.OP_MODEL }}"
           echo "OS Version: ${{ env.OP_OS_VERSION }}"
-                    echo "Android: ${{ env.ANDROID_VER }}"
+          echo "Android: ${{ env.ANDROID_VER }}"
           echo "Kernel base: ${{ env.KERNEL_VER }}"
           echo "Kernel full: ${{ env.KERNEL_FULL_VER }}"
           echo "Kernel Uname: ${{ env.KERNEL_UNAME }}"
           echo "KSUN Version: ${KSUVER:-unknown}"
           echo "KSUN commit SHA: ${{ env.KSUN_COMMIT_SHA }}"
           echo "SUSFS Version: ${SUSVER:-unknown}"
+          echo "SUSFS Branch: ${{ env.SUSFS_BRANCH_NAME }}"
           echo "SUSFS commit SHA: ${{ env.SUSFS_COMMIT_SHA }}"
           echo "Optimization: ${{ inputs.optimize_level }}"
           echo "Clean Build: ${{ inputs.clean }}"
@@ -1192,9 +1226,10 @@ runs:
           echo "| **Kernel Version** | ${{ steps.save_metadata.outputs.kernel_version }} |"
           echo "| **Kernel Uname** | ${{ env.KERNEL_UNAME }} |"
           echo "| **KSUN Version** | ${KSUVER:-unknown} |"
-          echo "| **KSUN Commit** | [${{ env.KSUN_COMMIT_SHA }}](https://github.com/KernelSU-Next/KernelSU-Next/commit/${{ env.KSUN_COMMIT_SHA }}) |"
+          echo "| **KSUN Commit** | [\`${KSUN_COMMIT_SHA:0:8}\`](https://github.com/KernelSU-Next/KernelSU-Next/commit/${{ env.KSUN_COMMIT_SHA }}) |"
           echo "| **SUSFS Version** | ${SUSVER:-unknown} |"
-          echo "| **SUSFS Commit** | [${{ env.SUSFS_COMMIT_SHA }}](https://gitlab.com/simonpunk/susfs4ksu/-/commit/${{ env.SUSFS_COMMIT_SHA }}) |"
+          echo "| **SUSFS Branch** | \`${{ env.SUSFS_BRANCH_NAME }}\` |"
+          echo "| **SUSFS Commit** | [\`${SUSFS_COMMIT_SHA:0:8}\`](https://gitlab.com/simonpunk/susfs4ksu/-/commit/${{ env.SUSFS_COMMIT_SHA }}) |"
           echo "| **Optimization** | ${{ inputs.optimize_level }} |"
           echo "| **Clean Build** | ${{ inputs.clean }} |"
           echo "| **Build Time** | ${{ steps.collect_stats.outputs.build_time }}s |"
@@ -1213,4 +1248,3 @@ runs:
       with:
         name: kernel-${{ env.CONFIG }}_${{ env.OP_OS_VERSION }}
         path: ${{ env.CONFIG }}/artifacts/
-
