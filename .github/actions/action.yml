@@ -33,7 +33,7 @@ outputs:
   image_sha256:
     value: ${{ steps.collect_stats.outputs.image_sha256 }}
   warnings:
-    value: ${{ steps.collect_stats.outputs.warnings }}
+    value: ${{ steps.collect_stats.outputs.warnings_count }}
   build_time:
     description: 'Total build time in seconds'
     value: ${{ steps.collect_stats.outputs.build_time }}
@@ -218,7 +218,7 @@ runs:
         if [[ "$OP_MANIFEST" == https://* ]]; then
           mkdir -p .repo/manifests
           curl --fail --show-error --location --proto '=https' "$OP_MANIFEST" -o .repo/manifests/temp_manifest.xml
-          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git -b oneplus/sm8650 -m temp_manifest.xml --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
+          "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git -b "$OP_BRANCH" -m temp_manifest.xml --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
         else
           "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git -b "$OP_BRANCH" -m "$OP_MANIFEST" --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
         fi
@@ -472,9 +472,9 @@ runs:
         )
         
         # Determine which SUSFS branch to use
-        if [ -z "$SUSFS_INPUT" ]; then
-          # Empty input: use kernel-specific default
-          KERNEL_KEY="${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}"
+        KERNEL_KEY="${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}"
+        if [ -z "$SUSFS_INPUT" ] || [ "$SUSFS_INPUT" = "next" ]; then
+          # Empty or "next": use kernel-specific default
           SUSFS_BRANCH="${DEFAULT_SUSFS[$KERNEL_KEY]:-gki-android14-6.1}"
           echo "ℹ️  Using default SUSFS branch for $KERNEL_KEY: $SUSFS_BRANCH"
         else
@@ -686,8 +686,8 @@ runs:
       
         KERNEL_VERSION="${{ env.KERNEL_VER }}"
         MIN_VERSION="5.16"
-        if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
-          echo "Patching ptrace!"
+        if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ] && [ "$KERNEL_VERSION" != "$MIN_VERSION" ]; then
+          echo "Patching ptrace for kernel < 5.16!"
           patch -p1 -F 3 < "../../../kernel_patches/gki_ptrace.patch"
         else
           echo "Kernel >= $MIN_VERSION, skipping ptrace patch"
@@ -1163,7 +1163,7 @@ runs:
         find "$ARTIFACTS_DIR" -maxdepth 1 -type f ! -name "$ZIP_NAME" ! -name "${OP_MODEL}_${OP_OS_VERSION}.txt" -delete
         
         ZIP_SIZE=$(stat -c%s "$ARTIFACTS_DIR/$ZIP_NAME")
-        ZIP_SHA256=$(sha256sum "$ARTIFACTS_DIR/$ZIP_NAME" | awk '{print $1}')
+                ZIP_SHA256=$(sha256sum "$ARTIFACTS_DIR/$ZIP_NAME" | awk '{print $1}')
         
         echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
         echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
@@ -1250,10 +1250,10 @@ runs:
           echo "| **Compiler** | \`${CLANG_VERSION:-unknown}\` |"
         } >> "$GITHUB_STEP_SUMMARY"
 
-
     - name: Upload Artifacts
       if: success() && steps.create_zip.conclusion == 'success'
       uses: actions/upload-artifact@v4
       with:
         name: kernel-${{ env.CONFIG }}_${{ env.OP_OS_VERSION }}
         path: ${{ env.CONFIG }}/artifacts/
+
