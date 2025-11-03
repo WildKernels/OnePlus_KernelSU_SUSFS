@@ -72,6 +72,7 @@ jobs:
           echo "::group::SUSFS Configuration"
           
           # Default SUSFS branch for all kernel versions
+          # Using "next" as a logical placeholder - will be resolved to gki-androidX-Y.Z in composite action
           DEFAULT_SUSFS='{
             "android12-5.10": "next",
             "android13-5.10": "next",
@@ -85,7 +86,7 @@ jobs:
           INPUT='${{ inputs.susfs_config }}'
           
           if [ -z "$INPUT" ] || [ "$INPUT" = "{}" ]; then
-            echo "ℹ️  Using default SUSFS configuration (all 'next')"
+            echo "ℹ️  Using default SUSFS configuration (all 'next' = auto-select gki branches)"
             SUSFS_MAP="$DEFAULT_SUSFS"
           else
             echo "🔧 Parsing custom SUSFS configuration..."
@@ -107,7 +108,12 @@ jobs:
           
           echo ""
           echo "📋 Final SUSFS Configuration:"
-          echo "$SUSFS_MAP" | jq -r 'to_entries[] | "  - \(.key): \(.value)"'
+          echo "$SUSFS_MAP" | jq -r 'to_entries[] | 
+            if .value == "next" then
+              "  - \(.key): next (will auto-select gki-\(.key))"
+            else
+              "  - \(.key): \(.value)"
+            end'
           
           # Output for next job
           echo "susfs_map<<SUSFS_EOF" >> "$GITHUB_OUTPUT"
@@ -215,7 +221,13 @@ jobs:
           echo '${{ steps.parse-susfs.outputs.susfs_map }}' | jq -r '
             "| Kernel Version | SUSFS Branch |",
             "|----------------|--------------|",
-            (to_entries[] | "| \(.key) | `\(.value)` |")
+            (to_entries[] | 
+              if .value == "next" then
+                "| \(.key) | `next` (→ gki-\(.key)) |"
+              else
+                "| \(.key) | `\(.value)` |"
+              end
+            )
           ' >> $GITHUB_STEP_SUMMARY
 
   build:
