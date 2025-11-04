@@ -1,6 +1,4 @@
 name: 'Build OnePlus Kernel with KernelSU Next'
-description: 'Build OnePlus kernel with KernelSU Next and SUSFS integration'
-author: 'TheWildJames'
 
 inputs:
   op_config_json:
