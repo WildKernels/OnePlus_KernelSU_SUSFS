@@ -301,113 +301,14 @@ runs:
         echo "   SUSFS Branch: gki-$ANDROID_VERSION-$VERSION.$PATCHLEVEL"
         echo "::endgroup::"
 
-    - name: Extract Stock Boot Info
+    - name: 🏷️ Set Build Identity (Hardcoded)
       shell: bash
       run: |
         set -euo pipefail
-        echo "::group::Extract build user/host from stock boot"
-        
-        # Device-specific defaults
-        case "${{ env.OP_MODEL }}" in
-          OP9RT|OP9R|OP9Pro|OP9)
-            DEFAULT_USER="OnePlus"
-            DEFAULT_HOST="ubuntu-build"
-            ;;
-          OP10Pro|OP10T|OP10R)
-            DEFAULT_USER="OnePlus"
-            DEFAULT_HOST="ubuntu-build"
-            ;;
-          OP11|OP12|OP12R)
-            DEFAULT_USER="OnePlus"
-            DEFAULT_HOST="ubuntu-build"
-            ;;
-          OP13|OPAce5Pro)
-            DEFAULT_USER="OnePlus"
-            DEFAULT_HOST="ubuntu-build"
-            ;;
-          *)
-            DEFAULT_USER="builder"
-            DEFAULT_HOST="build-host"
-            ;;
-        esac
-        
-        BOOT_IMG_PATH="$GITHUB_WORKSPACE/stock_boot/${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}/boot.img"
-        
-        if [ -f "$BOOT_IMG_PATH" ]; then
-          echo "Found stock boot image, extracting build info..."
-          
-          # Extract kernel from boot.img using strings directly
-          TEMP_DIR=$(mktemp -d)
-          cd "$TEMP_DIR"
-          
-          # Try multiple extraction methods
-          EXTRACTED=false
-          
-          # Method 1: Try magiskboot if available
-          if command -v magiskboot &> /dev/null; then
-            if magiskboot unpack "$BOOT_IMG_PATH" 2>/dev/null; then
-              EXTRACTED=true
-            fi
-          fi
-          
-          # Method 2: Try unpackbootimg if available
-          if ! $EXTRACTED && command -v unpackbootimg &> /dev/null; then
-            if unpackbootimg -i "$BOOT_IMG_PATH" 2>/dev/null; then
-              EXTRACTED=true
-            fi
-          fi
-          
-          # Method 3: Direct strings extraction from boot.img
-          if ! $EXTRACTED; then
-            echo "⚠️ No boot unpacker found, trying direct extraction..."
-            # Extract directly from boot.img
-            BUILD_USER=$(strings "$BOOT_IMG_PATH" | grep -oP '(?<=\().*?(?=@)' | grep -v '^$' | head -n1 || echo "$DEFAULT_USER")
-            BUILD_HOST=$(strings "$BOOT_IMG_PATH" | grep -oP '(?<=@)[^)]+' | grep -v '^$' | head -n1 || echo "$DEFAULT_HOST")
-            
-            if [ "$BUILD_USER" != "$DEFAULT_USER" ] && [ "$BUILD_HOST" != "$DEFAULT_HOST" ]; then
-              echo "✅ Extracted from boot.img directly:"
-              echo "  User: $BUILD_USER"
-              echo "  Host: $BUILD_HOST"
-              cd - > /dev/null
-              rm -rf "$TEMP_DIR"
-              echo "BUILD_USER=$BUILD_USER" >> "$GITHUB_ENV"
-              echo "BUILD_HOST=$BUILD_HOST" >> "$GITHUB_ENV"
-              echo "::endgroup::"
-              exit 0
-            fi
-          fi
-          
-          # Look for kernel file if extraction succeeded
-          KERNEL_FILE=""
-          for f in kernel kernel.img kernel-dtb; do
-            if [ -f "$f" ]; then
-              KERNEL_FILE="$f"
-              break
-            fi
-          done
-          
-          if [ -n "$KERNEL_FILE" ]; then
-            # Extract build user and host from kernel strings
-            BUILD_USER=$(strings "$KERNEL_FILE" | grep -oP '(?<=\().*?(?=@)' | grep -v '^$' | head -n1 || echo "$DEFAULT_USER")
-            BUILD_HOST=$(strings "$KERNEL_FILE" | grep -oP '(?<=@)[^)]+' | grep -v '^$' | head -n1 || echo "$DEFAULT_HOST")
-            
-            echo "✅ Extracted from kernel:"
-            echo "  User: $BUILD_USER"
-            echo "  Host: $BUILD_HOST"
-          else
-            echo "⚠️ Could not extract kernel, using defaults"
-            BUILD_USER="$DEFAULT_USER"
-            BUILD_HOST="$DEFAULT_HOST"
-          fi
-          
-          cd - > /dev/null
-          rm -rf "$TEMP_DIR"
-        else
-          echo "ℹ️  Stock boot image not found at: $BOOT_IMG_PATH"
-          echo "Using device defaults"
-          BUILD_USER="$DEFAULT_USER"
-          BUILD_HOST="$DEFAULT_HOST"
-        fi
+        echo "::group::Set build user/host"
+                
+        BUILD_USER="OnePlus"
+        BUILD_HOST="ubuntu-build"
         
         echo "BUILD_USER=$BUILD_USER" >> "$GITHUB_ENV"
         echo "BUILD_HOST=$BUILD_HOST" >> "$GITHUB_ENV"
@@ -417,7 +318,7 @@ runs:
         echo "   User: $BUILD_USER"
         echo "   Host: $BUILD_HOST"
         echo "::endgroup::"
-
+        
     - name: Detect Clang
       shell: bash
       run: |
