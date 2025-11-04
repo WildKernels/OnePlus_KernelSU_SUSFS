@@ -477,7 +477,7 @@ runs:
         
         CACHE_DIR="$HOME/.ccache"
         echo "CCACHE_DIR=$CACHE_DIR" >> "$GITHUB_ENV"
-        echo "CCACHE_MAXSIZE=12G" >> "$GITHUB_ENV"
+        echo "CCACHE_MAXSIZE=8G" >> "$GITHUB_ENV"
         
         mkdir -p "$CACHE_DIR"
         
@@ -511,7 +511,7 @@ runs:
         echo "::group::Configure ccache for maximum performance"
         
         export CCACHE_DIR="$HOME/.ccache"
-        export CCACHE_MAXSIZE="12G"
+        export CCACHE_MAXSIZE="8G"
         
         ccache -M "$CCACHE_MAXSIZE"
         
