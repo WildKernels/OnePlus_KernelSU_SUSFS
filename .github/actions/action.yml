@@ -6,14 +6,17 @@ inputs:
     required: true
     type: string
   ksun_branch:
+    description: 'KernelSU Next branch to use'
     required: true
     type: string
     default: stable
   susfs_commit_hash_or_branch:
+    description: 'SUSFS branch or commit hash (empty = auto-detect by kernel version)'
     required: false
     type: string
     default: "" 
   optimize_level:
+    description: 'Compiler optimization level (O2 or O3)'
     required: false
     type: string
     default: O2
@@ -25,14 +28,19 @@ inputs:
 
 outputs:
   kernel_version:
+    description: 'Full kernel version string'
     value: ${{ steps.save_metadata.outputs.kernel_version }}
   ksu_version:
+    description: 'KernelSU Next version number'
     value: ${{ steps.save_metadata.outputs.ksu_version }}
   susfs_version:
+    description: 'SUSFS version string'
     value: ${{ steps.save_metadata.outputs.susfs_version }}
   image_sha256:
+    description: 'SHA256 hash of kernel Image'
     value: ${{ steps.collect_stats.outputs.image_sha256 }}
   warnings:
+    description: 'Number of compiler warnings'
     value: ${{ steps.collect_stats.outputs.warnings_count }}
   build_time:
     description: 'Total build time in seconds'
@@ -290,6 +298,123 @@ runs:
         echo "   SUSFS Branch: gki-$ANDROID_VERSION-$VERSION.$PATCHLEVEL"
         echo "::endgroup::"
 
+    - name: Extract Stock Boot Info
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Extract build user/host from stock boot"
+        
+        # Device-specific defaults
+        case "${{ env.OP_MODEL }}" in
+          OP9RT|OP9R|OP9Pro|OP9)
+            DEFAULT_USER="OnePlus"
+            DEFAULT_HOST="ubuntu-build"
+            ;;
+          OP10Pro|OP10T|OP10R)
+            DEFAULT_USER="OnePlus"
+            DEFAULT_HOST="ubuntu-build"
+            ;;
+          OP11|OP12|OP12R)
+            DEFAULT_USER="OnePlus"
+            DEFAULT_HOST="ubuntu-build"
+            ;;
+          OP13|OPAce5Pro)
+            DEFAULT_USER="OnePlus"
+            DEFAULT_HOST="ubuntu-build"
+            ;;
+          *)
+            DEFAULT_USER="builder"
+            DEFAULT_HOST="build-host"
+            ;;
+        esac
+        
+        BOOT_IMG_PATH="$GITHUB_WORKSPACE/stock_boot/${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}/boot.img"
+        
+        if [ -f "$BOOT_IMG_PATH" ]; then
+          echo "Found stock boot image, extracting build info..."
+          
+          # Extract kernel from boot.img using strings directly
+          TEMP_DIR=$(mktemp -d)
+          cd "$TEMP_DIR"
+          
+          # Try multiple extraction methods
+          EXTRACTED=false
+          
+          # Method 1: Try magiskboot if available
+          if command -v magiskboot &> /dev/null; then
+            if magiskboot unpack "$BOOT_IMG_PATH" 2>/dev/null; then
+              EXTRACTED=true
+            fi
+          fi
+          
+          # Method 2: Try unpackbootimg if available
+          if ! $EXTRACTED && command -v unpackbootimg &> /dev/null; then
+            if unpackbootimg -i "$BOOT_IMG_PATH" 2>/dev/null; then
+              EXTRACTED=true
+            fi
+          fi
+          
+          # Method 3: Direct strings extraction from boot.img
+          if ! $EXTRACTED; then
+            echo "⚠️ No boot unpacker found, trying direct extraction..."
+            # Extract directly from boot.img
+            BUILD_USER=$(strings "$BOOT_IMG_PATH" | grep -oP '(?<=\().*?(?=@)' | grep -v '^$' | head -n1 || echo "$DEFAULT_USER")
+            BUILD_HOST=$(strings "$BOOT_IMG_PATH" | grep -oP '(?<=@)[^)]+' | grep -v '^$' | head -n1 || echo "$DEFAULT_HOST")
+            
+            if [ "$BUILD_USER" != "$DEFAULT_USER" ] && [ "$BUILD_HOST" != "$DEFAULT_HOST" ]; then
+              echo "✅ Extracted from boot.img directly:"
+              echo "  User: $BUILD_USER"
+              echo "  Host: $BUILD_HOST"
+              cd - > /dev/null
+              rm -rf "$TEMP_DIR"
+              echo "BUILD_USER=$BUILD_USER" >> "$GITHUB_ENV"
+              echo "BUILD_HOST=$BUILD_HOST" >> "$GITHUB_ENV"
+              echo "::endgroup::"
+              exit 0
+            fi
+          fi
+          
+          # Look for kernel file if extraction succeeded
+          KERNEL_FILE=""
+          for f in kernel kernel.img kernel-dtb; do
+            if [ -f "$f" ]; then
+              KERNEL_FILE="$f"
+              break
+            fi
+          done
+          
+          if [ -n "$KERNEL_FILE" ]; then
+            # Extract build user and host from kernel strings
+            BUILD_USER=$(strings "$KERNEL_FILE" | grep -oP '(?<=\().*?(?=@)' | grep -v '^$' | head -n1 || echo "$DEFAULT_USER")
+            BUILD_HOST=$(strings "$KERNEL_FILE" | grep -oP '(?<=@)[^)]+' | grep -v '^$' | head -n1 || echo "$DEFAULT_HOST")
+            
+            echo "✅ Extracted from kernel:"
+            echo "  User: $BUILD_USER"
+            echo "  Host: $BUILD_HOST"
+          else
+            echo "⚠️ Could not extract kernel, using defaults"
+            BUILD_USER="$DEFAULT_USER"
+            BUILD_HOST="$DEFAULT_HOST"
+          fi
+          
+          cd - > /dev/null
+          rm -rf "$TEMP_DIR"
+        else
+          echo "ℹ️  Stock boot image not found at: $BOOT_IMG_PATH"
+          echo "Using device defaults"
+          BUILD_USER="$DEFAULT_USER"
+          BUILD_HOST="$DEFAULT_HOST"
+        fi
+        
+        echo "BUILD_USER=$BUILD_USER" >> "$GITHUB_ENV"
+        echo "BUILD_HOST=$BUILD_HOST" >> "$GITHUB_ENV"
+        
+        echo ""
+        echo "✅ Build identity configured:"
+        echo "   User: $BUILD_USER"
+        echo "   Host: $BUILD_HOST"
+        echo "::endgroup::"
+
     - name: Detect Clang
       shell: bash
       run: |
@@ -358,6 +483,7 @@ runs:
         echo "  Max size: 12G"
         echo "  Android: ${ANDROID_VER:-unknown}"
         echo "  Kernel: ${KERNEL_VER:-unknown}"
+        echo "  OOS Version: ${OP_OS_VERSION:-unknown}"
         echo "  Clang: ${CLANG_VERSION_SHORT:-unknown}"
         echo "  Device: ${OP_MODEL:-unknown}"
         echo "::endgroup::"
@@ -366,10 +492,11 @@ runs:
       uses: actions/cache@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}
+        key: ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}
         restore-keys: |
-          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}-
-          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-
+          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}-
+          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-${{ env.CLANG_VERSION_SHORT }}-
+          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-
           ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-
           ccache-ksun-v3-${{ env.ANDROID_VER }}-
           ccache-ksun-v3-
@@ -563,13 +690,14 @@ runs:
         cd KernelSU-Next
         KSUN_COMMIT_SHA=$(git rev-parse HEAD)
         echo "KSUN_COMMIT_SHA=$KSUN_COMMIT_SHA" >> $GITHUB_ENV
-        echo "✅ KernelSU Next added"
+        echo "✅ KernelSU Next added (commit: ${KSUN_COMMIT_SHA:0:8})"
         echo "::endgroup::"
 
     - name: Apply SUSFS Patches
       shell: bash
       run: |
         set -euo pipefail
+        echo "::group::Apply SUSFS patches"
         cd "$CONFIG/kernel_platform"
         echo "Applying SUSFS patches..."
         cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch ./common/
@@ -612,7 +740,7 @@ runs:
             patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
             ;;
           *)
-            echo "Invalid version: $susfs_version"
+            echo "::error::Unsupported SUSFS version: $susfs_version"
             exit 1
             ;;
         esac
@@ -700,7 +828,7 @@ runs:
           rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c
           patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
         else
-          echo "Not OP-ACE-5-PRO / OP13-PJZ / OP13-CPH , skipping fengchi patch"
+          echo "Hmbird not enabled, skipping fengchi patch"
         fi        
         echo "✅ SUSFS patches applied"
         echo "::endgroup::"
@@ -853,12 +981,14 @@ runs:
         
         export SOURCE_DATE_EPOCH=$COMMIT_TIMESTAMP
         export KBUILD_BUILD_TIMESTAMP="$COMMIT_DATE UTC"
-        export KBUILD_BUILD_USER="builder"
-        export KBUILD_BUILD_HOST="github-actions"
+        export KBUILD_BUILD_USER="${BUILD_USER:-builder}"
+        export KBUILD_BUILD_HOST="${BUILD_HOST:-github-actions}"
         export KBUILD_BUILD_VERSION=1
         
         echo "📅 Build timestamp: $KBUILD_BUILD_TIMESTAMP (from commit $COMMIT_HASH)"
         echo "🔢 SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+        echo "👤 Build user: $KBUILD_BUILD_USER"
+        echo "🖥️  Build host: $KBUILD_BUILD_HOST"
         
         export PATH="/usr/lib/ccache:${CLANG_BIN_PATH}:${PATH}"
         
@@ -1065,7 +1195,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}-${{ github.run_id }}
+        key: ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}-${{ github.run_id }}
 
     - name: Collect Build Stats / Validate Image
       id: collect_stats
@@ -1161,7 +1291,7 @@ runs:
         find "$ARTIFACTS_DIR" -maxdepth 1 -type f ! -name "$ZIP_NAME" ! -name "${OP_MODEL}_${OP_OS_VERSION}.txt" -delete
         
         ZIP_SIZE=$(stat -c%s "$ARTIFACTS_DIR/$ZIP_NAME")
-                ZIP_SHA256=$(sha256sum "$ARTIFACTS_DIR/$ZIP_NAME" | awk '{print $1}')
+        ZIP_SHA256=$(sha256sum "$ARTIFACTS_DIR/$ZIP_NAME" | awk '{print $1}')
         
         echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
         echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
@@ -1189,6 +1319,8 @@ runs:
           echo "Kernel base: ${{ env.KERNEL_VER }}"
           echo "Kernel full: ${{ env.KERNEL_FULL_VER }}"
           echo "Kernel Uname: ${{ env.KERNEL_UNAME }}"
+          echo "Build User: ${{ env.BUILD_USER }}"
+          echo "Build Host: ${{ env.BUILD_HOST }}"
           echo "KSUN Version: ${KSUVER:-unknown}"
           echo "KSUN commit SHA: $KSUN_SHA"
           echo "SUSFS Version: ${SUSVER:-unknown}"
@@ -1196,6 +1328,14 @@ runs:
           echo "SUSFS commit SHA: $SUSFS_SHA"
           echo "Optimization: ${{ inputs.optimize_level }}"
           echo "Clean Build: ${{ inputs.clean }}"
+          echo ""
+          echo "=== OnePlus Features ==="
+          echo "BBR: ${{ env.OP_BBR }}"
+          echo "BBG: ${{ env.OP_BBG }}"
+          echo "Hmbird: ${{ env.OP_HMBIRD }}"
+          echo "TTL: ${{ env.OP_TTL }}"
+          echo "IP_SET: ${{ env.OP_IP_SET }}"
+          echo ""
           echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "Compiler: ${CLANG_VERSION:-unknown}"
           echo "Warnings Count: ${{ steps.collect_stats.outputs.warnings_count }}"
@@ -1217,6 +1357,8 @@ runs:
           echo "| **OS Version** | ${{ env.OP_OS_VERSION }} |"
           echo "| **Kernel Version** | ${{ steps.save_metadata.outputs.kernel_version }} |"
           echo "| **Kernel Uname** | \`${{ env.KERNEL_UNAME }}\` |"
+          echo "| **Build User** | ${{ env.BUILD_USER }} |"
+          echo "| **Build Host** | ${{ env.BUILD_HOST }} |"
           echo "| **KSUN Version** | ${KSUVER:-unknown} |"
           
           if [ "$KSUN_SHA" != "unknown" ]; then
@@ -1234,6 +1376,22 @@ runs:
             echo "| **SUSFS Commit** | unknown |"
           fi
           
+          echo ""
+          echo "### 🔧 OnePlus Features"
+          echo ""
+          echo "| Feature | Status |"
+          echo "|---------|--------|"
+          echo "| **BBR** | ${{ env.OP_BBR }} |"
+          echo "| **BBG** | ${{ env.OP_BBG }} |"
+          echo "| **Hmbird** | ${{ env.OP_HMBIRD }} |"
+          echo "| **TTL** | ${{ env.OP_TTL }} |"
+          echo "| **IP_SET** | ${{ env.OP_IP_SET }} |"
+          
+          echo ""
+          echo "### 📊 Build Metrics"
+          echo ""
+          echo "| Metric | Value |"
+          echo "|--------|-------|"
           echo "| **Optimization** | ${{ inputs.optimize_level }} |"
           echo "| **Clean Build** | ${{ inputs.clean }} |"
           echo "| **Build Time** | ${{ steps.collect_stats.outputs.build_time }}s |"
@@ -1254,4 +1412,6 @@ runs:
       with:
         name: kernel-${{ env.CONFIG }}_${{ env.OP_OS_VERSION }}
         path: ${{ env.CONFIG }}/artifacts/
+        compression-level: 0
+        retention-days: 20
 
