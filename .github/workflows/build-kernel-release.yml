@@ -449,23 +449,12 @@ jobs:
         id: generate-notes
         run: |
           echo "=== Start building the release notes ==="
-          cat << EOF > release_notes.md
-          This release contains KernelSU Next and SUSFS v1.5.12
           
-          Module: 
-          -> https://github.com/sidex15/ksu_module_susfs  
-          
-          Official Managers:
-          -> https://github.com/KernelSU-Next/KernelSU-Next  
-          
-          Non-Official Managers:
-          -> https://github.com/WildKernels/Wild_KSU
-          
-          ### Built Devices
-          
-          | Model | OS Version | Kernel Version |
-          |-------|------------|----------------|
-          EOF
+          # Collect build metadata
+          declare -A device_info
+          declare -A ksu_versions
+          declare -A susfs_commits
+          declare -A clang_versions
           
           for file in $(find downloaded-artifacts -name "*.txt" -type f | sort); do
             if [ -f "$file" ]; then
@@ -473,29 +462,205 @@ jobs:
               model=$(echo "$full_model" | sed -E 's/_[^_]*$//')
               os_version=$(sed -n '2p' "$file")
               kernel_version=$(sed -n '1p' "$file")
-              if [ -n "$model" ] && [ -n "$os_version" ] && [ -n "$kernel_version" ]; then
-                printf "| %-12s | %-10s | %-16s |\n" "$model" "$os_version" "$kernel_version" >> release_notes.md
+              
+              # Try to extract additional info from artifact directory
+              artifact_dir=$(dirname "$file")
+              if [ -f "$artifact_dir/build_info.json" ]; then
+                ksu_ver=$(jq -r '.ksu_version // "N/A"' "$artifact_dir/build_info.json")
+                susfs_commit=$(jq -r '.susfs_commit // "N/A"' "$artifact_dir/build_info.json")
+                clang_ver=$(jq -r '.clang_version // "N/A"' "$artifact_dir/build_info.json")
               else
-                echo "Warning: Could not read kernel version or OS version from $file. Skipping row for $model."
+                ksu_ver="N/A"
+                susfs_commit="N/A"
+                clang_ver="N/A"
               fi
+              
+              device_info["$model"]="$os_version|$kernel_version"
+              ksu_versions["$model"]="$ksu_ver"
+              susfs_commits["$model"]="$susfs_commit"
+              clang_versions["$model"]="$clang_ver"
             fi
           done
           
-          cat << 'EOF' >> release_notes.md
+          # Get workflow inputs for reference
+          KSUN_BRANCH="${{ inputs.ksun_branch }}"
+          OPTIMIZE_LEVEL="${{ inputs.optimize_level }}"
+          CLEAN_BUILD="${{ inputs.clean_build }}"
           
-          ### Features
-          - [+] KernelSU-Next / WildKSU Manager Support
-          - [+] SUSFS v1.5.12
-          - [+] Wireguard Support
-          - [+] Magic Mount Support
-          - [+] Ptrace message leak fix for kernels < 5.16
-          - [+] Manual Hooks [scope_min_manual_hooks_v1.4]
-          - [+] CONFIG_TMPFS_XATTR Support [Mountify Support]
-          - [+] BBR v1 Support
-          - [+] HMBIRD scx support for OnePlus 13 & OnePlus Ace 5 Pro
-          - [+] Baseband Guard Support (BBG)
-          - [+] IP Set Support
-          - [+] ccache-accelerated builds for faster compilation
+          # Determine SUSFS branches used
+          SUSFS_A12="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
+          SUSFS_A13="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
+          SUSFS_A14="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
+          SUSFS_A15="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
+          
+          [ -z "$SUSFS_A12" ] && SUSFS_A12="gki-android12-5.10 (auto)"
+          [ -z "$SUSFS_A13" ] && SUSFS_A13="gki-android13-5.15 (auto)"
+          [ -z "$SUSFS_A14" ] && SUSFS_A14="gki-android14-6.1 (auto)"
+          [ -z "$SUSFS_A15" ] && SUSFS_A15="gki-android15-6.6 (auto)"
+          
+          cat << EOF > release_notes.md
+          # 🎯 OnePlus Kernels with KernelSU Next & SUSFS v1.5.12
+          
+          > **Build Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')  
+          > **Build ID:** \`${{ github.run_id }}\`  
+          > **Workflow:** [\`${{ github.workflow }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          ---
+          
+          ## 📦 Built Devices (${#device_info[@]} total)
+          
+          | Model | OS Version | Kernel Version | KSU Next | Features |
+          |-------|------------|----------------|----------|----------|
+          EOF
+          
+          for model in $(printf '%s\n' "${!device_info[@]}" | sort); do
+            IFS='|' read -r os_ver kernel_ver <<< "${device_info[$model]}"
+            ksu_ver="${ksu_versions[$model]}"
+            
+            # Determine features based on kernel version and config
+            features=""
+            
+            # Check for HMBIRD support (OP13, OPAce5Pro with android15-6.6)
+            if [[ "$model" =~ ^(OP13|OPAce5Pro)$ ]] && [[ "$kernel_ver" == "android15-6.6"* ]]; then
+              features="${features}🐦 HMBIRD "
+            fi
+            
+            # BBR is enabled for all
+            features="${features}🚀 BBR "
+            
+            # BBG is enabled for all
+            features="${features}🛡️ BBG "
+            
+            # TTL support for all
+            features="${features}⏱️ TTL "
+            
+            # IP_SET support for all
+            features="${features}🔧 IP_SET"
+            
+            printf "| %-13s | %-10s | %-16s | v%-8s | %-30s |\n" \
+              "$model" "$os_ver" "$kernel_ver" "$ksu_ver" "$features" >> release_notes.md
+          done
+          
+          cat << EOF >> release_notes.md
+          
+          ---
+          
+          ## 🔧 Build Configuration
+          
+          | Component | Version/Setting |
+          |-----------|----------------|
+          | **KernelSU Next Branch** | \`$KSUN_BRANCH\` |
+          | **SUSFS Version** | v1.5.12 |
+          | **Optimization Level** | \`$OPTIMIZE_LEVEL\` |
+          | **Clean Build** | $( [ "$CLEAN_BUILD" = "true" ] && echo "✅ Yes (no ccache)" || echo "❌ No (ccache enabled)" ) |
+          | **Compiler** | Clang (version varies by device) |
+          
+          ### 📌 SUSFS Branch Mapping
+          
+          | Kernel Version | SUSFS Branch/Commit |
+          |----------------|---------------------|
+          | android12-5.10 | \`$SUSFS_A12\` |
+          | android13-5.15 | \`$SUSFS_A13\` |
+          | android14-6.1  | \`$SUSFS_A14\` |
+          | android15-6.6  | \`$SUSFS_A15\` |
+          
+          ---
+          
+          ## ✨ Features & Capabilities
+          
+          ### 🔐 Root Management
+          - **KernelSU Next** - Next-generation kernel-level root solution
+          - **SUSFS v1.5.12** - Advanced hiding and security features
+          - **Magic Mount Support** - Seamless file system modifications
+          - **Manual Hooks** - scope_min_manual_hooks_v1.4 for better compatibility
+          
+          ### 🛡️ Security & Privacy
+          - **Baseband Guard (BBG)** - LSM-based baseband security
+          - **SUSFS Hide Features**:
+            - ✅ SUS_PATH - Hide suspicious paths
+            - ✅ SUS_MOUNT - Hide mount points
+            - ✅ SUS_KSTAT - Spoof kernel statistics
+            - ✅ TRY_UMOUNT - Auto-unmount detection
+            - ✅ SPOOF_UNAME - Kernel version spoofing
+            - ✅ SPOOF_CMDLINE - Boot parameters spoofing
+            - ✅ OPEN_REDIRECT - File access redirection
+            - ✅ SUS_MAP - Memory mapping protection
+          - **Ptrace Leak Fix** - For kernels < 5.16
+          
+          ### 🚀 Performance & Networking
+          - **BBR** - Improved TCP congestion control
+          - **Wireguard** - Built-in VPN support
+          - **IP Set Support** - Advanced firewall capabilities
+          - **TTL Target Support** - Network packet manipulation
+          - **LTO (Link Time Optimization)** - Optimized binary size and performance
+          - **ccache-accelerated builds** - Faster compilation times
+          
+          ### 🔧 System Features
+          - **TMPFS_XATTR** - Extended attributes for tmpfs (Mountify support)
+          - **TMPFS_POSIX_ACL** - POSIX ACLs for tmpfs
+          - **HMBIRD SCX** - OnePlus 13 & Ace 5 Pro scheduler extensions
+          
+          ---
+          
+          ## 📱 Manager Applications
+          
+          ### Official Manager
+          - **KernelSU Next Manager**  
+            → [GitHub Release](https://github.com/KernelSU-Next/KernelSU-Next/releases)
+          
+          ### Community Managers
+          - **WildKSU Manager** (Recommended for additional features)  
+            → [GitHub Release](https://github.com/WildKernels/Wild_KSU/releases)
+          
+          ### Required Module
+          - **KSU SUSFS Module** (Required for SUSFS features)  
+            → [GitHub Release](https://github.com/sidex15/ksu_module_susfs/releases)
+          
+          ---
+          
+          ## 📥 Installation Instructions
+          
+          ### Prerequisites
+          - Unlocked bootloader
+          - Backup your current boot image
+          
+          ### Via Custom Recovery
+          1. Download the appropriate ZIP for your device
+          2. Flash the ZIP file using Kernel Flasher
+          3. Reboot system
+          4. Install KernelSU/WildSU Manager
+          5. Install SUSFS module from manager
+          
+          ---
+          
+          ## 📜 Changelog
+          
+          ### This Release
+          - Updated SUSFS to v1.5.12
+          - Added HMBIRD support for OP13/Ace5Pro
+          - Improved ccache build system
+          - Enhanced SUSFS hiding capabilities
+          - Added IP_SET and TTL support
+          - Compiler optimizations ($OPTIMIZE_LEVEL)
+          
+          ### Previous Releases
+          See [Releases Page](${{ github.server_url }}/${{ github.repository }}/releases)
+          
+          ---
+          
+          ## 🙏 Credits
+          
+          - **KernelSU Next Team** - Root solution
+          - **simonpunk** - SUSFS development
+          - **OnePlus** - Kernel source code
+          - **LineageOS Team** - Kernel patches and improvements
+          - **Community Contributors** - Testing and feedback
+          
+          ---
+          
+          **⚡ Built with ❤️ by the community**
+          
+          > *This is an unofficial build. Use at your own risk.*
           EOF
           
           echo "--- Final Release Notes ---"
