@@ -396,14 +396,12 @@ runs:
       uses: actions/cache@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}
+        key: ccache-ksun-v3-${{ env.OP_MODEL }}-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-${{ env.CLANG_VERSION_SHORT }}
         restore-keys: |
-          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}-
-          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-${{ env.CLANG_VERSION_SHORT }}-
-          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-
-          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-
-          ccache-ksun-v3-${{ env.ANDROID_VER }}-
-          ccache-ksun-v3-
+          ccache-ksun-v3-${{ env.OP_MODEL }}-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-
+          ccache-ksun-v3-${{ env.OP_MODEL }}-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-
+          ccache-ksun-v3-${{ env.OP_MODEL }}-${{ env.ANDROID_VER }}-
+          ccache-ksun-v3-${{ env.OP_MODEL }}-
    
     - name: Configure ccache
       shell: bash
