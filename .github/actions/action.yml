@@ -378,13 +378,13 @@ runs:
         
         CACHE_DIR="$HOME/.ccache"
         echo "CCACHE_DIR=$CACHE_DIR" >> "$GITHUB_ENV"
-        echo "CCACHE_MAXSIZE=8G" >> "$GITHUB_ENV"
+        echo "CCACHE_MAXSIZE=1G" >> "$GITHUB_ENV"
         
         mkdir -p "$CACHE_DIR"
         
         echo "Cache configuration:"
         echo "  Directory: $CACHE_DIR"
-        echo "  Max size: 12G"
+        echo "  Max size: 1G"
         echo "  Android: ${ANDROID_VER:-unknown}"
         echo "  Kernel: ${KERNEL_VER:-unknown}"
         echo "  OOS Version: ${OP_OS_VERSION:-unknown}"
@@ -408,7 +408,7 @@ runs:
         echo "::group::Configure ccache for maximum performance"
         
         export CCACHE_DIR="$HOME/.ccache"
-        export CCACHE_MAXSIZE="8G"
+        export CCACHE_MAXSIZE="1G"
         
         ccache -M "$CCACHE_MAXSIZE"
         
