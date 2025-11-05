@@ -557,15 +557,115 @@ runs:
         echo "Using AnyKernel3 branch: $ANYKERNEL_BRANCH"
         echo "Using SUSFS branch/commit: $SUSFS_BRANCH"
         
-        git clone --depth=1 https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
-        git clone --depth=1 https://github.com/TheWildJames/kernel_patches.git
-        git clone https://gitlab.com/simonpunk/susfs4ksu.git
+        # Function to clone with retry logic
+        clone_with_retry() {
+          local repo_url="$1"
+          local target_dir="$2"
+          local branch="${3:-}"
+          local max_attempts=5
+          local attempt=1
+          local wait_time=10
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "📦 Cloning $repo_url (attempt $attempt/$max_attempts)..."
+            
+            # Build clone command
+            local clone_cmd="git clone"
+            
+            # Add depth for faster cloning (except SUSFS which needs full history)
+            if [[ "$repo_url" != *"susfs4ksu"* ]]; then
+              clone_cmd="$clone_cmd --depth=1"
+            fi
+            
+            # Add branch if specified
+            if [ -n "$branch" ]; then
+              clone_cmd="$clone_cmd -b $branch"
+            fi
+            
+            clone_cmd="$clone_cmd $repo_url $target_dir"
+            
+            # Try to clone
+            if eval "$clone_cmd" 2>&1; then
+              echo "✅ Successfully cloned $target_dir"
+              return 0
+            else
+              echo "⚠️  Attempt $attempt failed for $target_dir"
+              
+              # Clean up partial clone
+              rm -rf "$target_dir"
+              
+              if [ $attempt -lt $max_attempts ]; then
+                echo "⏳ Waiting ${wait_time}s before retry..."
+                sleep $wait_time
+                
+                # Exponential backoff
+                wait_time=$((wait_time * 2))
+              fi
+            fi
+            
+            attempt=$((attempt + 1))
+          done
+          
+          echo "::error::Failed to clone $repo_url after $max_attempts attempts"
+          return 1
+        }
         
+        # Clone AnyKernel3
+        if ! clone_with_retry \
+          "https://github.com/TheWildJames/AnyKernel3.git" \
+          "AnyKernel3" \
+          "$ANYKERNEL_BRANCH"; then
+          exit 1
+        fi
+        
+        # Clone kernel_patches
+        if ! clone_with_retry \
+          "https://github.com/TheWildJames/kernel_patches.git" \
+          "kernel_patches" \
+          ""; then
+          exit 1
+        fi
+        
+        # Clone SUSFS with special handling
+        echo ""
+        echo "🔐 Cloning SUSFS repository (full history required)..."
+        
+        SUSFS_URLS=(
+          "https://gitlab.com/simonpunk/susfs4ksu.git"
+          "https://github.com/sidex15/susfs4ksu-mirror.git"
+        )
+        
+        SUSFS_CLONED=false
+        
+        for susfs_url in "${SUSFS_URLS[@]}"; do
+          echo "Trying SUSFS source: $susfs_url"
+          
+          if clone_with_retry "$susfs_url" "susfs4ksu" ""; then
+            SUSFS_CLONED=true
+            echo "✅ SUSFS cloned from: $susfs_url"
+            break
+          else
+            echo "⚠️  Failed to clone from $susfs_url, trying next source..."
+            rm -rf susfs4ksu
+          fi
+        done
+        
+        if [ "$SUSFS_CLONED" != "true" ]; then
+          echo "::error::Failed to clone SUSFS from all sources"
+          exit 1
+        fi
+        
+        # Checkout specific SUSFS branch/commit
         cd susfs4ksu
         
+        echo ""
+        echo "🔍 Checking out SUSFS ref: $SUSFS_BRANCH"
+        
+        # Try as remote branch first
         if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1; then
           echo "✅ Checking out remote branch: $SUSFS_BRANCH"
           git checkout "$SUSFS_BRANCH"
+        # Try as local ref/commit
         elif git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1; then
           echo "✅ Checking out ref/commit: $SUSFS_BRANCH"
           git checkout "$SUSFS_BRANCH"
@@ -593,7 +693,16 @@ runs:
         echo "   Commit: $SUSFS_COMMIT_SHA"
         
         cd ..
-        echo "✅ Dependencies cloned"
+        
+        echo ""
+        echo "============================================"
+        echo "✅ All Dependencies Cloned Successfully"
+        echo "============================================"
+        echo "  • AnyKernel3: $ANYKERNEL_BRANCH"
+        echo "  • kernel_patches: latest"
+        echo "  • SUSFS: $SUSFS_BRANCH_NAME ($SUSFS_COMMIT_SHA)"
+        echo "============================================"
+        
         echo "::endgroup::"
 
     - name: Clean Up ABI Protected Exports
