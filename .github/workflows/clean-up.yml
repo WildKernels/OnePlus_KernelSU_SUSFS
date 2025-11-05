@@ -1,4 +1,4 @@
-name: Cleanup CCache 🧹 
+name: Cleanup CCache 🧹
 
 on:
   workflow_dispatch:
@@ -67,13 +67,13 @@ on:
         options:
           - all_caches          # All cache types
           - ccache_only         # Only ccache (kernel builds)
-          - ccache_stale        # Only stale ccache (>14 days)
+          - ccache_stale        # Only stale ccache (>14 days since last access)
           - apt_only            # Only apt packages
-          - kernel_only         # Only kernel-related caches
-          - old_only            # Only caches older than 7 days
+          - kernel_only         # Only kernel-related caches (excludes apt)
+          - old_only            # Only caches older than N days (by creation)
       
       cache_age_days:
-        description: 'Delete caches older than N days'
+        description: 'Delete caches older than N days (by creation date)'
         required: false
         default: '7'
       
@@ -145,6 +145,18 @@ jobs:
               stale: 0       // > 30 days
             };
             
+            const lastAccessDistribution = {
+              active: 0,     // < 7 days
+              recent: 0,     // 7-14 days
+              dormant: 0,    // 14-30 days
+              stale: 0       // > 30 days
+            };
+            
+            const cacheKeyVersions = {
+              v3: 0,    // New format: ccache-ksun-v3-...
+              legacy: 0 // Old format: ccache-...
+            };
+            
             // Collect all cache data
             while (true) {
               const res = await github.rest.actions.getActionsCacheList({
@@ -162,13 +174,21 @@ jobs:
                 cacheCount++;
                 
                 const cacheDate = new Date(cache.created_at);
+                const lastAccessDate = new Date(cache.last_accessed_at || cache.created_at);
                 const ageDays = Math.floor((new Date() - cacheDate) / (1000 * 60 * 60 * 24));
+                const accessAgeDays = Math.floor((new Date() - lastAccessDate) / (1000 * 60 * 60 * 24));
                 
-                // Age distribution
+                // Age distribution (by creation)
                 if (ageDays < 7) cacheAgeDistribution.fresh++;
                 else if (ageDays < 14) cacheAgeDistribution.recent++;
                 else if (ageDays < 30) cacheAgeDistribution.old++;
                 else cacheAgeDistribution.stale++;
+                
+                // Last access distribution
+                if (accessAgeDays < 7) lastAccessDistribution.active++;
+                else if (accessAgeDays < 14) lastAccessDistribution.recent++;
+                else if (accessAgeDays < 30) lastAccessDistribution.dormant++;
+                else lastAccessDistribution.stale++;
                 
                 if (!oldestCache || cacheDate < new Date(oldestCache.created_at)) {
                   oldestCache = cache;
@@ -182,24 +202,72 @@ jobs:
                   cachesByType.ccache.size += cache.size_in_bytes;
                   cachesByType.ccache.count++;
                   
-                  // Extract device name from ccache key
-                  const match = cache.key.match(/ccache-([^-]+)-/);
-                  if (match) {
-                    const device = match[1];
+                  // Track cache key versions
+                  const isV3Format = cache.key.startsWith('ccache-ksun-v3-');
+                  if (isV3Format) {
+                    cacheKeyVersions.v3++;
+                  } else {
+                    cacheKeyVersions.legacy++;
+                  }
+                  
+                  // Extract device name - ROBUST PARSING
+                  let device = null;
+                  let osVersion = null;
+                  
+                  if (isV3Format) {
+                    // v3 format: ccache-ksun-v3-android15-6.6-OOS15-clang-r123456-OP13[-stable]
+                    // Pattern: ccache-ksun-v3-<kernel>-<os>-<clang>-<device>[-stable]
+                    const v3Match = cache.key.match(/^ccache-ksun-v3-([^-]+-[\d.]+)-([^-]+)-(clang-[^-]+)-([^-]+)(-stable)?$/);
+                    if (v3Match) {
+                      // v3Match[1] = kernel (android15-6.6)
+                      // v3Match[2] = os (OOS15)
+                      // v3Match[3] = clang (clang-r123456)
+                      // v3Match[4] = device (OP13)
+                      osVersion = v3Match[2];
+                      device = v3Match[4];
+                    }
+                  } else {
+                    // Legacy format - try multiple patterns
+                    // Pattern 1: ccache-android15-6.6-OOS15-clang-r123456-OP13
+                    const legacy1 = cache.key.match(/^ccache-[^-]+-[\d.]+-[^-]+-clang-[^-]+-([^-]+)$/);
+                    // Pattern 2: ccache-android15-6.6-OOS15-OP13 (no clang)
+                    const legacy2 = cache.key.match(/^ccache-[^-]+-[\d.]+-[^-]+-([^-]+)$/);
+                    // Pattern 3: Any trailing component after multiple dashes
+                    const legacy3 = cache.key.match(/ccache-[^-]+-[^-]+-[^-]+-[^-]+-([^-]+)/);
+                    
+                    device = legacy1?.[1] || legacy2?.[1] || legacy3?.[1] || null;
+                  }
+                  
+                  if (device) {
                     if (!cachesByDevice.has(device)) {
                       cachesByDevice.set(device, { 
                         size: 0, 
                         count: 0,
                         lastAccessed: cache.last_accessed_at,
                         oldestCache: ageDays,
-                        newestCache: ageDays
+                        newestCache: ageDays,
+                        oldestAccess: accessAgeDays,
+                        newestAccess: accessAgeDays,
+                        osVersions: new Set(),
+                        v3Count: 0,
+                        legacyCount: 0
                       });
                     }
                     const deviceData = cachesByDevice.get(device);
                     deviceData.size += cache.size_in_bytes;
                     deviceData.count++;
+                    if (osVersion) deviceData.osVersions.add(osVersion);
                     deviceData.oldestCache = Math.max(deviceData.oldestCache, ageDays);
                     deviceData.newestCache = Math.min(deviceData.newestCache, ageDays);
+                    deviceData.oldestAccess = Math.max(deviceData.oldestAccess, accessAgeDays);
+                    deviceData.newestAccess = Math.min(deviceData.newestAccess, accessAgeDays);
+                    
+                    if (isV3Format) {
+                      deviceData.v3Count++;
+                    } else {
+                      deviceData.legacyCount++;
+                    }
+                    
                     if (new Date(cache.last_accessed_at) > new Date(deviceData.lastAccessed)) {
                       deviceData.lastAccessed = cache.last_accessed_at;
                     }
@@ -207,7 +275,7 @@ jobs:
                 } else if (cache.key.includes('apt')) {
                   cachesByType.apt.size += cache.size_in_bytes;
                   cachesByType.apt.count++;
-                } else if (cache.key.includes('kernel') || cache.key.includes('android')) {
+                } else if (cache.key.includes('kernel') || cache.key.includes('android') || cache.key.includes('gki')) {
                   cachesByType.kernel.size += cache.size_in_bytes;
                   cachesByType.kernel.count++;
                 } else {
@@ -223,7 +291,7 @@ jobs:
             // Calculate metrics
             const totalGB = (totalCacheSize / 1024 / 1024 / 1024).toFixed(2);
             const limit = 10; // 10 GB GitHub limit
-            const usagePercent = ((totalCacheSize / (limit * 1024 * 1024 * 1024)) * 100).toFixed(1);
+            const usagePercent = totalCacheSize > 0 ? ((totalCacheSize / (limit * 1024 * 1024 * 1024)) * 100).toFixed(1) : '0.0';
             
             // Determine if cleanup is needed
             const shouldCleanup = forceCleanup || parseFloat(usagePercent) > 75;
@@ -231,10 +299,10 @@ jobs:
             // Health status
             let healthEmoji = '🟢';
             let healthStatus = 'Healthy';
-            if (usagePercent > 90) {
+            if (parseFloat(usagePercent) > 90) {
               healthEmoji = '🔴';
               healthStatus = 'Critical';
-            } else if (usagePercent > 75) {
+            } else if (parseFloat(usagePercent) > 75) {
               healthEmoji = '🟡';
               healthStatus = 'Warning';
             }
@@ -268,30 +336,50 @@ jobs:
                 ['ccache (Kernel Builds)', 
                   cachesByType.ccache.count.toString(),
                   (cachesByType.ccache.size / 1024 / 1024 / 1024).toFixed(2),
-                  `${((cachesByType.ccache.size / totalCacheSize) * 100).toFixed(1)}%`
+                  totalCacheSize > 0 ? `${((cachesByType.ccache.size / totalCacheSize) * 100).toFixed(1)}%` : '0%'
                 ],
                 ['Kernel-related',
                   cachesByType.kernel.count.toString(),
                   (cachesByType.kernel.size / 1024 / 1024 / 1024).toFixed(2),
-                  `${((cachesByType.kernel.size / totalCacheSize) * 100).toFixed(1)}%`
+                  totalCacheSize > 0 ? `${((cachesByType.kernel.size / totalCacheSize) * 100).toFixed(1)}%` : '0%'
                 ],
                 ['APT Packages',
                   cachesByType.apt.count.toString(),
                   (cachesByType.apt.size / 1024 / 1024 / 1024).toFixed(2),
-                  `${((cachesByType.apt.size / totalCacheSize) * 100).toFixed(1)}%`
+                  totalCacheSize > 0 ? `${((cachesByType.apt.size / totalCacheSize) * 100).toFixed(1)}%` : '0%'
                 ],
                 ['Other',
                   cachesByType.other.count.toString(),
                   (cachesByType.other.size / 1024 / 1024 / 1024).toFixed(2),
-                  `${((cachesByType.other.size / totalCacheSize) * 100).toFixed(1)}%`
+                  totalCacheSize > 0 ? `${((cachesByType.other.size / totalCacheSize) * 100).toFixed(1)}%` : '0%'
                 ]
               ]);
+            
+            // Cache key version distribution
+            if (cachesByType.ccache.count > 0) {
+              const totalCcache = cacheKeyVersions.v3 + cacheKeyVersions.legacy;
+              summary.addRaw(`\n### 🔑 Cache Key Versions\n\n`)
+                .addTable([
+                  [{data: 'Version', header: true}, {data: 'Count', header: true}, {data: 'Percentage', header: true}],
+                  ['v3 (New Format)', cacheKeyVersions.v3.toString(), totalCcache > 0 ? `${((cacheKeyVersions.v3 / totalCcache) * 100).toFixed(1)}%` : '0%'],
+                  ['Legacy (Old Format)', cacheKeyVersions.legacy.toString(), totalCcache > 0 ? `${((cacheKeyVersions.legacy / totalCcache) * 100).toFixed(1)}%` : '0%']
+                ]);
+              
+              if (cacheKeyVersions.legacy > 0) {
+                const legacySize = totalCcache > 0 ? (cacheKeyVersions.legacy / totalCcache) * cachesByType.ccache.size : 0;
+                const legacySizeGB = (legacySize / 1024 / 1024 / 1024).toFixed(2);
+                summary.addRaw(`\n⚠️ **${cacheKeyVersions.legacy} legacy caches detected** (~${legacySizeGB} GB)\n`)
+                  .addRaw(`- These use the old cache key format\n`)
+                  .addRaw(`- Consider cleaning to free space for new format\n`)
+                  .addRaw(`- Run with \`cache_pattern: old_only\` to target legacy caches\n`);
+              }
+            }
             
             // ccache-specific statistics
             if (cachesByType.ccache.count > 0) {
               const avgCcacheSize = cachesByType.ccache.size / cachesByType.ccache.count;
               const avgCcacheSizeMB = (avgCcacheSize / 1024 / 1024).toFixed(2);
-              const ccachePercent = ((cachesByType.ccache.size / totalCacheSize) * 100).toFixed(1);
+              const ccachePercent = totalCacheSize > 0 ? ((cachesByType.ccache.size / totalCacheSize) * 100).toFixed(1) : '0';
               
               summary.addRaw(`\n### ⚡ ccache Statistics\n\n`)
                 .addTable([
@@ -308,18 +396,28 @@ jobs:
                 summary.addRaw(`\n⚠️ **ccache dominates storage** (${ccachePercent}%)\n`)
                   .addRaw(`- Consider reducing \`CCACHE_MAXSIZE\` in build workflow\n`)
                   .addRaw(`- Clean stale device caches not actively built\n`)
-                  .addRaw(`- Use \`clean_build\` option occasionally to verify builds\n`);
+                  .addRaw(`- Use \`clean: true\` option occasionally to verify builds\n`);
               }
             }
             
-            // Age distribution
-            summary.addRaw(`\n### 📅 Cache Age Distribution\n\n`)
+            // Age distribution (by creation)
+            summary.addRaw(`\n### 📅 Cache Age Distribution (by Creation Date)\n\n`)
               .addTable([
                 [{data: 'Age Range', header: true}, {data: 'Count', header: true}, {data: 'Percentage', header: true}],
-                ['Fresh (< 7 days)', cacheAgeDistribution.fresh.toString(), `${((cacheAgeDistribution.fresh / cacheCount) * 100).toFixed(1)}%`],
-                ['Recent (7-14 days)', cacheAgeDistribution.recent.toString(), `${((cacheAgeDistribution.recent / cacheCount) * 100).toFixed(1)}%`],
-                ['Old (14-30 days)', cacheAgeDistribution.old.toString(), `${((cacheAgeDistribution.old / cacheCount) * 100).toFixed(1)}%`],
-                ['Stale (> 30 days)', cacheAgeDistribution.stale.toString(), `${((cacheAgeDistribution.stale / cacheCount) * 100).toFixed(1)}%`]
+                ['Fresh (< 7 days)', cacheAgeDistribution.fresh.toString(), cacheCount > 0 ? `${((cacheAgeDistribution.fresh / cacheCount) * 100).toFixed(1)}%` : '0%'],
+                ['Recent (7-14 days)', cacheAgeDistribution.recent.toString(), cacheCount > 0 ? `${((cacheAgeDistribution.recent / cacheCount) * 100).toFixed(1)}%` : '0%'],
+                ['Old (14-30 days)', cacheAgeDistribution.old.toString(), cacheCount > 0 ? `${((cacheAgeDistribution.old / cacheCount) * 100).toFixed(1)}%` : '0%'],
+                ['Stale (> 30 days)', cacheAgeDistribution.stale.toString(), cacheCount > 0 ? `${((cacheAgeDistribution.stale / cacheCount) * 100).toFixed(1)}%` : '0%']
+              ]);
+            
+            // Last access distribution
+            summary.addRaw(`\n### 🔄 Cache Activity (by Last Access)\n\n`)
+              .addTable([
+                [{data: 'Activity Level', header: true}, {data: 'Count', header: true}, {data: 'Percentage', header: true}],
+                ['Active (< 7 days)', lastAccessDistribution.active.toString(), cacheCount > 0 ? `${((lastAccessDistribution.active / cacheCount) * 100).toFixed(1)}%` : '0%'],
+                ['Recent (7-14 days)', lastAccessDistribution.recent.toString(), cacheCount > 0 ? `${((lastAccessDistribution.recent / cacheCount) * 100).toFixed(1)}%` : '0%'],
+                ['Dormant (14-30 days)', lastAccessDistribution.dormant.toString(), cacheCount > 0 ? `${((lastAccessDistribution.dormant / cacheCount) * 100).toFixed(1)}%` : '0%'],
+                ['Stale (> 30 days)', lastAccessDistribution.stale.toString(), cacheCount > 0 ? `${((lastAccessDistribution.stale / cacheCount) * 100).toFixed(1)}%` : '0%']
               ]);
             
             // Top devices by cache size
@@ -330,16 +428,18 @@ jobs:
               
               summary.addRaw(`\n### 📱 Top 15 Devices by Cache Size\n\n`)
                 .addTable([
-                  [{data: 'Device', header: true}, {data: 'Caches', header: true}, {data: 'Size (GB)', header: true}, {data: 'Age Range (days)', header: true}],
+                  [{data: 'Device', header: true}, {data: 'Caches', header: true}, {data: 'Size (GB)', header: true}, {data: 'Created Age', header: true}, {data: 'Access Age', header: true}, {data: 'v3/Legacy', header: true}],
                   ...topDevices.map(([device, data]) => [
                     device,
                     data.count.toString(),
                     (data.size / 1024 / 1024 / 1024).toFixed(2),
-                    `${data.newestCache}-${data.oldestCache}`
+                    `${data.newestCache}-${data.oldestCache}d`,
+                    `${data.newestAccess}-${data.oldestAccess}d`,
+                    `${data.v3Count}/${data.legacyCount}`
                   ])
                 ]);
               
-              // Identify inactive devices
+              // Identify inactive devices (by last access)
               const now = new Date();
               const inactiveThreshold = 30; // days
               const inactiveDevices = Array.from(cachesByDevice.entries())
@@ -352,11 +452,12 @@ jobs:
               if (inactiveDevices.length > 0) {
                 summary.addRaw(`\n### 🚫 Inactive Devices (Not accessed in ${inactiveThreshold}+ days)\n\n`)
                   .addTable([
-                    [{data: 'Device', header: true}, {data: 'Size (GB)', header: true}, {data: 'Days Since Access', header: true}],
+                    [{data: 'Device', header: true}, {data: 'Size (GB)', header: true}, {data: 'Days Since Access', header: true}, {data: 'Legacy Caches', header: true}],
                     ...inactiveDevices.slice(0, 10).map(([device, data]) => [
                       device,
                       (data.size / 1024 / 1024 / 1024).toFixed(2),
-                      Math.floor((now - new Date(data.lastAccessed)) / (1000 * 60 * 60 * 24)).toString()
+                      Math.floor((now - new Date(data.lastAccessed)) / (1000 * 60 * 60 * 24)).toString(),
+                      data.legacyCount.toString()
                     ])
                   ]);
                 
@@ -398,13 +499,20 @@ jobs:
                 .addRaw(`- No immediate action required\n`);
             }
             
-            // Stale cache recommendations
-            if (cacheAgeDistribution.stale > 0) {
-              const staleSizeEstimate = (cacheAgeDistribution.stale / cacheCount) * totalCacheSize;
+            // Stale cache recommendations (by last access)
+            if (lastAccessDistribution.stale > 0) {
+              const staleSizeEstimate = cacheCount > 0 ? (lastAccessDistribution.stale / cacheCount) * totalCacheSize : 0;
               const staleSizeGB = (staleSizeEstimate / 1024 / 1024 / 1024).toFixed(2);
-              summary.addRaw(`\n- 📦 **${cacheAgeDistribution.stale} stale caches** (>30 days old)\n`)
+              summary.addRaw(`\n- 📦 **${lastAccessDistribution.stale} stale caches** (>30 days since access)\n`)
                 .addRaw(`- Estimated size: ~${staleSizeGB} GB\n`)
                 .addRaw(`- Run with \`cache_pattern: ccache_stale\` to clean\n`);
+            }
+            
+            // Legacy cache cleanup recommendation
+            if (cacheKeyVersions.legacy > 0) {
+              summary.addRaw(`\n- 🔄 **${cacheKeyVersions.legacy} legacy format caches** detected\n`)
+                .addRaw(`- These can be safely cleaned as builds now use v3 format\n`)
+                .addRaw(`- Run with \`cache_pattern: old_only\` to target legacy caches\n`);
             }
             
             if (shouldCleanup && !forceCleanup) {
@@ -419,6 +527,7 @@ jobs:
             console.log(`   - Total: ${totalGB} GB (${usagePercent}%)`);
             console.log(`   - Caches: ${cacheCount}`);
             console.log(`   - ccache: ${cachesByType.ccache.count} (${(cachesByType.ccache.size / 1024 / 1024 / 1024).toFixed(2)} GB)`);
+            console.log(`   - v3 format: ${cacheKeyVersions.v3}, Legacy: ${cacheKeyVersions.legacy}`);
             console.log(`   - Devices: ${cachesByDevice.size}`);
             console.log(`   - Cleanup needed: ${shouldCleanup}`);
 
@@ -453,11 +562,12 @@ jobs:
             
             // Check if we should proceed
             if (!shouldCleanup && !forceCleanup && !dryRun) {
+              const usage = '${{ needs.analyze.outputs.usage_percent }}';
               console.log('ℹ️ Cache usage is healthy, skipping cleanup');
               console.log('💡 Use force_cleanup=true to cleanup anyway');
               core.summary
                 .addHeading('ℹ️ Cleanup Skipped')
-                .addRaw(`Cache usage is healthy (${${{ needs.analyze.outputs.usage_percent }}}%)\n\n`)
+                .addRaw(`Cache usage is healthy (${usage}%)\n\n`)
                 .addRaw('No cleanup needed at this time.\n')
                 .write();
               return;
@@ -466,9 +576,13 @@ jobs:
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - cacheAgeDays);
             
-            // For stale ccache pattern, use 14 days
+            // For stale ccache pattern, use 14 days since last access
             const staleCutoffDate = new Date();
             staleCutoffDate.setDate(staleCutoffDate.getDate() - 14);
+            
+            // For stable key protection, use 30 days
+            const veryStaleCutoffDate = new Date();
+            veryStaleCutoffDate.setDate(veryStaleCutoffDate.getDate() - 30);
             
             let totalDeleted = 0;
             let totalSize = 0;
@@ -478,7 +592,7 @@ jobs:
             
             // Track statistics by category
             const deletionStats = {
-              ccache: { count: 0, size: 0 },
+              ccache: { count: 0, size: 0, v3: 0, legacy: 0, stable: 0 },
               apt: { count: 0, size: 0 },
               kernel: { count: 0, size: 0 },
               other: { count: 0, size: 0 }
@@ -488,20 +602,44 @@ jobs:
             function shouldDeleteCache(cache) {
               const cacheKey = cache.key;
               const cacheDate = new Date(cache.created_at);
+              const lastAccessDate = new Date(cache.last_accessed_at || cache.created_at);
               const ageDays = Math.floor((new Date() - cacheDate) / (1000 * 60 * 60 * 24));
+              const accessAgeDays = Math.floor((new Date() - lastAccessDate) / (1000 * 60 * 60 * 24));
+              
+              // Check if it's a v3 format and stable key
+              const isV3Format = cacheKey.startsWith('ccache-ksun-v3-');
+              const isStableKey = cacheKey.endsWith('-stable');
+              
+              // Extract device from cache key - ROBUST PARSING
+              let device = null;
+              
+              if (isV3Format) {
+                // v3 format: ccache-ksun-v3-android15-6.6-OOS15-clang-r123456-OP13[-stable]
+                const v3Match = cacheKey.match(/^ccache-ksun-v3-([^-]+-[\d.]+)-([^-]+)-(clang-[^-]+)-([^-]+)(-stable)?$/);
+                if (v3Match) {
+                  device = v3Match[4]; // OP13
+                }
+              } else if (cacheKey.startsWith('ccache-')) {
+                // Legacy format - try multiple patterns
+                const legacy1 = cacheKey.match(/^ccache-[^-]+-[\d.]+-[^-]+-clang-[^-]+-([^-]+)$/);
+                const legacy2 = cacheKey.match(/^ccache-[^-]+-[\d.]+-[^-]+-([^-]+)$/);
+                const legacy3 = cacheKey.match(/ccache-[^-]+-[^-]+-[^-]+-[^-]+-([^-]+)/);
+                
+                device = legacy1?.[1] || legacy2?.[1] || legacy3?.[1] || null;
+              }
               
               // Device filter logic
-              const deviceMatch = 
+              const deviceMatchesFilter = 
                 deviceFilter === 'ALL' ||
+                (device && device === deviceFilter) ||
                 cacheKey.includes(deviceFilter) ||
-                cacheKey.includes(`-${deviceFilter}-`) ||
-                cacheKey.startsWith(`${deviceFilter}-`);
+                cacheKey.includes(`-${deviceFilter}-`);
               
-              if (!deviceMatch) {
+              if (!deviceMatchesFilter) {
                 return { delete: false, reason: 'device_filter' };
               }
               
-              // Age filter for 'old_only' pattern
+              // Age filter for 'old_only' pattern (by creation date)
               if (cachePattern === 'old_only' && cacheDate >= cutoffDate) {
                 return { delete: false, reason: 'too_new' };
               }
@@ -517,8 +655,23 @@ jobs:
                   break;
                   
                 case 'ccache_stale':
-                  patternMatch = cacheKey.startsWith('ccache-') && cacheDate < staleCutoffDate;
-                  category = 'ccache';
+                  // Use last access date for staleness, not creation date
+                  if (cacheKey.startsWith('ccache-')) {
+                    category = 'ccache';
+                    
+                    // Check if truly stale (not accessed in 14+ days)
+                    if (lastAccessDate < staleCutoffDate) {
+                      // Protect v3 stable keys unless VERY stale (30+ days) or forced
+                      if (isV3Format && isStableKey && lastAccessDate >= veryStaleCutoffDate && !forceCleanup) {
+                        return { delete: false, reason: 'stable_recent' };
+                      }
+                      
+                      // Prefer deleting legacy caches first
+                      patternMatch = true;
+                    } else {
+                      return { delete: false, reason: 'recently_accessed' };
+                    }
+                  }
                   break;
                   
                 case 'apt_only':
@@ -527,18 +680,23 @@ jobs:
                   break;
                   
                 case 'kernel_only':
-                  patternMatch = cacheKey.includes('kernel-') || 
-                               cacheKey.includes('android') ||
-                               cacheKey.startsWith('ccache-');
+                  // Include ccache, kernel, android, gki but exclude apt
+                  patternMatch = (cacheKey.startsWith('ccache-') || 
+                                 cacheKey.includes('kernel') || 
+                                 cacheKey.includes('android') ||
+                                 cacheKey.includes('gki')) && 
+                                 !cacheKey.includes('apt');
+                  
                   if (cacheKey.startsWith('ccache-')) category = 'ccache';
                   else category = 'kernel';
                   break;
                   
                 case 'old_only':
+                  // Based on creation date
                   patternMatch = cacheDate < cutoffDate;
                   if (cacheKey.startsWith('ccache-')) category = 'ccache';
                   else if (cacheKey.includes('apt')) category = 'apt';
-                  else if (cacheKey.includes('kernel')) category = 'kernel';
+                  else if (cacheKey.includes('kernel') || cacheKey.includes('android') || cacheKey.includes('gki')) category = 'kernel';
                   break;
                   
                 case 'all_caches':
@@ -546,13 +704,17 @@ jobs:
                   patternMatch = true;
                   if (cacheKey.startsWith('ccache-')) category = 'ccache';
                   else if (cacheKey.includes('apt')) category = 'apt';
-                  else if (cacheKey.includes('kernel')) category = 'kernel';
+                  else if (cacheKey.includes('kernel') || cacheKey.includes('android') || cacheKey.includes('gki')) category = 'kernel';
               }
               
               return { 
                 delete: patternMatch, 
                 reason: patternMatch ? 'match' : 'pattern_mismatch',
-                category: category
+                category: category,
+                isStable: isStableKey,
+                isV3: isV3Format,
+                device: device,
+                accessAgeDays: accessAgeDays
               };
             }
             
@@ -573,25 +735,33 @@ jobs:
               for (const cache of caches) {
                 const decision = shouldDeleteCache(cache);
                 const sizeMB = (cache.size_in_bytes / 1024 / 1024).toFixed(2);
-                const agedays = Math.floor((new Date() - new Date(cache.created_at)) / (1000 * 60 * 60 * 24));
+                const createdAgeDays = Math.floor((new Date() - new Date(cache.created_at)) / (1000 * 60 * 60 * 24));
                 
                 if (decision.delete) {
                   deletedCaches.push({
                     key: cache.key,
                     size: sizeMB,
                     sizeBytes: cache.size_in_bytes,
-                    age: agedays,
+                    createdAge: createdAgeDays,
+                    accessAge: decision.accessAgeDays,
                     created: cache.created_at,
+                    accessed: cache.last_accessed_at,
                     id: cache.id,
-                    category: decision.category
+                    category: decision.category,
+                    isV3: decision.isV3,
+                    isStable: decision.isStable,
+                    device: decision.device
                   });
+                  
+                  const format = decision.isV3 ? 'v3' : 'legacy';
+                  const stable = decision.isStable ? ' (stable)' : '';
                   
                   if (dryRun) {
                     console.log(`🔍 Would delete: ${cache.key}`);
-                    console.log(`   Size: ${sizeMB} MB | Age: ${agedays} days | Type: ${decision.category}`);
+                    console.log(`   Size: ${sizeMB} MB | Created: ${createdAgeDays}d ago | Accessed: ${decision.accessAgeDays}d ago | Type: ${decision.category} | Format: ${format}${stable}`);
                   } else {
                     console.log(`🗑️ Deleting: ${cache.key}`);
-                    console.log(`   Size: ${sizeMB} MB | Age: ${agedays} days | Type: ${decision.category}`);
+                    console.log(`   Size: ${sizeMB} MB | Created: ${createdAgeDays}d ago | Accessed: ${decision.accessAgeDays}d ago | Type: ${decision.category} | Format: ${format}${stable}`);
                     
                     try {
                       await github.rest.actions.deleteActionsCacheById({
@@ -605,6 +775,17 @@ jobs:
                       // Update category stats
                       deletionStats[decision.category].count++;
                       deletionStats[decision.category].size += cache.size_in_bytes;
+                      
+                      if (decision.category === 'ccache') {
+                        if (decision.isV3) {
+                          deletionStats.ccache.v3++;
+                        } else {
+                          deletionStats.ccache.legacy++;
+                        }
+                        if (decision.isStable) {
+                          deletionStats.ccache.stable++;
+                        }
+                      }
                     } catch (error) {
                       console.log(`   ⚠️ Failed: ${error.message}`);
                       skippedCaches.push({
@@ -613,9 +794,8 @@ jobs:
                       });
                     }
                   }
-                } else if (decision.reason !== 'device_filter') {
-                  // Only log non-device-filter skips in verbose mode
-                  // console.log(`⏭️ Skipping: ${cache.key} (${decision.reason})`);
+                } else if (decision.reason === 'stable_recent') {
+                  console.log(`🔒 Protecting stable v3 cache: ${cache.key} (accessed ${decision.accessAgeDays}d ago)`);
                 }
               }
               
@@ -667,6 +847,17 @@ jobs:
                     totalSize > 0 ? `${((deletionStats.other.size / totalSize) * 100).toFixed(1)}%` : '0%'
                   ]
                 ]);
+              
+              // ccache format breakdown
+              if (deletionStats.ccache.count > 0) {
+                summary.addHeading('🔑 ccache Format Breakdown', 3)
+                  .addTable([
+                    [{data: 'Format', header: true}, {data: 'Count', header: true}, {data: 'Percentage', header: true}],
+                    ['v3 (New Format)', deletionStats.ccache.v3.toString(), `${((deletionStats.ccache.v3 / deletionStats.ccache.count) * 100).toFixed(1)}%`],
+                    ['Legacy (Old Format)', deletionStats.ccache.legacy.toString(), `${((deletionStats.ccache.legacy / deletionStats.ccache.count) * 100).toFixed(1)}%`],
+                    ['Stable Keys', deletionStats.ccache.stable.toString(), `${((deletionStats.ccache.stable / deletionStats.ccache.count) * 100).toFixed(1)}%`]
+                  ]);
+              }
             }
             
             // Add top 20 largest caches
@@ -677,21 +868,34 @@ jobs:
               
               summary.addHeading('📦 Top 20 Largest Caches ' + (dryRun ? 'to Delete' : 'Deleted'), 3)
                 .addTable([
-                  [{data: 'Cache Key', header: true}, {data: 'Size (MB)', header: true}, {data: 'Age (days)', header: true}, {data: 'Type', header: true}],
-                  ...topCaches.map(c => [c.key, c.size, c.age.toString(), c.category])
+                  [{data: 'Cache Key', header: true}, {data: 'Size (MB)', header: true}, {data: 'Created Age', header: true}, {data: 'Access Age', header: true}, {data: 'Type', header: true}, {data: 'Format', header: true}],
+                  ...topCaches.map(c => [
+                    c.key.length > 70 ? c.key.substring(0, 67) + '...' : c.key, 
+                    c.size, 
+                    `${c.createdAge}d`, 
+                    `${c.accessAge}d`,
+                    c.category,
+                    c.isV3 ? 'v3' : 'legacy'
+                  ])
                 ]);
             }
             
-            // Add oldest caches
+            // Add most stale caches (by access)
             if (deletedCaches.length > 0) {
-              const oldestCaches = deletedCaches
-                .sort((a, b) => b.age - a.age)
+              const stalestCaches = deletedCaches
+                .sort((a, b) => b.accessAge - a.accessAge)
                 .slice(0, 10);
               
-              summary.addHeading('📅 Top 10 Oldest Caches ' + (dryRun ? 'to Delete' : 'Deleted'), 3)
+              summary.addHeading('🕰️ Top 10 Most Stale Caches (by Last Access) ' + (dryRun ? 'to Delete' : 'Deleted'), 3)
                 .addTable([
-                  [{data: 'Cache Key', header: true}, {data: 'Age (days)', header: true}, {data: 'Size (MB)', header: true}, {data: 'Type', header: true}],
-                  ...oldestCaches.map(c => [c.key, c.age.toString(), c.size, c.category])
+                  [{data: 'Cache Key', header: true}, {data: 'Access Age', header: true}, {data: 'Created Age', header: true}, {data: 'Size (MB)', header: true}, {data: 'Type', header: true}],
+                  ...stalestCaches.map(c => [
+                    c.key.length > 70 ? c.key.substring(0, 67) + '...' : c.key,
+                    `${c.accessAge}d`, 
+                    `${c.createdAge}d`,
+                    c.size, 
+                    c.category
+                  ])
                 ]);
             }
             
@@ -699,16 +903,22 @@ jobs:
             if (deletionStats.ccache.count > 0) {
               const deviceDeletions = new Map();
               for (const cache of deletedCaches) {
-                if (cache.category === 'ccache') {
-                  const match = cache.key.match(/ccache-([^-]+)-/);
-                  if (match) {
-                    const device = match[1];
-                    if (!deviceDeletions.has(device)) {
-                      deviceDeletions.set(device, { count: 0, size: 0 });
-                    }
-                    const data = deviceDeletions.get(device);
-                    data.count++;
-                    data.size += cache.sizeBytes;
+                if (cache.category === 'ccache' && cache.device) {
+                  if (!deviceDeletions.has(cache.device)) {
+                    deviceDeletions.set(cache.device, { 
+                      count: 0, 
+                      size: 0,
+                      v3: 0,
+                      legacy: 0
+                    });
+                  }
+                  const data = deviceDeletions.get(cache.device);
+                  data.count++;
+                  data.size += cache.sizeBytes;
+                  if (cache.isV3) {
+                    data.v3++;
+                  } else {
+                    data.legacy++;
                   }
                 }
               }
@@ -720,11 +930,12 @@ jobs:
                 
                 summary.addHeading('📱 Top 10 Devices by Deleted ccache', 3)
                   .addTable([
-                    [{data: 'Device', header: true}, {data: 'Caches', header: true}, {data: 'Size (GB)', header: true}],
+                    [{data: 'Device', header: true}, {data: 'Caches', header: true}, {data: 'Size (GB)', header: true}, {data: 'v3/Legacy', header: true}],
                     ...topDevices.map(([device, data]) => [
                       device,
                       data.count.toString(),
-                      (data.size / 1024 / 1024 / 1024).toFixed(2)
+                      (data.size / 1024 / 1024 / 1024).toFixed(2),
+                      `${data.v3}/${data.legacy}`
                     ])
                   ]);
               }
@@ -932,6 +1143,11 @@ jobs:
             const recentCutoff = new Date();
             recentCutoff.setDate(recentCutoff.getDate() - 30);
             
+            const cacheKeyVersions = {
+              v3: 0,
+              legacy: 0
+            };
+            
             while (true) {
               const res = await github.rest.actions.getActionsCacheList({
                 owner,
@@ -950,15 +1166,38 @@ jobs:
                 if (cache.key.startsWith('ccache-')) {
                   cachesByType.ccache += cache.size_in_bytes;
                   
-                  // Track build frequency
-                  const match = cache.key.match(/ccache-([^-]+)-/);
-                  if (match && new Date(cache.last_accessed_at) > recentCutoff) {
-                    const device = match[1];
-                    buildFrequency.set(device, (buildFrequency.get(device) || 0) + 1);
+                  // Track cache key versions
+                  const isV3Format = cache.key.startsWith('ccache-ksun-v3-');
+                  if (isV3Format) {
+                    cacheKeyVersions.v3++;
+                  } else {
+                    cacheKeyVersions.legacy++;
+                  }
+                  
+                  // Track build frequency - ROBUST PARSING
+                  if (new Date(cache.last_accessed_at) > recentCutoff) {
+                    let device = null;
+                    
+                    if (isV3Format) {
+                      const v3Match = cache.key.match(/^ccache-ksun-v3-([^-]+-[\d.]+)-([^-]+)-(clang-[^-]+)-([^-]+)(-stable)?$/);
+                      if (v3Match) {
+                        device = v3Match[4];
+                      }
+                    } else {
+                      const legacy1 = cache.key.match(/^ccache-[^-]+-[\d.]+-[^-]+-clang-[^-]+-([^-]+)$/);
+                      const legacy2 = cache.key.match(/^ccache-[^-]+-[\d.]+-[^-]+-([^-]+)$/);
+                      const legacy3 = cache.key.match(/ccache-[^-]+-[^-]+-[^-]+-[^-]+-([^-]+)/);
+                      
+                                            device = legacy1?.[1] || legacy2?.[1] || legacy3?.[1] || null;
+                    }
+                    
+                    if (device) {
+                      buildFrequency.set(device, (buildFrequency.get(device) || 0) + 1);
+                    }
                   }
                 } else if (cache.key.includes('apt')) {
                   cachesByType.apt += cache.size_in_bytes;
-                } else if (cache.key.includes('kernel') || cache.key.includes('android')) {
+                } else if (cache.key.includes('kernel') || cache.key.includes('android') || cache.key.includes('gki')) {
                   cachesByType.kernel += cache.size_in_bytes;
                 } else {
                   cachesByType.other += cache.size_in_bytes;
@@ -976,7 +1215,7 @@ jobs:
             const otherGB = (cachesByType.other / 1024 / 1024 / 1024).toFixed(2);
             
             const limit = 10; // 10 GB
-            const usagePercent = ((totalCacheSize / (limit * 1024 * 1024 * 1024)) * 100).toFixed(1);
+            const usagePercent = totalCacheSize > 0 ? ((totalCacheSize / (limit * 1024 * 1024 * 1024)) * 100).toFixed(1) : '0.0';
             
             // Calculate change if we have before data
             const beforeSize = parseFloat('${{ needs.analyze.outputs.total_cache_size }}');
@@ -1000,10 +1239,10 @@ jobs:
             // Determine health status
             let healthEmoji = '🟢';
             let healthStatus = 'Healthy';
-            if (usagePercent > 90) {
+            if (parseFloat(usagePercent) > 90) {
               healthEmoji = '🔴';
               healthStatus = 'Critical - Immediate Cleanup Needed!';
-            } else if (usagePercent > 75) {
+            } else if (parseFloat(usagePercent) > 75) {
               healthEmoji = '🟡';
               healthStatus = 'Warning - Consider Cleanup Soon';
             }
@@ -1026,6 +1265,22 @@ jobs:
               .addRaw(`- **Available:** ${(limit - parseFloat(totalGB)).toFixed(2)} GB\n`)
               .addRaw(`- **Status:** ${healthStatus}\n`)
               .addRaw(changeInfo);
+            
+            // Cache key version distribution
+            if (cachesByType.ccache > 0) {
+              const totalCcache = cacheKeyVersions.v3 + cacheKeyVersions.legacy;
+              summary.addRaw(`\n### 🔑 Cache Key Versions\n\n`)
+                .addTable([
+                  [{data: 'Version', header: true}, {data: 'Count', header: true}, {data: 'Percentage', header: true}],
+                  ['v3 (New Format)', cacheKeyVersions.v3.toString(), totalCcache > 0 ? `${((cacheKeyVersions.v3 / totalCcache) * 100).toFixed(1)}%` : '0%'],
+                  ['Legacy (Old Format)', cacheKeyVersions.legacy.toString(), totalCcache > 0 ? `${((cacheKeyVersions.legacy / totalCcache) * 100).toFixed(1)}%` : '0%']
+                ]);
+              
+              if (cacheKeyVersions.legacy > 0) {
+                summary.addRaw(`\n⚠️ **${cacheKeyVersions.legacy} legacy caches remaining**\n`)
+                  .addRaw(`- Consider cleaning with \`cache_pattern: old_only\`\n`);
+              }
+            }
             
             // Build activity analysis
             if (buildFrequency.size > 0) {
@@ -1072,6 +1327,7 @@ jobs:
             console.log(`\n✅ Final report generated`);
             console.log(`   - Current usage: ${totalGB} GB (${usagePercent}%)`);
             console.log(`   - Status: ${healthStatus}`);
+            console.log(`   - v3 caches: ${cacheKeyVersions.v3}, Legacy: ${cacheKeyVersions.legacy}`);
 
       - name: 💡 Quick Action Commands
         if: always()
@@ -1084,16 +1340,22 @@ jobs:
           
           ### High Usage Cleanup (>75%)
           ```bash
-          # Clean all old caches (>7 days)
+          # Clean all old caches (>7 days by creation)
           gh workflow run cleanup.yml \
             -f cleanup_type=cache_only \
             -f cache_pattern=old_only \
             -f cache_age_days=7
           
-          # Clean stale ccache (>14 days)
+          # Clean stale ccache (>14 days since last access)
           gh workflow run cleanup.yml \
             -f cleanup_type=cache_only \
             -f cache_pattern=ccache_stale
+          
+          # Clean legacy format caches
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f cache_pattern=old_only \
+            -f cache_age_days=14
           
           # Clean specific device
           gh workflow run cleanup.yml \
@@ -1132,6 +1394,13 @@ jobs:
             -f cleanup_type=cache_only \
             -f cache_pattern=ccache_only \
             -f force_cleanup=true
+          
+          # Clean all legacy caches
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f cache_pattern=old_only \
+            -f cache_age_days=0 \
+            -f force_cleanup=true
           ```
           
           ### Device-Specific Cleanup
@@ -1147,6 +1416,12 @@ jobs:
             -f cleanup_type=cache_only \
             -f device_filter=OP13 \
             -f cache_pattern=all_caches
+          
+          # Clean OnePlus 12 series
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f device_filter=OP12 \
+            -f cache_pattern=ccache_only
           ```
           
           ### Workflow Runs Cleanup
@@ -1156,10 +1431,186 @@ jobs:
             -f cleanup_type=runs_only \
             -f days_to_keep=7 \
             -f keep_recent_runs=3
+          
+          # Aggressive run cleanup
+          gh workflow run cleanup.yml \
+            -f cleanup_type=runs_only \
+            -f days_to_keep=3 \
+            -f keep_recent_runs=1
+          ```
+          
+          ### Migration from Legacy to v3
+          ```bash
+          # Step 1: Analyze current state
+          gh workflow run cleanup.yml \
+            -f cleanup_type=analyze_only
+          
+          # Step 2: Preview legacy cache cleanup
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f cache_pattern=old_only \
+            -f cache_age_days=7 \
+            -f dry_run=true
+          
+          # Step 3: Clean legacy caches
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f cache_pattern=old_only \
+            -f cache_age_days=7
+          
+          # Step 4: Verify new v3 caches are working
+          # (Run your build workflow)
+          
+          # Step 5: Clean remaining legacy caches
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f cache_pattern=old_only \
+            -f cache_age_days=0 \
+            -f force_cleanup=true
+          ```
+          
+          ### Troubleshooting
+          ```bash
+          # Check what would be deleted (safe preview)
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f cache_pattern=all_caches \
+            -f dry_run=true
+          
+          # Clean only APT caches if builds are slow
+          gh workflow run cleanup.yml \
+            -f cleanup_type=cache_only \
+            -f cache_pattern=apt_only
+          
+          # Clean everything except recent (nuclear option)
+          gh workflow run cleanup.yml \
+            -f cleanup_type=full_cleanup \
+            -f cache_age_days=1 \
+            -f days_to_keep=1 \
+            -f force_cleanup=true
           ```
           
           ---
           
-          **💡 Tip:** Use `dry_run=true` first to preview what will be deleted!
+          ## 📋 Cache Key Format Reference
+          
+          ### v3 Format (Current - Recommended)
+          ```
+          ccache-ksun-v3-<kernel>-<os>-<clang>-<device>[-stable]
+          
+          Example:
+          ccache-ksun-v3-android15-6.6-OOS15-clang-r123456-OP13-stable
+          ```
+          
+          **Components:**
+          - `ccache-ksun-v3`: Version identifier
+          - `android15-6.6`: Kernel version (can contain hyphens)
+          - `OOS15`: OS version
+          - `clang-r123456`: Compiler version
+          - `OP13`: Device model
+          - `-stable`: Stable key marker (optional, used for canonical save/restore)
+          
+          **Notes:**
+          - The `-stable` suffix is used for the primary save/restore key in builds
+          - Fallback restore keys may omit the `-stable` suffix
+          - This format allows better cache sharing between similar configurations
+          
+          ### Legacy Format (Deprecated)
+          ```
+          ccache-<kernel>-<os>-<clang>-<device>
+          
+          Example:
+          ccache-android15-6.6-OOS15-clang-r123456-OP13
+          ```
+          
+          **Migration:** Legacy caches can be safely removed once v3 format is confirmed working.
+          
+          ---
+          
+          ## 🎯 Best Practices
+          
+          1. **Always preview first**: Use `dry_run=true` to see what will be deleted
+          2. **Regular maintenance**: Run weekly cleanup with `cache_pattern=ccache_stale`
+          3. **Monitor usage**: Run `analyze_only` regularly to track trends
+          4. **Device-specific**: Target specific devices when building multiple models
+          5. **Legacy migration**: Clean old format caches after confirming v3 works
+          6. **Emergency only**: Use `force_cleanup=true` only when necessary
+          7. **Keep recent**: Don't set `cache_age_days` too low (minimum 3 days recommended)
+          8. **Protect stable**: v3 stable keys are protected unless very stale (30+ days)
+          9. **Access-based**: Use `ccache_stale` for access-based cleanup (better than age-based)
+          10. **Test first**: Always test with one device before cleaning all
+          
+          ---
+          
+          ## 🔍 Understanding Cache Patterns
+          
+          | Pattern | Target | Basis | Use Case |
+          |---------|--------|-------|----------|
+          | `all_caches` | Everything | N/A | Full cleanup |
+          | `ccache_only` | Kernel build caches | N/A | Free space for builds |
+          | `ccache_stale` | Caches >14 days | **Last access** | Remove unused device caches (recommended) |
+          | `apt_only` | APT packages | N/A | Rarely needed |
+          | `kernel_only` | Kernel-related (excludes apt) | N/A | Target kernel artifacts |
+          | `old_only` | Caches older than N days | **Creation date** | Age-based cleanup |
+          
+          **Key Difference:**
+          - `ccache_stale`: Uses **last_accessed_at** (better for finding truly unused caches)
+          - `old_only`: Uses **created_at** (removes old caches regardless of usage)
+          
+          ---
+          
+          ## ⚠️ Important Notes
+          
+          ### GitHub Cache Limits
+          - **Total limit**: 10 GB per repository
+          - **Eviction policy**: GitHub may evict caches that haven't been accessed recently (typically around 7 days)
+          - **Not guaranteed**: Eviction is based on internal policies and is not strictly guaranteed by age
+          - **LRU-based**: Least Recently Used caches are evicted first when limit is reached
+          
+          ### Cache Protection
+          - **v3 stable keys**: Protected from `ccache_stale` cleanup unless >30 days since last access
+          - **Force override**: Use `force_cleanup=true` to bypass protection
+          - **Active builds**: Cleanup doesn't affect currently running builds
+          
+          ### Performance Impact
+          - **First build**: Will be slower after cache cleanup (full compilation)
+          - **Subsequent builds**: Normal speed once cache is rebuilt
+          - **Parallel builds**: Multiple devices can share v3 format caches
+          
+          ### Timing
+          - **Creation date** (`created_at`): When cache was first saved
+          - **Last access** (`last_accessed_at`): When cache was last restored in a workflow
+          - **Staleness**: Measured by last access, not creation (more accurate)
+          
+          ---
+          
+          ## 📊 Cleanup Strategy Guide
+          
+          ### For High Usage (>75%)
+          1. Run `analyze_only` to identify largest consumers
+          2. Use `ccache_stale` to remove unused caches (by access)
+          3. Target inactive devices specifically
+          4. Clean legacy format caches
+          5. Consider reducing `CCACHE_MAXSIZE` in build workflows
+          
+          ### For Regular Maintenance
+          1. Weekly: `ccache_stale` pattern (removes caches not accessed in 14+ days)
+          2. Monthly: `old_only` with 30+ days (removes old caches by creation)
+          3. Quarterly: Full analysis and review
+          
+          ### For Migration
+          1. Confirm v3 format is working (check recent builds)
+          2. Preview legacy cleanup with `dry_run=true`
+          3. Clean legacy caches in stages (by device or age)
+          4. Monitor build times after cleanup
+          5. Keep at least one successful build per device
+          
+          ---
+          
+          **💡 Pro Tip:** Use `ccache_stale` instead of `old_only` for smarter cleanup based on actual usage!
+          
+          **📚 Documentation:** 
+          - [GitHub Actions Cache Documentation](https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows)
+          - [Cache Eviction Policy](https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#usage-limits-and-eviction-policy)
           
           EOF
