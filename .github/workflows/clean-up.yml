@@ -96,7 +96,6 @@ permissions:
   actions: write
   contents: read
 
-# ===== FIX 8: Add concurrency control =====
 concurrency:
   group: cache-maintenance
   cancel-in-progress: false
@@ -121,7 +120,6 @@ jobs:
             const { owner, repo } = context.repo;
             const forceCleanup = '${{ inputs.force_cleanup }}' === 'true';
             
-            // ===== FIX 3: Rate limit retry wrapper =====
             async function withRetry(fn, maxRetries = 3) {
               for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
@@ -161,22 +159,21 @@ jobs:
             const cacheKeyVersions = { v3: 0, legacy: 0 };
             
             const cacheAgeDistribution = {
-              fresh: 0,    // < 7 days
-              recent: 0,   // 7-14 days
-              old: 0,      // 14-30 days
-              stale: 0     // > 30 days
+              fresh: 0,
+              recent: 0,
+              old: 0,
+              stale: 0
             };
             
             const lastAccessDistribution = {
-              active: 0,   // < 7 days
-              recent: 0,   // 7-14 days
-              dormant: 0,  // 14-30 days
-              stale: 0     // > 30 days
+              active: 0,
+              recent: 0,
+              dormant: 0,
+              stale: 0
             };
             
             let page = 1;
             while (true) {
-              // ===== FIX 3: Wrap API call with retry =====
               const res = await withRetry(() =>
                 github.rest.actions.getActionsCacheList({
                   owner,
@@ -199,13 +196,11 @@ jobs:
                 const ageDays = Math.floor((new Date() - cacheDate) / (1000 * 60 * 60 * 24));
                 const accessAgeDays = Math.floor((new Date() - lastAccessDate) / (1000 * 60 * 60 * 24));
                 
-                // Age distribution by creation date
                 if (ageDays < 7) cacheAgeDistribution.fresh++;
                 else if (ageDays < 14) cacheAgeDistribution.recent++;
                 else if (ageDays < 30) cacheAgeDistribution.old++;
                 else cacheAgeDistribution.stale++;
                 
-                // Activity distribution by last access
                 if (accessAgeDays < 7) lastAccessDistribution.active++;
                 else if (accessAgeDays < 14) lastAccessDistribution.recent++;
                 else if (accessAgeDays < 30) lastAccessDistribution.dormant++;
@@ -222,7 +217,6 @@ jobs:
                     cacheKeyVersions.legacy++;
                   }
                   
-                  // ===== FIX 1: Updated v3 regex to handle hyphens in OS =====
                   let device = null;
                   let osVersion = null;
                   
@@ -233,7 +227,6 @@ jobs:
                       device = v3Match[4];
                     }
                   } else {
-                    // Legacy format - try multiple patterns
                     const legacy1 = cache.key.match(/^ccache-[^-]+-[\d.]+-[^-]+-clang-[^-]+-([^-]+)$/);
                     const legacy2 = cache.key.match(/^ccache-[^-]+-[\d.]+-[^-]+-([^-]+)$/);
                     const legacy3 = cache.key.match(/ccache-[^-]+-[^-]+-[^-]+-[^-]+-([^-]+)/);
@@ -299,7 +292,7 @@ jobs:
             }
             
             const totalSizeGB = (totalCacheSize / 1024 / 1024 / 1024).toFixed(2);
-            const maxCacheSize = 10 * 1024 * 1024 * 1024; // 10 GB
+            const maxCacheSize = 10 * 1024 * 1024 * 1024;
             const usagePercent = ((totalCacheSize / maxCacheSize) * 100).toFixed(1);
             
             let healthEmoji = '🟢';
@@ -384,8 +377,14 @@ jobs:
                 ['> 30 days (Stale)', lastAccessDistribution.stale.toString(), `${((lastAccessDistribution.stale / cacheCount) * 100).toFixed(1)}%`]
               ]);
             
+            // ===== FIX: Move deviceArray and inactiveDevices to outer scope =====
             const deviceArray = Array.from(cachesByDevice.entries())
               .sort((a, b) => b[1].size - a[1].size);
+            
+            const inactiveDevices = deviceArray.filter(([_, data]) => {
+              const daysSinceAccess = Math.floor((new Date() - data.lastAccessed) / (1000 * 60 * 60 * 24));
+              return daysSinceAccess > 30;
+            });
             
             if (deviceArray.length > 0) {
               summary.addHeading('📱 Top 15 Devices by Cache Size', 3)
@@ -401,11 +400,6 @@ jobs:
                     Array.from(data.osVersions).join(', ') || 'N/A'
                   ])
                 ]);
-              
-              const inactiveDevices = deviceArray.filter(([_, data]) => {
-                const daysSinceAccess = Math.floor((new Date() - data.lastAccessed) / (1000 * 60 * 60 * 24));
-                return daysSinceAccess > 30;
-              });
               
               if (inactiveDevices.length > 0) {
                 summary.addHeading('⚠️ Inactive Devices (>30 days since last access)', 3)
@@ -457,6 +451,7 @@ jobs:
               summary.addRaw(`- 🧹 **Stale Caches**: ${lastAccessDistribution.stale} caches haven't been accessed in 30+ days.\n`);
             }
             
+            // ===== FIX: Now inactiveDevices is accessible here =====
             if (inactiveDevices.length > 0) {
               summary.addRaw(`- 📱 **Inactive Devices**: ${inactiveDevices.length} devices haven't been built in 30+ days.\n`);
             }
@@ -489,7 +484,6 @@ jobs:
             const cacheAgeDays = parseInt('${{ inputs.cache_age_days }}');
             const forceCleanup = '${{ inputs.force_cleanup }}' === 'true';
             
-            // ===== FIX 3: Rate limit retry wrapper =====
             async function withRetry(fn, maxRetries = 3) {
               for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
@@ -522,7 +516,6 @@ jobs:
             
             const staleCutoffDate = new Date(Date.now() - cacheAgeDays * 24 * 60 * 60 * 1000);
             const veryStaleCutoffDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-            // ===== FIX 4: Very recent access protection =====
             const veryRecentCutoffDate = new Date(Date.now() - 2 * 60 * 60 * 1000);
             
             function shouldDeleteCache(cache) {
@@ -535,12 +528,10 @@ jobs:
               const isV3Format = cacheKey.startsWith('ccache-ksun-v3-');
               const isStableKey = cacheKey.endsWith('-stable');
               
-              // ===== FIX 4: Protect very recently accessed caches =====
               if (lastAccessDate > veryRecentCutoffDate && !forceCleanup) {
                 return { delete: false, reason: 'recently_used', accessAgeDays: Math.floor((new Date() - lastAccessDate) / (1000 * 60 * 60)) };
               }
               
-              // ===== FIX 1 & 2: Improved device parsing and matching =====
               let device = null;
               let kernel = null;
               let osVersion = null;
@@ -553,7 +544,6 @@ jobs:
                   device = v3Match[4];
                 }
               } else if (cacheKey.startsWith('ccache-')) {
-                // Legacy format
                 const kernelMatch = cacheKey.match(/^ccache-([^-]+-[\d.]+)-/);
                 if (kernelMatch) kernel = kernelMatch[1];
                 
@@ -564,7 +554,6 @@ jobs:
                 device = legacy1?.[1] || legacy2?.[1] || legacy3?.[1] || null;
               }
               
-              // ===== FIX 2: Improved device filter matching =====
               const exactMatch =
                 deviceFilter === 'ALL' ||
                 (device && deviceFilter.toLowerCase() === device.toLowerCase()) ||
@@ -658,7 +647,6 @@ jobs:
             
             let page = 1;
             while (true) {
-              // ===== FIX 3: Wrap API call with retry =====
               const res = await withRetry(() =>
                 github.rest.actions.getActionsCacheList({
                   owner,
@@ -679,7 +667,6 @@ jobs:
                   
                   if (!dryRun) {
                     try {
-                      // ===== FIX 3: Wrap delete call with retry =====
                       await withRetry(() =>
                         github.rest.actions.deleteActionsCacheById({
                           owner,
@@ -718,7 +705,6 @@ jobs:
                     accessAgeDays: decision.accessAgeDays
                   });
                 } else if (decision.reason === 'recently_used') {
-                  // ===== FIX 4: Log protected caches =====
                   console.log(`⏳ Protecting recently used cache: ${cache.key} (accessed ${decision.accessAgeDays}h ago)`);
                 } else if (decision.reason === 'stable_recent') {
                   console.log(`🔒 Protecting v3 stable cache: ${cache.key} (accessed ${decision.accessAgeDays}d ago)`);
@@ -791,7 +777,6 @@ jobs:
                 ]);
             }
             
-            // ===== FIX 7: Add protection summary =====
             summary.addRaw(`\n### 🛡️ Active Protection Rules\n\n`)
               .addTable([
                 [{data: 'Protection', header: true}, {data: 'Threshold', header: true}, {data: 'Status', header: true}],
@@ -890,7 +875,6 @@ jobs:
             const keepDays = 30;
             const keepRecent = 5;
             
-            // ===== FIX 3: Rate limit retry wrapper =====
             async function withRetry(fn, maxRetries = 3) {
               for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
@@ -930,7 +914,6 @@ jobs:
               success: 0
             };
             
-            // ===== FIX 3: Wrap API call with retry =====
             const workflows = await withRetry(() =>
               github.rest.actions.listRepoWorkflows({
                 owner,
@@ -945,7 +928,6 @@ jobs:
               let page = 1;
               
               while (true) {
-                // ===== FIX 3: Wrap API call with retry =====
                 const runs = await withRetry(() =>
                   github.rest.actions.listWorkflowRuns({
                     owner,
@@ -970,7 +952,6 @@ jobs:
                     successfulRuns.push(run);
                   }
                   
-                  // ===== FIX 6: Improved runs cleanup logic =====
                   const tooManySuccessful = run.conclusion === 'success' && 
                                            runDate < cutoffDate &&
                                            successfulRuns.length > keepRecent;
@@ -986,7 +967,6 @@ jobs:
                     
                     if (!dryRun) {
                       try {
-                        // ===== FIX 3: Wrap delete call with retry =====
                         await withRetry(() =>
                           github.rest.actions.deleteWorkflowRun({
                             owner,
@@ -1041,10 +1021,10 @@ jobs:
             summary.addHeading('📈 Deletions by Status', 3)
               .addTable([
                 [{data: 'Status', header: true}, {data: 'Count', header: true}, {data: 'Percentage', header: true}],
-                ['Failed', deletionsByStatus.failed.toString(), `${((deletionsByStatus.failed / totalDeleted) * 100).toFixed(1)}%`],
-                ['Cancelled', deletionsByStatus.cancelled.toString(), `${((deletionsByStatus.cancelled / totalDeleted) * 100).toFixed(1)}%`],
-                ['Skipped', deletionsByStatus.skipped.toString(), `${((deletionsByStatus.skipped / totalDeleted) * 100).toFixed(1)}%`],
-                ['Success (old)', deletionsByStatus.success.toString(), `${((deletionsByStatus.success / totalDeleted) * 100).toFixed(1)}%`]
+                ['Failed', deletionsByStatus.failed.toString(), totalDeleted > 0 ? `${((deletionsByStatus.failed / totalDeleted) * 100).toFixed(1)}%` : '0%'],
+                ['Cancelled', deletionsByStatus.cancelled.toString(), totalDeleted > 0 ? `${((deletionsByStatus.cancelled / totalDeleted) * 100).toFixed(1)}%` : '0%'],
+                ['Skipped', deletionsByStatus.skipped.toString(), totalDeleted > 0 ? `${((deletionsByStatus.skipped / totalDeleted) * 100).toFixed(1)}%` : '0%'],
+                ['Success (old)', deletionsByStatus.success.toString(), totalDeleted > 0 ? `${((deletionsByStatus.success / totalDeleted) * 100).toFixed(1)}%` : '0%']
               ]);
             
             if (deletionsByWorkflow.size > 0) {
@@ -1075,7 +1055,6 @@ jobs:
             const dryRun = '${{ inputs.dry_run }}' === 'true';
             const cleanupType = '${{ inputs.cleanup_type }}';
             
-            // ===== FIX 3: Rate limit retry wrapper =====
             async function withRetry(fn, maxRetries = 3) {
               for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
@@ -1100,7 +1079,6 @@ jobs:
             
             console.log('📊 Generating final report...\n');
             
-            // ===== FIX 5: Safe number parsing =====
             const beforeSize = Number('${{ needs.analyze.outputs.total_cache_size || 0 }}') || 0;
             const beforeCount = Number('${{ needs.analyze.outputs.cache_count || 0 }}') || 0;
             const beforePercent = Number('${{ needs.analyze.outputs.usage_percent || 0 }}') || 0;
@@ -1112,7 +1090,6 @@ jobs:
             
             let page = 1;
             while (true) {
-              // ===== FIX 3: Wrap API call with retry =====
               const res = await withRetry(() =>
                 github.rest.actions.getActionsCacheList({
                   owner,
@@ -1134,7 +1111,6 @@ jobs:
                   let device = null;
                   
                   if (isV3Format) {
-                    // ===== FIX 1: Updated v3 regex =====
                     const v3Match = cache.key.match(/^ccache-ksun-v3-([^-]+-[\d.]+)-([A-Za-z0-9.-]+(?:-[A-Za-z0-9.-]+)*)-(clang-[A-Za-z0-9.-]+)-([A-Za-z0-9._-]+)(-stable)?$/);
                     if (v3Match) {
                       device = v3Match[4];
@@ -1178,8 +1154,6 @@ jobs:
                 ['Usage Percentage', `${usagePercent}% of 10 GB`]
               ]);
             
-            // ===== FIX 5: Guard change calculation =====
-            let changeInfo = '';
             const hasValidBeforeData = beforeSize > 0 && beforeCount > 0 && beforePercent > 0;
             if (hasValidBeforeData && !dryRun && (cleanupType === 'cache_only' || cleanupType === 'full_cleanup')) {
               const sizeChange = beforeSize - totalSizeGB;
@@ -1188,7 +1162,7 @@ jobs:
               
               summary.addHeading('🔄 Cleanup Impact', 3)
                 .addTable([
-                                    [{data: 'Metric', header: true}, {data: 'Before', header: true}, {data: 'After', header: true}, {data: 'Change', header: true}],
+                  [{data: 'Metric', header: true}, {data: 'Before', header: true}, {data: 'After', header: true}, {data: 'Change', header: true}],
                   ['Cache Size (GB)', beforeSize.toFixed(2), totalSizeGB, `${sizeChange > 0 ? '-' : '+'}${Math.abs(sizeChange).toFixed(2)} GB`],
                   ['Cache Count', beforeCount.toString(), cacheCount.toString(), `${countChange > 0 ? '-' : '+'}${Math.abs(countChange)}`],
                   ['Usage %', `${beforePercent}%`, `${usagePercent}%`, `${percentChange > 0 ? '-' : '+'}${Math.abs(percentChange).toFixed(1)}%`]
@@ -1209,7 +1183,7 @@ jobs:
               summary.addHeading('🔥 Most Active Devices (Last 30 Days)', 3)
                 .addTable([
                   [{data: 'Device', header: true}, {data: 'Build Activity', header: true}, {data: 'Status', header: true}],
-                  ...topDevices.map(([device, count]) => [
+                                    ...topDevices.map(([device, count]) => [
                     device,
                     count.toString(),
                     count > 10 ? '🔥 Very Active' : count > 5 ? '✅ Active' : '📊 Moderate'
@@ -1217,7 +1191,6 @@ jobs:
                 ]);
             }
             
-            // ===== FIX 7: Add input configuration summary =====
             summary.addHeading('⚙️ Cleanup Configuration', 3)
               .addTable([
                 [{data: 'Setting', header: true}, {data: 'Value', header: true}],
