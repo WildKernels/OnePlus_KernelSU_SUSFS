@@ -405,14 +405,20 @@ runs:
           MATRIX_SUFFIX="-${{ inputs.matrix_flavor }}"
         fi
         
+        # Base key for fallback matching
         CACHE_KEY_BASE="ccache-ksun-v3-${ANDROID_VER}-${KERNEL_VER}-${OP_OS_VERSION}-${CLANG_VERSION_SHORT}-${OP_MODEL}${MATRIX_SUFFIX}"
         echo "CACHE_KEY_BASE=$CACHE_KEY_BASE" >> "$GITHUB_ENV"
+        
+        # Stable key for single-save strategy
+        CACHE_KEY_STABLE="${CACHE_KEY_BASE}-stable"
+        echo "CACHE_KEY_STABLE=$CACHE_KEY_STABLE" >> "$GITHUB_ENV"
         
         echo "Cache configuration:"
         echo "  Directory: $CACHE_DIR"
         echo "  Max size: 8G"
         echo "  Compression: enabled (level 6)"
         echo "  Base key: $CACHE_KEY_BASE"
+        echo "  Stable key: $CACHE_KEY_STABLE"
         echo "  Android: ${ANDROID_VER}"
         echo "  Kernel: ${KERNEL_VER}"
         echo "  OOS: ${OP_OS_VERSION}"
@@ -429,10 +435,11 @@ runs:
       id: cache_restore
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ${{ env.CACHE_KEY_BASE }}-stable
+        key: ${{ env.CACHE_KEY_STABLE }}
         restore-keys: |
           ${{ env.CACHE_KEY_BASE }}-
-          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}-
+          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}-
+          ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-
 
     - name: Cache Restore Summary
       if: ${{ inputs.clean != 'true' }}
@@ -443,11 +450,11 @@ runs:
           echo "✅ Cache restored successfully"
           echo "   Matched key: ${{ steps.cache_restore.outputs.cache-matched-key }}"
           
-          if [ "${{ steps.cache_restore.outputs.cache-matched-key }}" == "${{ env.CACHE_KEY_BASE }}-stable" ]; then
-            echo "   Match type: EXACT (stable key)"
+          if [ "${{ steps.cache_restore.outputs.cache-matched-key }}" == "${{ env.CACHE_KEY_STABLE }}" ]; then
+            echo "   Match type: EXACT (stable key - same configuration)"
           else
-            echo "   Match type: FALLBACK (cross-version reuse)"
-            echo "   ⚠️  Cache from different configuration - expect lower hit rate initially"
+            echo "   Match type: FALLBACK (cross-configuration reuse)"
+            echo "   ⚠️  Cache from different build - expect lower hit rate initially"
           fi
         else
           echo "⚠️ No cache found - building from scratch"
@@ -1106,10 +1113,13 @@ runs:
             echo ""
           fi
           
-          # Extra pre-warm when a fallback cache key was used
-          if [ "${{ steps.cache_restore.outputs.cache-hit }}" == "true" ] && [ "${{ steps.cache_restore.outputs.cache-matched-key }}" != "${{ env.CACHE_KEY_BASE }}-stable" ]; then
-            echo "🧯 Fallback cache detected — pre-warming headers for better early hit rate..."
-            make -C "$COMMON" O="$OUT" headers_install prepare 2>/dev/null || true
+          # Pre-warm ccache if restored from partial match
+          if [ "${{ steps.cache_restore.outputs.cache-hit }}" == "true" ] && \
+             [ "${{ steps.cache_restore.outputs.cache-matched-key }}" != "${{ env.CACHE_KEY_STABLE }}" ]; then
+            echo "Pre-warming ccache from partial match..."
+            ccache -z
+            make O="$OUT" -j$(nproc) 2>&1 | head -100 || true
+            ccache -s
           fi
         fi
         
@@ -1263,26 +1273,13 @@ runs:
         echo '```' >> $GITHUB_STEP_SUMMARY
         echo "</details>" >> $GITHUB_STEP_SUMMARY
 
-    - name: Save ccache (Stable Key)
+    - name: Save ccache
       if: ${{ success() && inputs.clean != 'true' }}
       uses: actions/cache/save@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ${{ env.CACHE_KEY_BASE }}-stable
-
-    - name: Save ccache (Run Snapshot)
-      if: |
-        success() && 
-        inputs.clean != 'true' && 
-        (github.event_name == 'release' || 
-         github.ref == 'refs/heads/main' ||
-         github.event_name == 'workflow_dispatch')
-      uses: actions/cache/save@v4
-      continue-on-error: true
-      with:
-        path: ${{ env.CCACHE_DIR }}
-        key: ${{ env.CACHE_KEY_BASE }}-${{ github.run_id }}
-    
+        key: ${{ env.CACHE_KEY_STABLE }}
+        
     - name: Collect Build Stats / Validate Image
       id: collect_stats
       shell: bash
@@ -1327,7 +1324,6 @@ runs:
         echo "   - Image size: $(numfmt --to=iec-i --suffix=B "$IMG_SIZE")"
         echo "   - SHA256: $IMG_SHA256"
         echo "   - Build time: ${BUILD_TIME}s"
-
     
     - name: Create Kernel ZIP
       id: create_zip
@@ -1426,6 +1422,8 @@ runs:
             if [ "${{ steps.cache_restore.outputs.cache-hit }}" == "true" ]; then
               echo "Cache Key Matched: ${{ steps.cache_restore.outputs.cache-matched-key }}"
             fi
+            echo "Cache Key (Base): ${{ env.CACHE_KEY_BASE }}"
+            echo "Cache Key (Stable): ${{ env.CACHE_KEY_STABLE }}"
           else
             echo "ccache: Disabled (clean build)"
           fi
@@ -1499,12 +1497,12 @@ runs:
             
             if [ "${{ steps.cache_restore.outputs.cache-hit }}" == "true" ]; then
               MATCHED_KEY="${{ steps.cache_restore.outputs.cache-matched-key }}"
-              STABLE_KEY="${{ env.CACHE_KEY_BASE }}-stable"
+              STABLE_KEY="${{ env.CACHE_KEY_STABLE }}"
               
               if [ "$MATCHED_KEY" == "$STABLE_KEY" ]; then
-                echo "| **Match Type** | ✅ Exact (stable key) |"
+                echo "| **Match Type** | ✅ Exact (stable key - same configuration) |"
               else
-                echo "| **Match Type** | ⚠️ Fallback (cross-version) |"
+                echo "| **Match Type** | ⚠️ Fallback (cross-configuration reuse) |"
               fi
               
               echo "| **Matched Key** | \`$MATCHED_KEY\` |"
@@ -1512,8 +1510,8 @@ runs:
             
             echo "| **Hit Rate** | ${{ steps.ccache_stats.outputs.hit_rate }}% |"
             echo "| **Direct Rate** | ${{ steps.ccache_stats.outputs.direct_rate }}% |"
-            echo "| **Stable Key** | \`${{ env.CACHE_KEY_BASE }}-stable\` |"
-            echo "| **Snapshot Key** | \`${{ env.CACHE_KEY_BASE }}-${{ github.run_id }}\` |"
+            echo "| **Cache Key (Base)** | \`${{ env.CACHE_KEY_BASE }}\` |"
+            echo "| **Cache Key (Stable)** | \`${{ env.CACHE_KEY_STABLE }}\` |"
             
             HIT_RATE="${{ steps.ccache_stats.outputs.hit_rate }}"
             HIT_INT="${HIT_RATE%.*}"
@@ -1532,7 +1530,7 @@ runs:
               echo "- First build or cache invalidation"
               echo "- Major source code changes"
               echo "- Compiler version mismatch"
-              echo "- Cross-OOS fallback with incompatible objects"
+              echo "- Cross-configuration fallback with incompatible objects"
             fi
           else
             echo "**Clean build mode** - ccache was disabled for this build."
@@ -1540,7 +1538,7 @@ runs:
             echo "Cache directory and statistics were preserved for concurrent jobs."
           fi
         } >> "$GITHUB_STEP_SUMMARY"
-    
+        
     - name: Upload Artifacts
       if: success() && steps.create_zip.conclusion == 'success'
       uses: actions/upload-artifact@v4
