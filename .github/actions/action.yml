@@ -978,18 +978,31 @@ runs:
         echo ""
         
         if [ "${{ inputs.clean }}" != "true" ]; then
-          echo "ccache wrapper test:"
-          clang --version 2>&1 | head -n1 || true
-          echo ""
-          echo "ccache configuration:"
-          ccache --show-config | grep -E "(compression|direct_mode|hash_dir|file_clone|inode_cache)" || true
-          echo ""
-          echo "ccache pre-build status:"
-          ccache --show-stats | head -n 20
+          echo "ccache: ENABLED"
+          echo "  Dir: $CCACHE_DIR"
+          echo "  Base: $CCACHE_BASEDIR"
+          echo "  Max size: $CCACHE_MAXSIZE"
+          echo "  Compression: enabled (level 6)"
+          echo "  Features: direct_mode, file_clone, inode_cache"
         else
-          echo "⚠️ Clean build - ccache bypassed"
+          echo "ccache: DISABLED (clean build)"
         fi
         echo "============================================"
+        
+        # Prime cache if empty
+        if [ "${{ inputs.clean }}" != "true" ]; then
+          if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -type f 2>/dev/null | head -n1)" ]; then
+            echo "🔥 Priming cache with header preprocessing..."
+            make -C "$COMMON" O="$OUT" headers_install prepare 2>&1 | head -n 20 || true
+            echo ""
+          fi
+          
+          # Extra pre-warm when a fallback cache key was used
+          if [ "${{ steps.cache_restore.outputs.cache-hit }}" == "true" ] && [ "${{ steps.cache_restore.outputs.cache-matched-key }}" != "${{ env.CACHE_KEY_BASE }}-stable" ]; then
+            echo "🧯 Fallback cache detected — pre-warming headers for better early hit rate..."
+            make -C "$COMMON" O="$OUT" headers_install prepare 2>/dev/null || true
+          fi
+        fi
         
         make O="$OUT" gki_defconfig
         
@@ -1027,26 +1040,7 @@ runs:
         echo "KCPPFLAGS: ${KCPPFLAGS:0:150}..."
         echo "Timestamp: $KBUILD_BUILD_TIMESTAMP"
         echo "Workspace: $WORKSPACE"
-        
-        if [ "${{ inputs.clean }}" != "true" ]; then
-          echo "ccache: ENABLED"
-          echo "  Dir: $CCACHE_DIR"
-          echo "  Base: $CCACHE_BASEDIR"
-          echo "  Max size: $CCACHE_MAXSIZE"
-          echo "  Compression: zstd level 6"
-          echo "  Features: direct_mode, file_clone, inode_cache"
-        else
-          echo "ccache: DISABLED (clean build)"
-        fi
         echo "============================================"
-        
-        if [ "${{ inputs.clean }}" != "true" ]; then
-          if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -type f 2>/dev/null | head -n1)" ]; then
-            echo "🔥 Priming cache with header preprocessing..."
-            make -C "$COMMON" O="$OUT" headers_install prepare 2>&1 | head -n 20 || true
-            echo ""
-          fi
-        fi
         
         BUILD_START=$(date +%s)
         set -o pipefail
