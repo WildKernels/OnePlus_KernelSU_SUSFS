@@ -173,13 +173,13 @@ jobs:
           | **Clean Build** | ${{ inputs.clean_build && '✅ Yes (no ccache)' || '❌ No (ccache enabled)' }} |
           | **Create Release** | ${{ inputs.make_release && '✅ Yes' || '❌ No' }} |
           
-          ### 🛡️ SUSFS Configuration (v1.5.12)
+          ### 🛡️ SUSFS Configuration
           
           | Kernel Version | Branch/Commit | Status |
           |----------------|---------------|--------|
           EOF
           
-          # Display SUSFS config for each kernel version with better formatting
+          # Display SUSFS config for each kernel version
           declare -A susfs_inputs=(
             ["android12-5.10"]="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
             ["android13-5.15"]="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
@@ -202,22 +202,27 @@ jobs:
           echo "### 📦 Devices to Build" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          # Parse matrix and display devices
-          matrix_json='${{ needs.set-op-model.outputs.matrix }}'
+          # More robust matrix parsing
+          matrix_json='${{ steps.set-matrix.outputs.matrix }}'
           
-          if command -v jq >/dev/null 2>&1; then
+          # Validate JSON before parsing
+          if echo "$matrix_json" | jq empty 2>/dev/null; then
             echo "| # | Model | OS Version | Kernel | SOC |" >> $GITHUB_STEP_SUMMARY
             echo "|---|-------|------------|--------|-----|" >> $GITHUB_STEP_SUMMARY
             
-            echo "$matrix_json" | jq -r '.include[] | 
+            # Parse and display device list with error handling
+            echo "$matrix_json" | jq -r '.include[]? // empty | 
               [
-                .model,
-                .os_version,
-                (.android_version + "-" + .kernel_version),
-                .soc
-              ] | @tsv' | nl -w1 -s'|' | sed 's/^/|/' | sed 's/$/|/' | sed 's/\t/|/g' >> $GITHUB_STEP_SUMMARY
+                .model // "N/A",
+                .os_version // "N/A",
+                ((.android_version // "N/A") + "-" + (.kernel_version // "N/A")),
+                .soc // "N/A"
+              ] | @tsv' | awk -F'\t' '{printf "| %d | %s | %s | %s | %s |\n", NR, $1, $2, $3, $4}' >> $GITHUB_STEP_SUMMARY
           else
-            echo "$matrix_json" | grep -oP '"model":"[^"]*"' | sed 's/"model":"/- /' | sed 's/"$//' >> $GITHUB_STEP_SUMMARY
+            # Fallback if jq parsing fails
+            echo "⚠️ Unable to parse device matrix with jq" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Device count:** ${{ steps.set-matrix.outputs.count }}" >> $GITHUB_STEP_SUMMARY
           fi
           
           # Add feature highlights
@@ -225,12 +230,13 @@ jobs:
           echo "### ✨ Build Features" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- 🔐 **KernelSU Next** - Latest root solution" >> $GITHUB_STEP_SUMMARY
-          echo "- 🛡️ **SUSFS v1.5.12** - Advanced hiding capabilities" >> $GITHUB_STEP_SUMMARY
+          echo "- 🛡️ **SUSFS** - Advanced hiding capabilities" >> $GITHUB_STEP_SUMMARY
           echo "- 🚀 **BBR** - TCP congestion control" >> $GITHUB_STEP_SUMMARY
           echo "- 🛡️ **BBG** - Baseband Guard LSM" >> $GITHUB_STEP_SUMMARY
           echo "- ⏱️ **TTL Target** - Network packet manipulation" >> $GITHUB_STEP_SUMMARY
           echo "- 🔧 **IP_SET** - Advanced firewall support" >> $GITHUB_STEP_SUMMARY
           
+          # Conditional features based on target
           if [[ "${{ inputs.op_model }}" == *"OOS15"* ]] || [[ "${{ inputs.op_model }}" == *"OOS16"* ]] || [[ "${{ inputs.op_model }}" == "android15-6.6" ]]; then
             echo "- 🐦 **HMBIRD** - OnePlus 13/Ace5Pro scheduler (where applicable)" >> $GITHUB_STEP_SUMMARY
           fi
@@ -251,17 +257,46 @@ jobs:
             echo "> ⚠️ **Android-Kernel Filter Active:** Only **OOS15** and **OOS16** devices will be built for \`${{ inputs.op_model }}\`" >> $GITHUB_STEP_SUMMARY
           fi
           
-          # Add build time estimate
-          echo "" >> $GITHUB_STEP_SUMMARY
+          # Calculate realistic build time
           device_count=${{ steps.set-matrix.outputs.count }}
+          MAX_CONCURRENT=20
           
           if [[ "${{ inputs.clean_build }}" == "true" ]]; then
-            est_time=$((device_count * 45))  # ~45 min per device without ccache
-            echo "> ⏱️ **Estimated Build Time:** ~${est_time} minutes (clean build, no ccache)" >> $GITHUB_STEP_SUMMARY
+            avg_time=50
+            build_type="clean build"
           else
-            est_time=$((device_count * 25))  # ~25 min per device with ccache
-            echo "> ⏱️ **Estimated Build Time:** ~${est_time} minutes (with ccache acceleration)" >> $GITHUB_STEP_SUMMARY
+            avg_time=30
+            build_type="incremental (ccache)"
           fi
+          
+          if [ $device_count -le $MAX_CONCURRENT ]; then
+            est_min=$avg_time
+            est_max=$((avg_time + 15))
+            batches=1
+          else
+            batches=$(( (device_count + MAX_CONCURRENT - 1) / MAX_CONCURRENT ))
+            est_min=$((batches * avg_time))
+            est_max=$((batches * (avg_time + 15)))
+          fi
+          
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          
+          ### ⏱️ Estimated Build Time
+          
+          | Metric | Value |
+          |--------|-------|
+          | **Total Devices** | $device_count |
+          | **Parallel Batches** | ~$batches |
+          | **Max Concurrent** | $MAX_CONCURRENT jobs |
+          | **Estimated Time** | ${est_min}-${est_max} minutes |
+          | **Build Type** | $build_type |
+          
+          > 💡 **Note:** Times are estimates. Actual duration depends on:
+          > - Runner availability and performance
+          > - Kernel complexity and patch size
+          > - ccache hit rate (for incremental builds)
+          > - Network conditions for downloads
+          EOF
           
           # Add workflow link
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -270,13 +305,21 @@ jobs:
           echo "**Workflow Run:** [\`#${{ github.run_number }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
 
   build:
-    name: build (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ matrix.os_version }}, ${{ inputs.ksun_branch }})
-    needs: set-op-model
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.set-op-model.outputs.matrix) }}
-    steps:
+      name: build (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ matrix.os_version }}, ${{ inputs.ksun_branch }})
+      needs: set-op-model
+      runs-on: ubuntu-latest
+      timeout-minutes: 90
+      strategy:
+        fail-fast: false
+        max-parallel: 30
+        matrix: ${{ fromJSON(needs.set-op-model.outputs.matrix) }}
+      steps:
+    
+      - name: 📊 Build Progress
+        run: |
+          echo "::notice::Building device ${{ strategy.job-index }} of ${{ strategy.job-total }}"
+          echo "Device: ${{ matrix.model }} (${{ matrix.os_version }})"
+
       - name: 🧹 Emergency Disk Cleanup
         run: |
           echo "::group::Disk Usage Before Cleanup"
