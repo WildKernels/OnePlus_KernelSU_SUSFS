@@ -235,16 +235,20 @@ runs:
         fi
         
         "$REPO" --version
-        success=false
+        success=false        
+        SYNC_JOBS=$(nproc --all)
+        [ "$SYNC_JOBS" -gt 30 ] && SYNC_JOBS=30
+        
         for i in 1 2 3; do
           if "$REPO" sync -c --no-clone-bundle --no-tags --optimized-fetch \
-             -j"$(nproc --all)" --fail-fast; then
+             -j"$SYNC_JOBS" --fail-fast; then
             success=true
             break
           fi
           echo "⚠️ repo sync attempt $i failed; retrying..."
           sleep 30
         done
+
         $success || { echo "::error::repo sync failed after 3 attempts"; exit 1; }
         echo "✅ Kernel source synced"
         echo "::endgroup::"
@@ -378,41 +382,34 @@ runs:
            
         CACHE_DIR="$HOME/.ccache"
         mkdir -p "$CACHE_DIR"
-        
-        # Export ccache environment variables
+                
         export CCACHE_DIR="$CACHE_DIR"
-        export CCACHE_MAXSIZE=500M
+        export CCACHE_MAXSIZE=2G
             
         # Persist to GITHUB_ENV
         echo "CCACHE_DIR=$CACHE_DIR" >> "$GITHUB_ENV"
-        echo "CCACHE_MAXSIZE=500M" >> "$GITHUB_ENV"
+        echo "CCACHE_MAXSIZE=2G" >> "$GITHUB_ENV"
             
         echo "Cache configuration:"
         echo "  Directory: $CACHE_DIR"
-        echo "  Max size: 500M"
-        echo "  Android: ${ANDROID_VER:-unknown}"
-        echo "  Kernel: ${KERNEL_VER:-unknown}"
-        echo "  OOS Version: ${OP_OS_VERSION:-unknown}"
+        echo "  Max size: 2G (shared across kernel version)"
+        echo "  Kernel: ${ANDROID_VER:-unknown}-${KERNEL_VER:-unknown}"
+        echo "  Devices sharing this cache: All ${ANDROID_VER:-unknown}-${KERNEL_VER:-unknown} devices"
         echo "  Clang: ${CLANG_VERSION_SHORT:-unknown}"
-        echo "  Device: ${OP_MODEL:-unknown}"
+        echo "  Device: ${OP_MODEL:-unknown} (for logging only)"
         echo "::endgroup::"        
 
     - name: ♻️ Setup ccache
       uses: actions/cache@v4
       if: ${{ inputs.clean != 'true' }}
       with:
-        path: ${{ env.CCACHE_DIR }}
+        path: ${{ env.CCACHE_DIR }}        
         
-        # Stable cache key - only changes when meaningful parameters change
-        key: ccache-ksun-v4-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-${{ inputs.ksun_branch }}
-        
-        # Hierarchical restore keys for better cache reuse
+        key: ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-${{ inputs.ksun_branch }}
+        # Hierarchical restore keys for fallback
         restore-keys: |
-          ccache-ksun-v4-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-
-          ccache-ksun-v4-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-
-          ccache-ksun-v4-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.ANDROID_VER }}-
-          ccache-ksun-v4-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-
-          ccache-ksun-v4-${{ env.OP_MODEL }}-
+          ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-
+          ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-
    
     - name: Configure ccache
       shell: bash
@@ -428,7 +425,7 @@ runs:
         echo ""
         
         # Set max size using ccache command (more reliable)
-        ccache --max-size=500M
+        ccache --max-size=2G
         
         # Zero stats for accurate build metrics (optional but recommended)
         if [ "${{ inputs.clean }}" != "true" ]; then
@@ -457,8 +454,11 @@ runs:
           echo "✅ depend_mode enabled"
         fi
         
+        # Cap log file size to prevent bloat in long runs
+        ccache --set-config log_file_max_size=1M
+        
         # Sloppiness settings for better cache hits
-        ccache --set-config sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale
+        ccache --set-config sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale        
         
         # Ignore sysroot options
         export CCACHE_IGNOREOPTIONS="--sysroot*"
@@ -476,13 +476,14 @@ runs:
         echo "✅ ccache configured for production"
         echo ""
         echo "Configuration summary:"
-        echo "  Max size: 500M"
+        echo "  Max size: 2G (shared across kernel version)"
         echo "  Base dir: ${GITHUB_WORKSPACE}"
         echo "  Compression: zstd level 3"
         echo "  Direct mode: enabled"
         echo "  File cloning: enabled"
         echo "  Inode cache: enabled"
         echo "  Log file: $CCACHE_LOGFILE"
+        echo "  Sharing strategy: Kernel version (${ANDROID_VER:-unknown}-${KERNEL_VER:-unknown})"
         echo ""
         
         # Show current configuration
@@ -491,13 +492,14 @@ runs:
         echo ""
         
         if [ -d "$CCACHE_DIR" ] && find "$CCACHE_DIR" -type f -print -quit 2>/dev/null | grep -q .; then
-          echo "✅ Restored cache found"
+          echo "✅ Restored shared cache found"
+          echo "   This cache is shared by all ${ANDROID_VER:-unknown}-${KERNEL_VER:-unknown} devices"
           echo ""
           echo "Pre-build cache statistics:"
           ccache --show-stats | head -n 25
         else
           echo "⚠️ No existing cache - building from scratch"
-          echo "Cache will be populated for future builds"
+          echo "   Cache will be populated for all ${ANDROID_VER:-unknown}-${KERNEL_VER:-unknown} devices"
         fi
         
         echo "::endgroup::"
@@ -1064,15 +1066,28 @@ runs:
         scripts/config --file "$OUT/.config" -e LTO_CLANG
         make O="$OUT" olddefconfig
         
-        KCFLAGS="$KCFLAGS -Wno-error -pipe -fno-stack-protector ${KCFLAGS_EXTRA}"
+        # ✨ UPDATED: Add -fdebug-compilation-dir=. for better ccache hits
+        KCFLAGS="$KCFLAGS -Wno-error -pipe -fno-stack-protector -fdebug-compilation-dir=. ${KCFLAGS_EXTRA}"
         KCPPFLAGS="$KCPPFLAGS -DCONFIG_OPTIMIZE_INLINING"
+
+        # ✨ UPDATED: Cap parallel jobs to reduce throttling on shared runners
+        JOBS=$(nproc --all)
+        [ "$JOBS" -gt 32 ] && JOBS=32
+        echo "🔧 Using $JOBS parallel jobs for build"
+
+        export CC="clang"
+        export CXX="clang++"
+        export HOSTCC="clang"
+        export HOSTCXX="clang++"
+        export HOSTLD="ld.lld"
+        export HOSTAR="llvm-ar"
         
         echo "============================================"
         echo "🔧 Build Configuration"
         echo "============================================"
         echo "Device: ${OP_MODEL}"
         echo "Kernel: ${KERNEL_FULL_VER}"
-        echo "Threads: $(nproc --all)"
+        echo "Threads: $JOBS"
         echo "Optimization: ${{ inputs.optimize_level }}"
         echo "KCFLAGS: ${KCFLAGS:0:150}..."
         echo "KCPPFLAGS: ${KCPPFLAGS:0:150}..."
@@ -1097,6 +1112,8 @@ runs:
         if [ "${{ inputs.clean }}" != "true" ]; then
           if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -type f 2>/dev/null | head -n1)" ]; then
             echo "🔥 Priming cache with header preprocessing..."
+            # ✨ UPDATED: Export KBUILD_OUTPUT for subprocess consistency
+            export KBUILD_OUTPUT="$OUT"
             make -C "$COMMON" O="$OUT" headers_install prepare 2>&1 | head -n 20 || true
             echo ""
           fi
@@ -1108,7 +1125,8 @@ runs:
         echo "🚀 Starting kernel compilation..."
         echo ""
         
-        make -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" 2>&1 | tee build.log
+        # ✨ UPDATED: Use $JOBS instead of $(nproc --all)
+        make -j"$JOBS" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" 2>&1 | tee build.log
         
         BUILD_END=$(date +%s)
         BUILD_TIME=$((BUILD_END - BUILD_START))
@@ -1175,8 +1193,8 @@ runs:
         echo "ccache Statistics"
         echo "================="
         
-        # Safely get stats with error handling
-        if ! STATS="$(ccache --show-stats 2>&1)"; then
+        # ✨ UPDATED: Add LC_ALL=C for locale-stable stats parsing
+        if ! STATS="$(LC_ALL=C ccache --show-stats 2>&1)"; then
           echo "⚠️ ccache --show-stats failed"
           echo "hit_rate=0.0" >> "$GITHUB_OUTPUT"
           echo "direct_rate=0.0" >> "$GITHUB_OUTPUT"
