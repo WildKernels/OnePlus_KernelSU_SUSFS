@@ -1194,28 +1194,40 @@ runs:
           exit 0
         fi
         
-        # Extract values with safe fallbacks
-        CACHEABLE=$(echo "$STATS" | grep -iE "cacheable calls" | grep -oE '[0-9]+' | head -n1 || echo "0")
+        echo ""
+        echo "Parsing statistics..."
+        
+        # Extract cacheable calls - try multiple patterns
+        CACHEABLE=$(echo "$STATS" | grep -iE "Cacheable calls:" | grep -oE '[0-9]+' | head -n1 || echo "0")
         CACHEABLE=${CACHEABLE:-0}
         
-        # Extract total hits (direct + preprocessed)
-        DIRECT=$(echo "$STATS" | grep -iE "cache hit \(direct\)" | grep -oE '[0-9]+' | head -n1 || echo "0")
+        # Extract hits - look for "Hits:" line under "Cacheable calls"
+        HITS=$(echo "$STATS" | awk '/Cacheable calls:/,/Misses:/ {if (/Hits:/) print}' | grep -oE '[0-9]+' | head -n1 || echo "0")
+        HITS=${HITS:-0}
+        
+        # Extract direct hits - look for "Direct:" line
+        DIRECT=$(echo "$STATS" | grep -E "^\s+Direct:" | grep -oE '[0-9]+' | head -n1 || echo "0")
         DIRECT=${DIRECT:-0}
         
-        PREPROCESSED=$(echo "$STATS" | grep -iE "cache hit \(preprocessed\)" | grep -oE '[0-9]+' | head -n1 || echo "0")
+        # Extract preprocessed hits
+        PREPROCESSED=$(echo "$STATS" | grep -E "^\s+Preprocessed:" | grep -oE '[0-9]+' | head -n1 || echo "0")
         PREPROCESSED=${PREPROCESSED:-0}
         
-        HITS=$((DIRECT + PREPROCESSED))
+        # Verify hits = direct + preprocessed
+        CALCULATED_HITS=$((DIRECT + PREPROCESSED))
+        if [ "$HITS" -eq 0 ] && [ "$CALCULATED_HITS" -gt 0 ]; then
+          HITS=$CALCULATED_HITS
+        fi
         
         echo ""
         echo "Extracted values:"
         echo "  Cacheable calls: $CACHEABLE"
+        echo "  Total hits: $HITS"
         echo "  Direct hits: $DIRECT"
         echo "  Preprocessed hits: $PREPROCESSED"
-        echo "  Total hits: $HITS"
         
         # Calculate rates safely
-        if [ "$CACHEABLE" -gt 0 ] && [ "$HITS" -ge 0 ] && [ "$DIRECT" -ge 0 ]; then
+        if [ "$CACHEABLE" -gt 0 ]; then
           HIT_RATE=$(awk -v h="$HITS" -v c="$CACHEABLE" 'BEGIN{printf "%.1f", (h/c)*100}' 2>/dev/null || echo "0.0")
           DIRECT_RATE=$(awk -v d="$DIRECT" -v c="$CACHEABLE" 'BEGIN{printf "%.1f", (d/c)*100}' 2>/dev/null || echo "0.0")
         else
@@ -1228,7 +1240,7 @@ runs:
           echo "⚠️ Invalid hit rate format: $HIT_RATE, resetting to 0.0"
           HIT_RATE="0.0"
         elif [ "$(echo "$HIT_RATE" | awk '{print ($1 > 100)}')" = "1" ]; then
-          echo "⚠️ Hit rate exceeds 100%: $HIT_RATE, resetting to 100.0"
+          echo "⚠️ Hit rate exceeds 100%: $HIT_RATE, capping at 100.0"
           HIT_RATE="100.0"
         fi
         
@@ -1236,7 +1248,7 @@ runs:
           echo "⚠️ Invalid direct rate format: $DIRECT_RATE, resetting to 0.0"
           DIRECT_RATE="0.0"
         elif [ "$(echo "$DIRECT_RATE" | awk '{print ($1 > 100)}')" = "1" ]; then
-          echo "⚠️ Direct rate exceeds 100%: $DIRECT_RATE, resetting to 100.0"
+          echo "⚠️ Direct rate exceeds 100%: $DIRECT_RATE, capping at 100.0"
           DIRECT_RATE="100.0"
         fi
         
@@ -1245,9 +1257,9 @@ runs:
         echo "direct_rate=$DIRECT_RATE" >> "$GITHUB_OUTPUT"
         
         echo ""
-        echo "Final rates:"
-        echo "  Hit rate: ${HIT_RATE}%"
-        echo "  Direct rate: ${DIRECT_RATE}%"
+        echo "Final calculated rates:"
+        echo "  Hit rate: ${HIT_RATE}% (${HITS}/${CACHEABLE})"
+        echo "  Direct rate: ${DIRECT_RATE}% (${DIRECT}/${CACHEABLE})"
         
         echo "::endgroup::"
         
@@ -1255,8 +1267,12 @@ runs:
         {
           echo "## 📊 ccache Statistics"
           echo ""
-          echo "**Hit Rate:** ${HIT_RATE}%"
-          echo "**Direct Rate:** ${DIRECT_RATE}%"
+          echo "| Metric | Value | Percentage |"
+          echo "|--------|-------|------------|"
+          echo "| **Hit Rate** | ${HITS}/${CACHEABLE} | **${HIT_RATE}%** |"
+          echo "| **Direct Rate** | ${DIRECT}/${CACHEABLE} | **${DIRECT_RATE}%** |"
+          echo "| Direct Hits | ${DIRECT}/${HITS} | $(awk -v d="$DIRECT" -v h="$HITS" 'BEGIN{if(h>0) printf "%.1f", (d/h)*100; else print "0.0"}')% |"
+          echo "| Preprocessed Hits | ${PREPROCESSED}/${HITS} | $(awk -v p="$PREPROCESSED" -v h="$HITS" 'BEGIN{if(h>0) printf "%.1f", (p/h)*100; else print "0.0"}')% |"
           echo ""
           echo "<details>"
           echo "<summary>Full Statistics</summary>"
