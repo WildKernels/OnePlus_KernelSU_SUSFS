@@ -1371,15 +1371,9 @@ runs:
         ANYKERNEL_DIR="$GITHUB_WORKSPACE/AnyKernel3"
         cd "$ANYKERNEL_DIR"
         
+        # ✅ Copy ONLY the kernel Image
+        echo "📦 Copying kernel Image..."
         cp "$IMG" "$ANYKERNEL_DIR/"
-        
-        if [ -f "$OUT/arch/arm64/boot/dtb" ]; then
-          cp "$OUT/arch/arm64/boot/dtb" "$ANYKERNEL_DIR/"
-        fi
-        
-        if [ -f "$OUT/arch/arm64/boot/dtbo.img" ]; then
-          cp "$OUT/arch/arm64/boot/dtbo.img" "$ANYKERNEL_DIR/"
-        fi
         
         KERNEL_VERSION="${TKERNEL_VER}"
         KSU_VERSION="${KSUVER}"
@@ -1389,16 +1383,8 @@ runs:
         
         ZIP_NAME="${DEVICE}_${OS_VERSION}_${KERNEL_VERSION}_KSU-Next_${KSU_VERSION}_SUSFS_${SUSFS_VERSION}.zip"
         
-        echo "device.name1=${DEVICE}" > anykernel.sh.new
-        echo "device.name2=${DEVICE}" >> anykernel.sh.new
-        echo "device.name3=${DEVICE}" >> anykernel.sh.new
-        echo "device.name4=${DEVICE}" >> anykernel.sh.new
-        echo "device.name5=${DEVICE}" >> anykernel.sh.new
-        cat anykernel.sh >> anykernel.sh.new
-        mv anykernel.sh.new anykernel.sh
-        
-        chmod +x anykernel.sh
-        
+        # Create ZIP (exclude git files, README, and other ZIPs)
+        echo "📦 Creating flashable ZIP..."
         zip -r9 "$ZIP_NAME" . -x '*.git*' -x 'README.md' -x '*.zip'
         
         ZIP_SIZE=$(stat -c%s "$ZIP_NAME")
@@ -1413,10 +1399,16 @@ runs:
         echo "ZIP_SIZE=$ZIP_SIZE" >> "$GITHUB_ENV"
         echo "ZIP_SHA256=$ZIP_SHA256" >> "$GITHUB_ENV"
         
+        echo ""
         echo "✅ Flashable ZIP created"
         echo "   Name: $ZIP_NAME"
         echo "   Size: $(numfmt --to=iec-i --suffix=B "$ZIP_SIZE")"
         echo "   SHA256: $ZIP_SHA256"
+        echo ""
+        echo "📋 ZIP Contents:"
+        echo "   - Image (kernel binary)"
+        echo "   - AnyKernel3 installer scripts"
+        echo "   - Installation tools (busybox, magiskboot)"
         echo "::endgroup::"
 
     - name: Upload Artifacts
