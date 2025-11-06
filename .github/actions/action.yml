@@ -383,15 +383,15 @@ runs:
         mkdir -p "$CACHE_DIR"
                 
         export CCACHE_DIR="$CACHE_DIR"
-        export CCACHE_MAXSIZE=2G
+        export CCACHE_MAXSIZE=1G
             
         # Persist to GITHUB_ENV
         echo "CCACHE_DIR=$CACHE_DIR" >> "$GITHUB_ENV"
-        echo "CCACHE_MAXSIZE=2G" >> "$GITHUB_ENV"
+        echo "CCACHE_MAXSIZE=1G" >> "$GITHUB_ENV"
             
         echo "Cache configuration:"
         echo "  Directory: $CACHE_DIR"
-        echo "  Max size: 2G (shared across kernel version)"
+        echo "  Max size: 1G"
         echo "  Kernel: ${ANDROID_VER:-unknown}-${KERNEL_VER:-unknown}"
         echo "  Devices sharing this cache: All ${ANDROID_VER:-unknown}-${KERNEL_VER:-unknown} devices"
         echo "  Clang: ${CLANG_VERSION_SHORT:-unknown}"
@@ -423,7 +423,7 @@ runs:
         echo ""
         
         # Set max size
-        ccache --max-size=2G
+        ccache --max-size=1G
         
         # Zero stats when not a clean build
         if [ "${{ inputs.clean }}" != "true" ]; then
@@ -480,7 +480,7 @@ runs:
         echo "✅ ccache configured for production"
         echo ""
         echo "Configuration summary:"
-        echo "  Max size: 2G (shared across kernel version)"
+        echo "  Max size: 1G"
         echo "  Base dir: ${GITHUB_WORKSPACE}"
         echo "  Compression: zstd level 3"
         echo "  Direct mode: enabled"
