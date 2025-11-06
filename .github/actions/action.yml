@@ -1174,9 +1174,17 @@ runs:
         
         echo "ccache Statistics"
         echo "================="
-        ccache --show-stats
         
-        STATS="$(ccache --show-stats 2>/dev/null || echo '')"
+        # Safely get stats with error handling
+        if ! STATS="$(ccache --show-stats 2>&1)"; then
+          echo "⚠️ ccache --show-stats failed"
+          echo "hit_rate=0.0" >> "$GITHUB_OUTPUT"
+          echo "direct_rate=0.0" >> "$GITHUB_OUTPUT"
+          echo "::endgroup::"
+          exit 0
+        fi
+        
+        echo "$STATS"
         
         if [ -z "$STATS" ]; then
           echo "⚠️ Could not retrieve ccache statistics"
@@ -1186,47 +1194,53 @@ runs:
           exit 0
         fi
         
-        # More robust extraction with multiple patterns
-        CACHEABLE=$(echo "$STATS" | grep -iE "(cacheable calls|compile)" | grep -oE '[0-9]+' | head -n1)
+        # Extract values with safe fallbacks
+        CACHEABLE=$(echo "$STATS" | grep -iE "cacheable calls" | grep -oE '[0-9]+' | head -n1 || echo "0")
         CACHEABLE=${CACHEABLE:-0}
         
-        # Try multiple patterns for cache hits
-        HITS=$(echo "$STATS" | grep -iE "(cache hit \(direct|cache hit \(preprocessed|^[[:space:]]*hits)" | grep -oE '[0-9]+' | head -n1)
-        if [ -z "$HITS" ] || [ "$HITS" = "0" ]; then
-          HITS=$(echo "$STATS" | grep -iE "^[[:space:]]*cache hit" | grep -oE '[0-9]+' | head -n1)
-        fi
-        HITS=${HITS:-0}
-        
-        DIRECT=$(echo "$STATS" | grep -iE "cache hit \(direct\)" | grep -oE '[0-9]+' | head -n1)
+        # Extract total hits (direct + preprocessed)
+        DIRECT=$(echo "$STATS" | grep -iE "cache hit \(direct\)" | grep -oE '[0-9]+' | head -n1 || echo "0")
         DIRECT=${DIRECT:-0}
+        
+        PREPROCESSED=$(echo "$STATS" | grep -iE "cache hit \(preprocessed\)" | grep -oE '[0-9]+' | head -n1 || echo "0")
+        PREPROCESSED=${PREPROCESSED:-0}
+        
+        HITS=$((DIRECT + PREPROCESSED))
         
         echo ""
         echo "Extracted values:"
         echo "  Cacheable calls: $CACHEABLE"
-        echo "  Cache hits: $HITS"
         echo "  Direct hits: $DIRECT"
+        echo "  Preprocessed hits: $PREPROCESSED"
+        echo "  Total hits: $HITS"
         
-        # Calculate rates safely with validation
-        if [ "$CACHEABLE" -gt 0 ]; then
-          HIT_RATE=$(awk -v h="$HITS" -v c="$CACHEABLE" 'BEGIN{printf "%.1f", (h/c)*100}')
-          DIRECT_RATE=$(awk -v d="$DIRECT" -v c="$CACHEABLE" 'BEGIN{printf "%.1f", (d/c)*100}')
+        # Calculate rates safely
+        if [ "$CACHEABLE" -gt 0 ] && [ "$HITS" -ge 0 ] && [ "$DIRECT" -ge 0 ]; then
+          HIT_RATE=$(awk -v h="$HITS" -v c="$CACHEABLE" 'BEGIN{printf "%.1f", (h/c)*100}' 2>/dev/null || echo "0.0")
+          DIRECT_RATE=$(awk -v d="$DIRECT" -v c="$CACHEABLE" 'BEGIN{printf "%.1f", (d/c)*100}' 2>/dev/null || echo "0.0")
         else
           HIT_RATE="0.0"
           DIRECT_RATE="0.0"
         fi
         
-        # Validate rates are reasonable (0-100)
-        if ! echo "$HIT_RATE" | grep -qE '^[0-9]+\.?[0-9]*$' || [ "$(echo "$HIT_RATE > 100" | bc)" -eq 1 ]; then
-          echo "⚠️ Invalid hit rate calculated: $HIT_RATE, resetting to 0.0"
+        # Validate rates are numbers and within 0-100 range
+        if ! echo "$HIT_RATE" | grep -qE '^[0-9]+\.?[0-9]*$'; then
+          echo "⚠️ Invalid hit rate format: $HIT_RATE, resetting to 0.0"
           HIT_RATE="0.0"
+        elif [ "$(echo "$HIT_RATE" | awk '{print ($1 > 100)}')" = "1" ]; then
+          echo "⚠️ Hit rate exceeds 100%: $HIT_RATE, resetting to 100.0"
+          HIT_RATE="100.0"
         fi
         
-        if ! echo "$DIRECT_RATE" | grep -qE '^[0-9]+\.?[0-9]*$' || [ "$(echo "$DIRECT_RATE > 100" | bc)" -eq 1 ]; then
-          echo "⚠️ Invalid direct rate calculated: $DIRECT_RATE, resetting to 0.0"
+        if ! echo "$DIRECT_RATE" | grep -qE '^[0-9]+\.?[0-9]*$'; then
+          echo "⚠️ Invalid direct rate format: $DIRECT_RATE, resetting to 0.0"
           DIRECT_RATE="0.0"
+        elif [ "$(echo "$DIRECT_RATE" | awk '{print ($1 > 100)}')" = "1" ]; then
+          echo "⚠️ Direct rate exceeds 100%: $DIRECT_RATE, resetting to 100.0"
+          DIRECT_RATE="100.0"
         fi
         
-        # Output numeric values only (no % symbol)
+        # Output values (no % symbol)
         echo "hit_rate=$HIT_RATE" >> "$GITHUB_OUTPUT"
         echo "direct_rate=$DIRECT_RATE" >> "$GITHUB_OUTPUT"
         
@@ -1237,7 +1251,7 @@ runs:
         
         echo "::endgroup::"
         
-        # Summary with % for display
+        # Add to step summary
         {
           echo "## 📊 ccache Statistics"
           echo ""
@@ -1248,12 +1262,12 @@ runs:
           echo "<summary>Full Statistics</summary>"
           echo ""
           echo '```'
-          ccache --show-stats
+          echo "$STATS"
           echo '```'
           echo ""
           echo "</details>"
         } >> $GITHUB_STEP_SUMMARY
-
+*
     - name: Collect Build Stats / Validate Image
       id: collect_stats
       shell: bash
