@@ -403,10 +403,11 @@ runs:
       if: ${{ inputs.clean != 'true' }}
       with:
         path: ${{ env.CCACHE_DIR }}        
-        key: ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-
+        key: ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}
         restore-keys: |
-          ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-
           ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-
+          ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-
+
 
    
     - name: ⚡ Configure ccache
