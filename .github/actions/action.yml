@@ -240,8 +240,7 @@ runs:
         [ "$SYNC_JOBS" -gt 30 ] && SYNC_JOBS=30
         
         for i in 1 2 3; do
-          if "$REPO" sync -c --no-clone-bundle --no-tags --optimized-fetch \
-             -j"$SYNC_JOBS" --fail-fast; then
+          if "$REPO" sync -c --no-clone-bundle --no-tags --optimized-fetch -j"$SYNC_JOBS"; then
             success=true
             break
           fi
@@ -404,14 +403,14 @@ runs:
       if: ${{ inputs.clean != 'true' }}
       with:
         path: ${{ env.CCACHE_DIR }}        
-        
         key: ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-${{ inputs.ksun_branch }}
-        # Hierarchical restore keys for fallback
         restore-keys: |
           ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-
           ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-
+
    
-    - name: Configure ccache
+    - name: ⚡ Configure ccache
+      if: ${{ inputs.clean != 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -424,51 +423,57 @@ runs:
         ccache --version
         echo ""
         
-        # Set max size using ccache command (more reliable)
+        # Set max size
         ccache --max-size=2G
         
-        # Zero stats for accurate build metrics (optional but recommended)
+        # Zero stats when not a clean build
         if [ "${{ inputs.clean }}" != "true" ]; then
           ccache --zero-stats
           echo "✅ ccache statistics reset for this build"
         fi
         
-        # Core ccache settings
+        # Core environment variables
         export CCACHE_COMPILERCHECK="content"
         export CCACHE_BASEDIR="${GITHUB_WORKSPACE}"
         export CCACHE_NOHASHDIR="true"
         export CCACHE_LOGFILE="$CCACHE_DIR/ccache.log"
         
-        # Performance optimizations
-        ccache --set-config compression=true
-        ccache --set-config compression_level=3
-        ccache --set-config direct_mode=true
-        ccache --set-config hash_dir=false
-        ccache --set-config file_clone=true
-        ccache --set-config inode_cache=true
-        ccache --set-config umask=002
+        # Performance tunings (non-fatal)
+        ccache --set-config compression=true || true
+        ccache --set-config compression_level=3 || true
+        ccache --set-config direct_mode=true || true
+        ccache --set-config hash_dir=false || true
+        ccache --set-config file_clone=true || true
+        ccache --set-config inode_cache=true || true
+        ccache --set-config umask=002 || true
         
-        # Enable depend mode if available (ccache 4.0+)
+        # Enable depend_mode if available
         if ccache --help 2>&1 | grep -q 'depend_mode'; then
-          ccache --set-config depend_mode=true
+          ccache --set-config depend_mode=true || true
           echo "✅ depend_mode enabled"
         fi
         
-        # Cap log file size to prevent bloat in long runs
-        ccache --set-config log_file_max_size=1M
+        # Log size limiting (version-aware, non-fatal)
+        if ccache --help 2>&1 | grep -q 'max_log_size'; then
+          ccache --set-config max_log_size=1048576 || true
+          echo "✅ max_log_size set to 1MB"
+        elif ccache --help 2>&1 | grep -q 'log_file_max_size'; then
+          ccache --set-config log_file_max_size=1M || true
+          echo "✅ log_file_max_size set to 1MB"
+        else
+          echo "ℹ️ $(ccache --version | head -n1): log size limiting not supported, skipping"
+        fi
         
-        # Sloppiness settings for better cache hits
-        ccache --set-config sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale        
+        # Sloppiness for better cache hits (non-fatal)
+        ccache --set-config sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale || true
         
-        # Ignore sysroot options
-        export CCACHE_IGNOREOPTIONS="--sysroot*"
-        
-        # Persist to GITHUB_ENV
+        # Persist environment variables
         {
+          echo "CCACHE_DIR=$CCACHE_DIR"
           echo "CCACHE_COMPILERCHECK=content"
           echo "CCACHE_BASEDIR=${GITHUB_WORKSPACE}"
           echo "CCACHE_NOHASHDIR=true"
-          echo "CCACHE_IGNOREOPTIONS=$CCACHE_IGNOREOPTIONS"
+          echo "CCACHE_IGNOREOPTIONS=--sysroot*"
           echo "CCACHE_LOGFILE=$CCACHE_LOGFILE"
         } >> "$GITHUB_ENV"
         
@@ -486,17 +491,18 @@ runs:
         echo "  Sharing strategy: Kernel version (${ANDROID_VER:-unknown}-${KERNEL_VER:-unknown})"
         echo ""
         
-        # Show current configuration
-        echo "Active configuration:"
-        ccache --show-config | grep -E "(max_size|compression|direct_mode|file_clone|inode_cache|depend_mode|sloppiness)" || true
+        # Show active configuration
+        echo "Active ccache configuration:"
+        LC_ALL=C ccache --show-config | grep -E "(max_size|compression|compression_level|direct_mode|file_clone|inode_cache|depend_mode|sloppiness|max_log_size|log_file_max_size|umask)" || true
         echo ""
         
+        # Check for existing cache
         if [ -d "$CCACHE_DIR" ] && find "$CCACHE_DIR" -type f -print -quit 2>/dev/null | grep -q .; then
           echo "✅ Restored shared cache found"
           echo "   This cache is shared by all ${ANDROID_VER:-unknown}-${KERNEL_VER:-unknown} devices"
           echo ""
           echo "Pre-build cache statistics:"
-          ccache --show-stats | head -n 25
+          ccache --show-stats | head -n 25 || true
         else
           echo "⚠️ No existing cache - building from scratch"
           echo "   Cache will be populated for all ${ANDROID_VER:-unknown}-${KERNEL_VER:-unknown} devices"
@@ -558,6 +564,9 @@ runs:
         git clone https://gitlab.com/simonpunk/susfs4ksu.git
         
         cd susfs4ksu
+        
+        # Fetch all remote branches and tags
+        git fetch --all --tags --prune --quiet || true
         
         # Try to checkout the specified branch/commit
         if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1; then
