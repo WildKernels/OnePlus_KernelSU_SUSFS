@@ -1387,10 +1387,8 @@ runs:
         SUSFS_VERSION="${SUSVER}"
         DEVICE="${OP_MODEL}"
         OS_VERSION="${OP_OS_VERSION}"
-        OPTIMIZE="${{ inputs.optimize_level }}"
-        DATE=$(date +%Y%m%d)
         
-        ZIP_NAME="${DEVICE}_${OS_VERSION}_${KERNEL_VERSION}_KSU-Next_${KSU_VERSION}_SUSFS_${SUSFS_VERSION}_${OPTIMIZE}_${DATE}.zip"
+        ZIP_NAME="${DEVICE}_${OS_VERSION}_${KERNEL_VERSION}_KSU-Next_${KSU_VERSION}_SUSFS_${SUSFS_VERSION}.zip"
         
         echo "device.name1=${DEVICE}" > anykernel.sh.new
         echo "device.name2=${DEVICE}" >> anykernel.sh.new
