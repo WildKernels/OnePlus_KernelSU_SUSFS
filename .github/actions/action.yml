@@ -1267,7 +1267,7 @@ runs:
           echo ""
           echo "</details>"
         } >> $GITHUB_STEP_SUMMARY
-*
+
     - name: Collect Build Stats / Validate Image
       id: collect_stats
       shell: bash
