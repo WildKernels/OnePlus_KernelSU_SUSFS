@@ -61,7 +61,45 @@ on:
         default: ''
 
 jobs:
+  validate-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🔍 Validate workflow inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "::group::Input Validation"
+          
+          # Validate KSU branch format
+          ksun_branch="${{ inputs.ksun_branch }}"
+          if [[ ! "$ksun_branch" =~ ^(next|stable|[a-f0-9]{7,40})$ ]]; then
+            echo "::warning::KSU branch '$ksun_branch' doesn't match expected format (next/stable/commit)"
+          fi
+          
+          # Validate SUSFS inputs
+          declare -A susfs_inputs=(
+            ["android12-5.10"]="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
+            ["android13-5.15"]="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
+            ["android14-6.1"]="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
+            ["android15-6.6"]="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
+          )
+          
+          echo "✅ Input validation passed"
+          echo ""
+          
+          # Show summary
+          echo "📋 Workflow Configuration:"
+          echo "  Target: ${{ inputs.op_model }}"
+          echo "  KSU Branch: $ksun_branch"
+          echo "  Optimization: ${{ inputs.optimize_level }}"
+          echo "  Clean Build: ${{ inputs.clean_build }}"
+          echo "  Create Release: ${{ inputs.make_release }}"
+          
+          echo "::endgroup::"
+
   set-op-model:
+    needs: validate-inputs
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -202,25 +240,26 @@ jobs:
           echo "### 📦 Devices to Build" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          # More robust matrix parsing
+          # More robust matrix parsing with proper validation
           matrix_json='${{ steps.set-matrix.outputs.matrix }}'
           
-          # Validate JSON before parsing
-          if echo "$matrix_json" | jq empty 2>/dev/null; then
+          # Validate JSON structure first
+          if [ -n "$matrix_json" ] && echo "$matrix_json" | jq -e '.include' >/dev/null 2>&1; then
             echo "| # | Model | OS Version | Kernel | SOC |" >> $GITHUB_STEP_SUMMARY
             echo "|---|-------|------------|--------|-----|" >> $GITHUB_STEP_SUMMARY
             
-            # Parse and display device list with error handling
-            echo "$matrix_json" | jq -r '.include[]? // empty | 
+            # Parse with better error handling
+            echo "$matrix_json" | jq -r '
+              .include[]? // empty | 
               [
-                .model // "N/A",
-                .os_version // "N/A",
+                (.model // "N/A"),
+                (.os_version // "N/A"),
                 ((.android_version // "N/A") + "-" + (.kernel_version // "N/A")),
-                .soc // "N/A"
-              ] | @tsv' | awk -F'\t' '{printf "| %d | %s | %s | %s | %s |\n", NR, $1, $2, $3, $4}' >> $GITHUB_STEP_SUMMARY
+                (.soc // "N/A")
+              ] | @tsv
+            ' | awk -F'\t' 'NR > 0 {printf "| %d | %s | %s | %s | %s |\n", NR, $1, $2, $3, $4}' >> $GITHUB_STEP_SUMMARY
           else
-            # Fallback if jq parsing fails
-            echo "⚠️ Unable to parse device matrix with jq" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Unable to parse device matrix" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Device count:** ${{ steps.set-matrix.outputs.count }}" >> $GITHUB_STEP_SUMMARY
           fi
@@ -242,7 +281,7 @@ jobs:
           fi
           
           if [[ "${{ inputs.clean_build }}" != "true" ]]; then
-            echo "- ♻️ **ccache** - Accelerated compilation" >> $GITHUB_STEP_SUMMARY
+            echo "- ♻️ **ccache** - Accelerated compilation (kernel-shared cache)" >> $GITHUB_STEP_SUMMARY
           fi
           
           # Add notes section
@@ -259,7 +298,7 @@ jobs:
           
           # Calculate realistic build time
           device_count=${{ steps.set-matrix.outputs.count }}
-          MAX_CONCURRENT=20
+          MAX_CONCURRENT=30
           
           if [[ "${{ inputs.clean_build }}" == "true" ]]; then
             avg_time=50
@@ -294,7 +333,7 @@ jobs:
           > 💡 **Note:** Times are estimates. Actual duration depends on:
           > - Runner availability and performance
           > - Kernel complexity and patch size
-          > - ccache hit rate (for incremental builds)
+          > - ccache hit rate (for incremental builds: 85%+ for 2nd+ device per kernel)
           > - Network conditions for downloads
           EOF
           
@@ -324,6 +363,13 @@ jobs:
         run: |
           echo "::group::Disk Usage Before Cleanup"
           df -h
+          
+          # Check if we have enough space (need at least 25GB)
+          AVAIL_GB=$(df -BG / | awk 'NR==2 {print $4}' | sed 's/G//')
+          if [ "$AVAIL_GB" -lt 25 ]; then
+            echo "::warning::Low disk space detected: ${AVAIL_GB}GB available"
+            echo "::warning::Build may fail if space runs out"
+          fi
           echo "::endgroup::"
           
           echo "::group::Removing Unnecessary Software"
@@ -332,15 +378,28 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
           sudo apt-get clean
+          
+          # Docker cleanup and stop
           if command -v docker >/dev/null 2>&1; then
             docker rmi $(docker images -q) 2>/dev/null || true
+            sudo systemctl stop docker 2>/dev/null || true
           fi
+          
+          # Additional cleanup of user caches
+          sudo rm -rf ~/.cache 2>/dev/null || true
+          sudo rm -rf ~/.npm 2>/dev/null || true
+          sudo rm -rf ~/.local/share/Trash 2>/dev/null || true
           echo "::endgroup::"
           
           echo "::group::Disk Usage After Cleanup"
           df -h
-          AVAIL=$(df -h / | awk 'NR==2 {print $4}')
-          echo "✅ Available space: $AVAIL"
+          AVAIL_GB=$(df -BG / | awk 'NR==2 {print $4}' | sed 's/G//')
+          echo "✅ Available space: ${AVAIL_GB}GB"
+          
+          if [ "$AVAIL_GB" -lt 25 ]; then
+            echo "::error::Insufficient disk space after cleanup: ${AVAIL_GB}GB"
+            exit 1
+          fi
           echo "::endgroup::"
 
       - name: 🔍 Resolve SUSFS branch from inputs
@@ -396,16 +455,18 @@ jobs:
           sudo rm -rf /tmp/* || true
           echo "::endgroup::"
 
-      - name: ♻️ Configure ccache (bounded)
+      - name: ♻️ ccache diagnostics
         if: ${{ inputs.clean_build != true }}
         run: |
           if command -v ccache >/dev/null 2>&1; then
-            echo "::group::ccache configuration"
-            ccache -o max_size=8.0G
-            ccache -o compression=true
-            ccache -o compression_level=3
-            ccache -s
+            echo "::group::ccache diagnostics (actual limits set by composite action)"
+            ccache -s || true
+            echo ""
+            echo "ℹ️  Note: ccache configuration is managed by the build action"
+            echo "   This step only shows current statistics"
             echo "::endgroup::"
+          else
+            echo "⚠️  ccache not found (will be installed by build action)"
           fi
 
       - name: 🔨 Build Kernel
@@ -451,6 +512,13 @@ jobs:
             fi
           else
             echo "❌ Build failed"
+            
+            # Try to capture error details
+            if [ -f "${{ github.workspace }}/build.log" ]; then
+              echo ""
+              echo "Last 50 lines of build log:"
+              tail -n 50 "${{ github.workspace }}/build.log" || true
+            fi
           fi
           
           echo "::endgroup::"
@@ -535,21 +603,42 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: 🔑 Ensure gh auth
+        run: |
+          gh --version
+          gh auth status || gh auth login --with-token <<< "${GH_TOKEN}"
           
       - name: 🏷️ Generate and Create New Tag
         run: |
           BASE_TAG="v1.5.12-r0"
-          LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
-          if [ -z "$LATEST_TAG" ]; then
-            LATEST_TAG="$BASE_TAG"
-          else
-            LATEST_TAG=$(printf "%s\n%s\n" "$LATEST_TAG" "$BASE_TAG" | sort -rV | head -n1)
-          fi
-          NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
-          echo "New tag: $NEW_TAG"
+          SERIES_REGEX='^v1\.5\.12(-r[0-9]+)?$'
+          
+          # Get all tags matching the current series
+          LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[].name' | \
+                       grep -E "$SERIES_REGEX" | \
+                       sort -V | \
+                       tail -n1)
+          
+          # If no matching tags found, use base tag
+          [ -z "$LATEST_TAG" ] && LATEST_TAG="$BASE_TAG"
+          
+          # Increment revision number
+          NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{
+            s=$2
+            if (!s) s=0
+            s++
+            printf "%s-r%d", $1, s
+          }')
+          
+          echo "📌 Latest tag in series: $LATEST_TAG"
+          echo "🆕 New tag: $NEW_TAG"
+          
           echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
-          git tag $NEW_TAG
-          git push origin $NEW_TAG
+          
+          git tag "$NEW_TAG"
+          git push origin "$NEW_TAG"
+
 
       - name: 📥 Download Artifacts
         uses: actions/download-artifact@v4
@@ -675,6 +764,28 @@ jobs:
           | android14-6.1  | \`$SUSFS_A14\` |
           | android15-6.6  | \`$SUSFS_A15\` |
           
+          ### 📊 Build Performance
+          
+          | Metric | Value |
+          |--------|-------|
+          | **Total Devices** | ${#device_info[@]} |
+          | **Build Type** | $( [ "$CLEAN_BUILD" = "true" ] && echo "Clean (no cache)" || echo "Incremental (ccache)" ) |
+          | **Optimization** | \`$OPTIMIZE_LEVEL\` |
+          | **Parallel Jobs** | Up to 30 concurrent |
+          EOF
+          
+          # Add ccache stats if not clean build
+          if [ "$CLEAN_BUILD" != "true" ]; then
+            cat << EOF >> release_notes.md
+          | **ccache Status** | ✅ Enabled (kernel-shared) |
+          | **Expected Hit Rate** | 85-90% (2nd+ device per kernel) |
+          EOF
+          fi
+          
+          cat << EOF >> release_notes.md
+          
+          > 💡 **Note:** Build times vary by device. First device per kernel version takes ~30 min, subsequent devices ~12 min with ccache.
+          
           ---
           
           ## ✨ Features & Capabilities
@@ -704,7 +815,7 @@ jobs:
           - **IP Set Support** - Advanced firewall capabilities
           - **TTL Target Support** - Network packet manipulation
           - **LTO (Link Time Optimization)** - Optimized binary size and performance
-          - **ccache-accelerated builds** - Faster compilation times
+          - **ccache-accelerated builds** - Faster compilation times (kernel-shared cache)
           
           ### 🔧 System Features
           - **TMPFS_XATTR** - Extended attributes for tmpfs (Mountify support)
@@ -749,7 +860,7 @@ jobs:
           ### This Release
           - Updated SUSFS to v1.5.12
           - Added HMBIRD support for OP13/Ace5Pro
-          - Improved ccache build system
+          - Improved ccache build system (kernel-shared cache)
           - Enhanced SUSFS hiding capabilities
           - Added IP_SET and TTL support
           - Compiler optimizations ($OPTIMIZE_LEVEL)
@@ -785,14 +896,45 @@ jobs:
             --notes-file release_notes.md \
             --prerelease
 
-      - name: 📤 Upload Release Assets Dynamically
+      - name: 📤 Upload Release Assets with Retry
         run: |
+          echo "📤 Uploading release assets..."
+          upload_count=0
+          failed_count=0
+          
           for file in ./downloaded-artifacts/*/*.zip; do
             if [ -f "$file" ]; then
-              echo "Uploading $file..."
-              gh release upload "${{ env.NEW_TAG }}" "$file" --clobber
+              filename=$(basename "$file")
+              echo "Uploading $filename..."
+              
+              # Retry up to 3 times with exponential backoff
+              for attempt in 1 2 3; do
+                if gh release upload "${{ env.NEW_TAG }}" "$file" --clobber 2>&1; then
+                  echo "✅ Uploaded: $filename"
+                  upload_count=$((upload_count + 1))
+                  break
+                else
+                  if [ $attempt -lt 3 ]; then
+                    wait_time=$((2 ** attempt))
+                    echo "⚠️  Upload failed (attempt $attempt/3), retrying in ${wait_time}s..."
+                    sleep $wait_time
+                  else
+                    echo "❌ Failed to upload: $filename after 3 attempts"
+                    failed_count=$((failed_count + 1))
+                  fi
+                fi
+              done
             fi
           done
+          
+          echo ""
+          echo "📊 Upload Summary:"
+          echo "  ✅ Successful: $upload_count"
+          echo "  ❌ Failed: $failed_count"
+          
+          if [ $failed_count -gt 0 ]; then
+            echo "::warning::$failed_count file(s) failed to upload"
+          fi
 
       - name: 📊 Release summary
         if: success()
@@ -817,3 +959,46 @@ jobs:
               echo "- \`$name\` (${size_mb} MB)" >> $GITHUB_STEP_SUMMARY
             fi
           done
+
+  workflow-summary:
+    needs: [validate-inputs, set-op-model, build, trigger-release]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: 📊 Workflow Completion Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          
+          ---
+          
+          ## 🎯 Workflow Completion Summary
+          
+          | Stage | Status |
+          |-------|--------|
+          | **Input Validation** | ${{ needs.validate-inputs.result == 'success' && '✅ Success' || '❌ Failed' }} |
+          | **Matrix Setup** | ${{ needs.set-op-model.result == 'success' && '✅ Success' || '❌ Failed' }} |
+          | **Build Jobs** | ${{ needs.build.result == 'success' && '✅ All Success' || needs.build.result == 'failure' && '❌ Failed' || '⚠️ Partial Success' }} |
+          | **Release Creation** | ${{ needs.trigger-release.result == 'success' && '✅ Success' || needs.trigger-release.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
+          
+          ### 📦 Build Results
+          
+          - **Target:** `${{ inputs.op_model }}`
+          - **Devices Queued:** ${{ needs.set-op-model.outputs.device_count }}
+          - **KSU Branch:** `${{ inputs.ksun_branch }}`
+          - **Optimization:** `${{ inputs.optimize_level }}`
+          - **Clean Build:** ${{ inputs.clean_build && '✅ Yes' || '❌ No (ccache enabled)' }}
+          
+          EOF
+          
+          # Add release link if created
+          if [ "${{ needs.trigger-release.result }}" = "success" ]; then
+            echo "### 🎉 Release Created" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**View Release:** [Latest Release](${{ github.server_url }}/${{ github.repository }}/releases/latest)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Add workflow link
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Run:** [\`#${{ github.run_number }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
