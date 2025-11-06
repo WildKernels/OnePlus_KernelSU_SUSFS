@@ -1383,6 +1383,12 @@ runs:
         set -euo pipefail
         echo "::group::Build Summary"
         
+        # Get ccache rates with fallback
+        HIT_RATE="${{ steps.ccache_stats.outputs.hit_rate }}"
+        DIRECT_RATE="${{ steps.ccache_stats.outputs.direct_rate }}"
+        HIT_RATE="${HIT_RATE:-0.0}"
+        DIRECT_RATE="${DIRECT_RATE:-0.0}"
+        
         echo "============================================"
         echo "📦 Build Summary"
         echo "============================================"
@@ -1426,8 +1432,8 @@ runs:
         echo ""
         if [ "${{ inputs.clean }}" != "true" ]; then
           echo "ccache Statistics:"
-          echo "  Hit Rate: ${{ steps.ccache_stats.outputs.hit_rate }}%"
-          echo "  Direct Rate: ${{ steps.ccache_stats.outputs.direct_rate }}%"
+          echo "  Hit Rate: ${HIT_RATE}%"
+          echo "  Direct Rate: ${DIRECT_RATE}%"
           echo ""
         fi
         echo "Build Results:"
@@ -1518,8 +1524,8 @@ runs:
             echo ""
             echo "| Metric | Value |"
             echo "|--------|-------|"
-            echo "| **Hit Rate** | ${{ steps.ccache_stats.outputs.hit_rate }}% |"
-            echo "| **Direct Rate** | ${{ steps.ccache_stats.outputs.direct_rate }}% |"
+            echo "| **Hit Rate** | ${HIT_RATE}% |"
+            echo "| **Direct Rate** | ${DIRECT_RATE}% |"
             echo ""
           fi
           echo "## 📈 Build Results"
@@ -1554,4 +1560,3 @@ runs:
           echo ""
           echo "✅ **Build completed successfully!**"
         } >> $GITHUB_STEP_SUMMARY
-        
