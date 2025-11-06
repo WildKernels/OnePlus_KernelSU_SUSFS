@@ -27,39 +27,32 @@ on:
           - android13-5.15
           - android13-5.10
           - android12-5.10
-          - android12-5.4
-          - android11-5.4
-          - android11-4.19
-          - android10-4.19
-          - android10-4.14
-          - OP13
+          - OP13-CPH
+          - OP13-PJZ
+          - OP13r
+          - OP13S
+          - OP13T
           - OP12
+          - OP12r
           - OP11
-          - OP10
-          - OP9
-          - OP8
-          - OP7
-          - OP6
-          - OP5
-          - OPACE3
-          - OPACE2
-          - OPACE
-          - OPNORD4
-          - OPNORD3
-          - OPNORD2
-          - OPNORD
-          - OPPAD2
-          - OPPAD
-          - REALME13
-          - REALME12
-          - REALME11
-          - REALME10
-          - REALME9
-          - REALME8
-          - REALME7
-          - POCO
-          - REDMI
-          - MI
+          - OP11r
+          - OP10pro
+          - OP10t
+          - OP-Nord-5
+          - OP-NORD-4
+          - OP-NORD-4-CE
+          - OP-NORD-CE4-LITE
+          - OP-ACE-5-PRO
+          - OP-ACE-5
+          - OP-ACE-3-PRO
+          - OP-ACE-3V
+          - OP-ACE-2-PRO
+          - OP-ACE-2
+          - OP-OPEN
+          - OP-PAD-3
+          - OP-PAD-2-PRO
+          - OP-PAD-2
+          - OP-PAD-PRO
       
       cache_pattern:
         description: 'Cache cleanup pattern'
