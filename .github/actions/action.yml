@@ -407,8 +407,6 @@ runs:
         restore-keys: |
           ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-
           ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-
-
-
    
     - name: ⚡ Configure ccache
       if: ${{ inputs.clean != 'true' }}
