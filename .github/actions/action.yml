@@ -393,17 +393,24 @@ runs:
         echo "  OOS Version: ${OP_OS_VERSION:-unknown}"
         echo "  Clang: ${CLANG_VERSION_SHORT:-unknown}"
         echo "  Device: ${OP_MODEL:-unknown}"
-        echo "::endgroup::"
-    
-    - name: Cache ccache
+        echo "::endgroup::"        
+
+    - name: ♻️ Setup ccache
       uses: actions/cache@v4
+      if: ${{ inputs.clean != 'true' }}
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-ksun-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-${{ env.CLANG_VERSION_SHORT }}
+        
+        # Stable cache key - only changes when meaningful parameters change
+        key: ccache-ksun-v4-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-${{ inputs.ksun_branch }}
+        
+        # Hierarchical restore keys for better cache reuse
         restore-keys: |
-          ccache-ksun-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-
-          ccache-ksun-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-
-          ccache-ksun-v3-${{ env.OP_MODEL }}-
+          ccache-ksun-v4-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-
+          ccache-ksun-v4-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-
+          ccache-ksun-v4-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.ANDROID_VER }}-
+          ccache-ksun-v4-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-
+          ccache-ksun-v4-${{ env.OP_MODEL }}-
    
     - name: Configure ccache
       shell: bash
@@ -467,7 +474,7 @@ runs:
           echo "Cache will be populated for future builds"
         fi
         
-        echo "::endgroup::"
+        echo "::endgroup::"   
 
     - name: Handle Clean Build Option
       if: ${{ inputs.clean == 'true' }}
@@ -1180,14 +1187,7 @@ runs:
         printf 'warnings_count=%s\n' "$WARNINGS_COUNT" >> "$GITHUB_OUTPUT"
         printf 'image_sha256=%s\n' "$IMG_SHA256" >> "$GITHUB_OUTPUT"
         printf 'build_time=%s\n' "$BUILD_TIME" >> "$GITHUB_OUTPUT"
-
-    - name: Save ccache
-      if: ${{ success() && inputs.clean != 'true' }}
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ env.CCACHE_DIR }}
-        key: ccache-ksun-v3-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.OP_OS_VERSION }}-${{ env.CLANG_VERSION_SHORT }}-${{ env.OP_MODEL }}-${{ github.run_id }}
-
+    
     - name: Create Flashable ZIP
       id: create_zip
       shell: bash
