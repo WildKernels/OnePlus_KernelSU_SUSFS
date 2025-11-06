@@ -377,17 +377,19 @@ runs:
         echo "::group::Configure ccache environment"
            
         CACHE_DIR="$HOME/.ccache"
-        export CCACHE_DIR="$CACHE_DIR"
-        export CCACHE_MAXSIZE=1G
-            
-        echo "CCACHE_DIR=$CACHE_DIR" >> "$GITHUB_ENV"
-        echo "CCACHE_MAXSIZE=$CCACHE_MAXSIZE" >> "$GITHUB_ENV"
-            
         mkdir -p "$CACHE_DIR"
+        
+        # Export ccache environment variables
+        export CCACHE_DIR="$CACHE_DIR"
+        export CCACHE_MAXSIZE=500M
+            
+        # Persist to GITHUB_ENV
+        echo "CCACHE_DIR=$CACHE_DIR" >> "$GITHUB_ENV"
+        echo "CCACHE_MAXSIZE=500M" >> "$GITHUB_ENV"
             
         echo "Cache configuration:"
         echo "  Directory: $CACHE_DIR"
-        echo "  Max size: ${CCACHE_MAXSIZE}"
+        echo "  Max size: 500M"
         echo "  Android: ${ANDROID_VER:-unknown}"
         echo "  Kernel: ${KERNEL_VER:-unknown}"
         echo "  OOS Version: ${OP_OS_VERSION:-unknown}"
@@ -419,31 +421,49 @@ runs:
         echo "::group::Configure ccache for maximum performance"
         
         export CCACHE_DIR="$HOME/.ccache"
-        export CCACHE_MAXSIZE="1G"
         
-        ccache -M "$CCACHE_MAXSIZE"
+        # Show ccache version for debugging
+        echo "ccache version:"
+        ccache --version
+        echo ""
         
+        # Set max size using ccache command (more reliable)
+        ccache --max-size=500M
+        
+        # Zero stats for accurate build metrics (optional but recommended)
+        if [ "${{ inputs.clean }}" != "true" ]; then
+          ccache --zero-stats
+          echo "✅ ccache statistics reset for this build"
+        fi
+        
+        # Core ccache settings
         export CCACHE_COMPILERCHECK="content"
         export CCACHE_BASEDIR="${GITHUB_WORKSPACE}"
         export CCACHE_NOHASHDIR="true"
         export CCACHE_LOGFILE="$CCACHE_DIR/ccache.log"
         
-        ccache -o compression=true
-        ccache -o compression_level=3
-        ccache -o direct_mode=true
-        ccache -o hash_dir=false
-        ccache -o file_clone=true
-        ccache -o inode_cache=true
-        ccache -o umask=002
+        # Performance optimizations
+        ccache --set-config compression=true
+        ccache --set-config compression_level=3
+        ccache --set-config direct_mode=true
+        ccache --set-config hash_dir=false
+        ccache --set-config file_clone=true
+        ccache --set-config inode_cache=true
+        ccache --set-config umask=002
         
+        # Enable depend mode if available (ccache 4.0+)
         if ccache --help 2>&1 | grep -q 'depend_mode'; then
-          ccache -o depend_mode=true
+          ccache --set-config depend_mode=true
+          echo "✅ depend_mode enabled"
         fi
         
-        ccache -o sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale
+        # Sloppiness settings for better cache hits
+        ccache --set-config sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale
         
+        # Ignore sysroot options
         export CCACHE_IGNOREOPTIONS="--sysroot*"
         
+        # Persist to GITHUB_ENV
         {
           echo "CCACHE_COMPILERCHECK=content"
           echo "CCACHE_BASEDIR=${GITHUB_WORKSPACE}"
@@ -452,10 +472,11 @@ runs:
           echo "CCACHE_LOGFILE=$CCACHE_LOGFILE"
         } >> "$GITHUB_ENV"
         
+        echo ""
         echo "✅ ccache configured for production"
         echo ""
-        echo "Configuration applied:"
-        echo "  Max size: $CCACHE_MAXSIZE (persisted)"
+        echo "Configuration summary:"
+        echo "  Max size: 500M"
         echo "  Base dir: ${GITHUB_WORKSPACE}"
         echo "  Compression: zstd level 3"
         echo "  Direct mode: enabled"
@@ -464,17 +485,22 @@ runs:
         echo "  Log file: $CCACHE_LOGFILE"
         echo ""
         
+        # Show current configuration
+        echo "Active configuration:"
+        ccache --show-config | grep -E "(max_size|compression|direct_mode|file_clone|inode_cache|depend_mode|sloppiness)" || true
+        echo ""
+        
         if [ -d "$CCACHE_DIR" ] && find "$CCACHE_DIR" -type f -print -quit 2>/dev/null | grep -q .; then
           echo "✅ Restored cache found"
           echo ""
           echo "Pre-build cache statistics:"
-          ccache -s | head -n 20
+          ccache --show-stats | head -n 25
         else
           echo "⚠️ No existing cache - building from scratch"
           echo "Cache will be populated for future builds"
         fi
         
-        echo "::endgroup::"   
+        echo "::endgroup::"
 
     - name: Handle Clean Build Option
       if: ${{ inputs.clean == 'true' }}
@@ -950,25 +976,71 @@ runs:
         echo "🔍 Compiler & ccache Verification"
         echo "============================================"
         echo "PATH: ${PATH:0:200}..."
-        echo "which clang: $(which clang)"
-        echo "CC: $CC"
-        echo "CXX: $CXX"
-        echo "CCACHE_BASEDIR: ${CCACHE_BASEDIR:-not set}"
         echo ""
         
         if [ "${{ inputs.clean }}" != "true" ]; then
-          echo "ccache wrapper test:"
-          clang --version 2>&1 | head -n1 || true
+          echo "🔧 Verifying ccache setup:"
+          echo "  which ccache: $(which ccache 2>/dev/null || echo 'not found')"
+          echo "  which clang: $(which clang)"
           echo ""
-          echo "ccache configuration:"
-          ccache -p | grep -E "(compression|direct_mode|readonly_direct|depend|sloppiness)" || true
+          
+          # Test if ccache wrapper is active
+          echo "Testing ccache wrapper:"
+          if command -v ccache >/dev/null 2>&1; then
+            # Check if clang is actually wrapped by ccache
+            CLANG_REAL=$(readlink -f "$(which clang)" 2>/dev/null || which clang)
+            CCACHE_PATH=$(which ccache 2>/dev/null || echo "")
+            
+            if [ -n "$CCACHE_PATH" ] && echo "$PATH" | grep -q "/usr/lib/ccache"; then
+              echo "  ✅ ccache is in PATH before clang"
+              
+              # Verify by running a test compilation
+              echo "  Testing actual ccache usage..."
+              echo "int main() { return 0; }" > /tmp/test.c
+              if clang -c /tmp/test.c -o /tmp/test.o 2>&1 | grep -q ccache; then
+                echo "  ✅ ccache wrapper is ACTIVE"
+              else
+                # Silent test - check ccache stats change
+                BEFORE_CALLS=$(ccache -s | grep -i "cache hit" | grep -oE '[0-9]+' | head -n1 || echo "0")
+                clang -c /tmp/test.c -o /tmp/test.o >/dev/null 2>&1
+                AFTER_CALLS=$(ccache -s | grep -i "cache hit" | grep -oE '[0-9]+' | head -n1 || echo "0")
+                
+                if [ "$AFTER_CALLS" != "$BEFORE_CALLS" ] || [ -f "$CCACHE_DIR/tmp/test.o" ]; then
+                  echo "  ✅ ccache wrapper is ACTIVE (verified by stats)"
+                else
+                  echo "  ⚠️  ccache wrapper status unclear"
+                fi
+              fi
+              rm -f /tmp/test.c /tmp/test.o
+            else
+              echo "  ⚠️  ccache may not be properly configured in PATH"
+            fi
+          else
+            echo "  ⚠️  ccache command not found"
+          fi
+          
           echo ""
-          echo "ccache pre-build status:"
-          ccache -s | head -n 20
+          echo "Environment variables:"
+          echo "  CC: $CC"
+          echo "  CXX: $CXX"
+          echo "  CCACHE_DIR: ${CCACHE_DIR:-not set}"
+          echo "  CCACHE_BASEDIR: ${CCACHE_BASEDIR:-not set}"
+          echo "  CCACHE_DISABLE: ${CCACHE_DISABLE:-not set}"
+          echo ""
+          
+          echo "Active ccache configuration:"
+          ccache --show-config | grep -E "(max_size|compression|direct_mode|file_clone|inode_cache|depend_mode|sloppiness)" || true
+          echo ""
+          
+          echo "Pre-build ccache statistics:"
+          ccache --show-stats | head -n 25
         else
           echo "⚠️ Clean build - ccache bypassed"
+          echo "  CC: $CC"
+          echo "  CXX: $CXX"
         fi
         echo "============================================"
+        echo ""
         
         make O="$OUT" gki_defconfig
         
@@ -1008,16 +1080,19 @@ runs:
         echo "Workspace: $WORKSPACE"
         
         if [ "${{ inputs.clean }}" != "true" ]; then
+          echo ""
           echo "ccache: ENABLED"
-          echo "  Dir: $CCACHE_DIR"
-          echo "  Base: $CCACHE_BASEDIR"
+          echo "  Directory: $CCACHE_DIR"
+          echo "  Base dir: $CCACHE_BASEDIR"
           echo "  Max size: $CCACHE_MAXSIZE"
           echo "  Compression: zstd level 3"
-          echo "  Features: readonly_direct, file_clone, inode_cache, depend"
+          echo "  Features: direct_mode, file_clone, inode_cache, depend_mode"
         else
+          echo ""
           echo "ccache: DISABLED (clean build)"
         fi
         echo "============================================"
+        echo ""
         
         if [ "${{ inputs.clean }}" != "true" ]; then
           if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -type f 2>/dev/null | head -n1)" ]; then
@@ -1029,6 +1104,9 @@ runs:
         
         BUILD_START=$(date +%s)
         set -o pipefail
+        
+        echo "🚀 Starting kernel compilation..."
+        echo ""
         
         make -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" 2>&1 | tee build.log
         
@@ -1050,6 +1128,7 @@ runs:
         
         IMG_SIZE=$(stat -c%s "$IMG")
         
+        echo ""
         echo "============================================"
         echo "✅ Build Completed Successfully"
         echo "============================================"
@@ -1060,7 +1139,7 @@ runs:
           echo ""
           echo "📊 ccache Post-Build Statistics"
           echo "============================================"
-          ccache -s
+          ccache --show-stats
         fi
         echo "============================================"
         echo "::endgroup::"
@@ -1094,30 +1173,40 @@ runs:
         export CCACHE_DIR="${{ env.CCACHE_DIR }}"
         
         echo "ccache Statistics"
-        LC_ALL=C ccache -s
+        echo "================="
+        ccache --show-stats
         
-        STATS="$(LC_ALL=C ccache -s)"
+        STATS="$(ccache --show-stats 2>/dev/null || echo '')"
         
-        # Extract metrics with defaults
-        CACHEABLE=$(echo "$STATS" | awk '/Cacheable calls:/ {
-          match($0, /[0-9]+/); 
-          print substr($0, RSTART, RLENGTH)
-        }' | head -n1)
+        if [ -z "$STATS" ]; then
+          echo "⚠️ Could not retrieve ccache statistics"
+          echo "hit_rate=0.0" >> "$GITHUB_OUTPUT"
+          echo "direct_rate=0.0" >> "$GITHUB_OUTPUT"
+          echo "::endgroup::"
+          exit 0
+        fi
+        
+        # More robust extraction with multiple patterns
+        CACHEABLE=$(echo "$STATS" | grep -iE "(cacheable calls|compile)" | grep -oE '[0-9]+' | head -n1)
         CACHEABLE=${CACHEABLE:-0}
         
-        HITS=$(echo "$STATS" | awk '/^[[:space:]]*Hits:/ {
-          match($0, /[0-9]+/); 
-          print substr($0, RSTART, RLENGTH)
-        }' | head -n1)
+        # Try multiple patterns for cache hits
+        HITS=$(echo "$STATS" | grep -iE "(cache hit \(direct|cache hit \(preprocessed|^[[:space:]]*hits)" | grep -oE '[0-9]+' | head -n1)
+        if [ -z "$HITS" ] || [ "$HITS" = "0" ]; then
+          HITS=$(echo "$STATS" | grep -iE "^[[:space:]]*cache hit" | grep -oE '[0-9]+' | head -n1)
+        fi
         HITS=${HITS:-0}
         
-        DIRECT=$(echo "$STATS" | awk '/Direct:/ {
-          match($0, /[0-9]+/); 
-          print substr($0, RSTART, RLENGTH)
-        }' | head -n1)
+        DIRECT=$(echo "$STATS" | grep -iE "cache hit \(direct\)" | grep -oE '[0-9]+' | head -n1)
         DIRECT=${DIRECT:-0}
         
-        # Calculate rates (numeric only, no % in outputs)
+        echo ""
+        echo "Extracted values:"
+        echo "  Cacheable calls: $CACHEABLE"
+        echo "  Cache hits: $HITS"
+        echo "  Direct hits: $DIRECT"
+        
+        # Calculate rates safely with validation
         if [ "$CACHEABLE" -gt 0 ]; then
           HIT_RATE=$(awk -v h="$HITS" -v c="$CACHEABLE" 'BEGIN{printf "%.1f", (h/c)*100}')
           DIRECT_RATE=$(awk -v d="$DIRECT" -v c="$CACHEABLE" 'BEGIN{printf "%.1f", (d/c)*100}')
@@ -1126,21 +1215,44 @@ runs:
           DIRECT_RATE="0.0"
         fi
         
-        # Outputs are numeric only
+        # Validate rates are reasonable (0-100)
+        if ! echo "$HIT_RATE" | grep -qE '^[0-9]+\.?[0-9]*$' || [ "$(echo "$HIT_RATE > 100" | bc)" -eq 1 ]; then
+          echo "⚠️ Invalid hit rate calculated: $HIT_RATE, resetting to 0.0"
+          HIT_RATE="0.0"
+        fi
+        
+        if ! echo "$DIRECT_RATE" | grep -qE '^[0-9]+\.?[0-9]*$' || [ "$(echo "$DIRECT_RATE > 100" | bc)" -eq 1 ]; then
+          echo "⚠️ Invalid direct rate calculated: $DIRECT_RATE, resetting to 0.0"
+          DIRECT_RATE="0.0"
+        fi
+        
+        # Output numeric values only (no % symbol)
         echo "hit_rate=$HIT_RATE" >> "$GITHUB_OUTPUT"
         echo "direct_rate=$DIRECT_RATE" >> "$GITHUB_OUTPUT"
         
+        echo ""
+        echo "Final rates:"
+        echo "  Hit rate: ${HIT_RATE}%"
+        echo "  Direct rate: ${DIRECT_RATE}%"
+        
         echo "::endgroup::"
         
-        # Summary includes % for display
-        echo "## 📊 ccache Statistics" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Hit Rate:** ${HIT_RATE}%" >> $GITHUB_STEP_SUMMARY
-        echo "**Direct Rate:** ${DIRECT_RATE}%" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        LC_ALL=C ccache -s >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        # Summary with % for display
+        {
+          echo "## 📊 ccache Statistics"
+          echo ""
+          echo "**Hit Rate:** ${HIT_RATE}%"
+          echo "**Direct Rate:** ${DIRECT_RATE}%"
+          echo ""
+          echo "<details>"
+          echo "<summary>Full Statistics</summary>"
+          echo ""
+          echo '```'
+          ccache --show-stats
+          echo '```'
+          echo ""
+          echo "</details>"
+        } >> $GITHUB_STEP_SUMMARY
 
     - name: Collect Build Stats / Validate Image
       id: collect_stats
