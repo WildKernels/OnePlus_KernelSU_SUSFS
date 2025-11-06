@@ -159,6 +159,9 @@ jobs:
           jq_filter="."
         
           case "$input" in
+            ALL)
+              # Build everything
+              ;;
             OOS14+15+16)
               ;;
             OOS15+16)
@@ -187,8 +190,10 @@ jobs:
               echo "   Restricted to: OOS15 and OOS16 only"
               ;;
             *)
-              echo "::warning::Unknown input '$input'. Using empty filter."
-              jq_filter="map(select(false))"
+              # Handle individual device models (OP11, OP12, OP-ACE-5-PRO, etc.)
+              # This matches any device model name
+              jq_filter="map(select(.model == \"$input\"))"
+              echo "ℹ️  Device model filter applied: $input"
               ;;
           esac
         
@@ -216,6 +221,7 @@ jobs:
           echo "count=$count" >> "$GITHUB_OUTPUT"
           
           echo "::endgroup::"
+
 
       - name: 📊 Build plan summary
         run: |
