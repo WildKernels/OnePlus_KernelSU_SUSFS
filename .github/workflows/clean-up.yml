@@ -674,93 +674,71 @@ jobs:
               
               return { 
                 delete: patternMatch, 
-                reason: patternMatch ? 'matched' : 'pattern_mismatch',
-                category: category,
-                isStable: isStableKey,
-                isV4: isV4Format,
-                isV3: isV3Format,
-                device: device,
-                accessAgeDays: accessAgeDays
+                reason: patternMatch ? 'match' : 'pattern_mismatch',
+                category: category
               };
             }
             
-            let totalDeleted = 0;
-            let totalFreed = 0;
-            const deletionStats = {
-              ccache: { count: 0, size: 0, v4: 0, v3: 0, legacy: 0, stable: 0 },
-              apt: { count: 0, size: 0 },
-              kernel: { count: 0, size: 0 },
-              other: { count: 0, size: 0 }
-            };
-            const deletedCaches = [];
-            const failedDeletions = [];
-            const deletedDevices = new Set();
+            // Fetch and process caches
+            console.log('🔍 Scanning caches...\n');
             
-            let page = 1;
             while (true) {
-              const res = await withRetry(() =>
-                github.rest.actions.getActionsCacheList({
-                  owner,
-                  repo,
-                  per_page: 100,
-                  page: page
-                })
-              );
+              const res = await github.rest.actions.getActionsCacheList({
+                owner,
+                repo,
+                per_page: 100,
+                page: page
+              });
               
               const caches = res.data.actions_caches;
               if (!caches || caches.length === 0) break;
               
               for (const cache of caches) {
                 const decision = shouldDeleteCache(cache);
+                const sizeMB = (cache.size_in_bytes / 1024 / 1024).toFixed(2);
+                const agedays = Math.floor((new Date() - new Date(cache.created_at)) / (1000 * 60 * 60 * 24));
                 
                 if (decision.delete) {
-                  console.log(`${dryRun ? '[DRY RUN] Would delete' : 'Deleting'}: ${cache.key} (${(cache.size_in_bytes / 1024 / 1024).toFixed(2)} MB, ${decision.accessAgeDays}d since access)`);
-                  
-                  if (!dryRun) {
-                    try {
-                      await withRetry(() =>
-                        github.rest.actions.deleteActionsCacheById({
-                          owner,
-                          repo,
-                          cache_id: cache.id
-                        })
-                      );
-                    } catch (error) {
-                      console.error(`❌ Failed to delete ${cache.key}: ${error.message}`);
-                      failedDeletions.push({ key: cache.key, error: error.message });
-                      continue;
-                    }
-                  }
-                  
-                  totalDeleted++;
-                  totalFreed += cache.size_in_bytes;
-                  
-                  const stats = deletionStats[decision.category];
-                  stats.count++;
-                  stats.size += cache.size_in_bytes;
-                  
-                  if (decision.category === 'ccache') {
-                    // ✅ UPDATED: Track v4, v3, and legacy deletions
-                    if (decision.isV4) stats.v4++;
-                    else if (decision.isV3) stats.v3++;
-                    else stats.legacy++;
-                    if (decision.isStable) stats.stable++;
-                    if (decision.device) deletedDevices.add(decision.device);
-                  }
-                  
                   deletedCaches.push({
                     key: cache.key,
-                    size: cache.size_in_bytes,
+                    size: sizeMB,
+                    sizeBytes: cache.size_in_bytes,
+                    age: agedays,
                     created: cache.created_at,
-                    accessed: cache.last_accessed_at || cache.created_at,
-                    category: decision.category,
-                    device: decision.device,
-                    accessAgeDays: decision.accessAgeDays
+                    id: cache.id,
+                    category: decision.category
                   });
-                } else if (decision.reason === 'recently_used') {
-                  console.log(`⏳ Protecting recently used cache: ${cache.key} (accessed ${decision.accessAgeDays}h ago)`);
-                } else if (decision.reason === 'stable_recent') {
-                  console.log(`🔒 Protecting stable cache: ${cache.key} (accessed ${decision.accessAgeDays}d ago)`);
+                  
+                  if (dryRun) {
+                    console.log(`🔍 Would delete: ${cache.key}`);
+                    console.log(`   Size: ${sizeMB} MB | Age: ${agedays} days | Type: ${decision.category}`);
+                  } else {
+                    console.log(`🗑️ Deleting: ${cache.key}`);
+                    console.log(`   Size: ${sizeMB} MB | Age: ${agedays} days | Type: ${decision.category}`);
+                    
+                    try {
+                      await github.rest.actions.deleteActionsCacheById({
+                        owner,
+                        repo,
+                        cache_id: cache.id
+                      });
+                      totalDeleted++;
+                      totalSize += cache.size_in_bytes;
+                      
+                      // Update category stats
+                      deletionStats[decision.category].count++;
+                      deletionStats[decision.category].size += cache.size_in_bytes;
+                    } catch (error) {
+                      console.log(`   ⚠️ Failed: ${error.message}`);
+                      skippedCaches.push({
+                        key: cache.key,
+                        reason: error.message
+                      });
+                    }
+                  }
+                } else if (decision.reason !== 'device_filter') {
+                  // Only log non-device-filter skips in verbose mode
+                  // console.log(`⏭️ Skipping: ${cache.key} (${decision.reason})`);
                 }
               }
               

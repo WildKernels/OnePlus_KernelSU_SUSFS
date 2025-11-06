@@ -87,8 +87,7 @@ jobs:
           
           echo "✅ Input validation passed"
           echo ""
-          
-          # Show summary
+                    # Show summary
           echo "📋 Workflow Configuration:"
           echo "  Target: ${{ inputs.op_model }}"
           echo "  KSU Branch: $ksun_branch"
