@@ -852,9 +852,19 @@ runs:
         CONFIG_DIR="$GITHUB_WORKSPACE/$CONFIG"
         ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
         cd "$ARTIFACTS_DIR"
-        echo "kernel_version=${{ env.KERNEL_FULL_VER }}" >> "$GITHUB_OUTPUT"
-        echo "ksu_version=${KSUVER:-unknown}" >> "$GITHUB_OUTPUT"
-        echo "susfs_version=${SUSVER:-unknown}" >> "$GITHUB_OUTPUT"
+        
+        # Output all versions using bash environment variables
+        echo "kernel_version=${KERNEL_FULL_VER}" >> "$GITHUB_OUTPUT"
+        echo "ksu_version=${KSUVER}" >> "$GITHUB_OUTPUT"
+        echo "susfs_version=${SUSVER}" >> "$GITHUB_OUTPUT"
+        echo "android_version=${ANDROID_VER}" >> "$GITHUB_OUTPUT"
+        echo "os_version=${OP_OS_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "model=${OP_MODEL}" >> "$GITHUB_OUTPUT"
+        
+        echo "✅ Build metadata saved to outputs"
+        echo "   Kernel: ${KERNEL_FULL_VER}"
+        echo "   KSU: ${KSUVER}"
+        echo "   SUSFS: ${SUSVER}"
 
     - name: Customize Kernel Branding
       shell: bash
