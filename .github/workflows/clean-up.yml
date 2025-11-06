@@ -156,7 +156,7 @@ jobs:
             };
             
             const cachesByDevice = new Map();
-            const cacheKeyVersions = { v3: 0, legacy: 0 };
+            const cacheKeyVersions = { v4: 0, v3: 0, legacy: 0 };
             
             const cacheAgeDistribution = {
               fresh: 0,
@@ -210,8 +210,13 @@ jobs:
                   cachesByType.ccache.size += cache.size_in_bytes;
                   cachesByType.ccache.count++;
                   
+                  // ✅ UPDATED: Support both v4 and v3 formats
+                  const isV4Format = cache.key.startsWith('ccache-ksun-v4-');
                   const isV3Format = cache.key.startsWith('ccache-ksun-v3-');
-                  if (isV3Format) {
+                  
+                  if (isV4Format) {
+                    cacheKeyVersions.v4++;
+                  } else if (isV3Format) {
                     cacheKeyVersions.v3++;
                   } else {
                     cacheKeyVersions.legacy++;
@@ -219,14 +224,28 @@ jobs:
                   
                   let device = null;
                   let osVersion = null;
+                  let androidVer = null;
+                  let kernelVer = null;
                   
-                  if (isV3Format) {
+                  // ✅ UPDATED: Parse v4 format (ccache-ksun-v4-MODEL-OS-ANDROID-KERNEL-CLANG-BRANCH)
+                  if (isV4Format) {
+                    const v4Match = cache.key.match(/^ccache-ksun-v4-([^-]+)-([^-]+)-([^-]+)-([^-]+)-([^-]+)(?:-([^-]+))?$/);
+                    if (v4Match) {
+                      device = v4Match[1];        // OP13
+                      osVersion = v4Match[2];     // OOS15
+                      androidVer = v4Match[3];    // android14
+                      kernelVer = v4Match[4];     // 6.1
+                      // clangVer = v4Match[5];   // r510928
+                      // branch = v4Match[6];     // stable (optional)
+                    }
+                  } else if (isV3Format) {
                     const v3Match = cache.key.match(/^ccache-ksun-v3-([^-]+-[\d.]+)-([A-Za-z0-9.-]+(?:-[A-Za-z0-9.-]+)*)-(clang-[A-Za-z0-9.-]+)-([A-Za-z0-9._-]+)(-stable)?$/);
                     if (v3Match) {
                       osVersion = v3Match[2];
                       device = v3Match[4];
                     }
                   } else {
+                    // Legacy format parsing
                     const legacy1 = cache.key.match(/^ccache-[^-]+-[\d.]+-[^-]+-clang-[^-]+-([^-]+)$/);
                     const legacy2 = cache.key.match(/^ccache-[^-]+-[\d.]+-[^-]+-([^-]+)$/);
                     const legacy3 = cache.key.match(/ccache-[^-]+-[^-]+-[^-]+-[^-]+-([^-]+)/);
@@ -245,6 +264,7 @@ jobs:
                         oldestAccess: lastAccessDate,
                         newestAccess: lastAccessDate,
                         osVersions: new Set(),
+                        v4Count: 0,
                         v3Count: 0,
                         legacyCount: 0
                       });
@@ -254,7 +274,9 @@ jobs:
                     deviceData.size += cache.size_in_bytes;
                     deviceData.count++;
                     
-                    if (isV3Format) deviceData.v3Count++;
+                    // ✅ UPDATED: Track v4, v3, and legacy counts
+                    if (isV4Format) deviceData.v4Count++;
+                    else if (isV3Format) deviceData.v3Count++;
                     else deviceData.legacyCount++;
                     
                     if (osVersion) deviceData.osVersions.add(osVersion);
@@ -344,19 +366,28 @@ jobs:
                  `${((cachesByType.other.size / totalCacheSize) * 100).toFixed(1)}%`]
               ]);
             
+            // ✅ UPDATED: Show v4, v3, and legacy breakdown
+            const totalVersionedCaches = cacheKeyVersions.v4 + cacheKeyVersions.v3 + cacheKeyVersions.legacy;
             summary.addHeading('🔑 Cache Key Versions', 3)
               .addTable([
                 [{data: 'Format', header: true}, {data: 'Count', header: true}, {data: 'Percentage', header: true}],
+                ['v4 (ccache-ksun-v4-*)', 
+                 cacheKeyVersions.v4.toString(),
+                 totalVersionedCaches > 0 ? `${((cacheKeyVersions.v4 / totalVersionedCaches) * 100).toFixed(1)}%` : '0%'],
                 ['v3 (ccache-ksun-v3-*)', 
                  cacheKeyVersions.v3.toString(),
-                 `${((cacheKeyVersions.v3 / (cacheKeyVersions.v3 + cacheKeyVersions.legacy)) * 100).toFixed(1)}%`],
+                 totalVersionedCaches > 0 ? `${((cacheKeyVersions.v3 / totalVersionedCaches) * 100).toFixed(1)}%` : '0%'],
                 ['Legacy (old format)',
                  cacheKeyVersions.legacy.toString(),
-                 `${((cacheKeyVersions.legacy / (cacheKeyVersions.v3 + cacheKeyVersions.legacy)) * 100).toFixed(1)}%`]
+                 totalVersionedCaches > 0 ? `${((cacheKeyVersions.legacy / totalVersionedCaches) * 100).toFixed(1)}%` : '0%']
               ]);
             
+            // ✅ UPDATED: Warnings for v3 and legacy caches
+            if (cacheKeyVersions.v3 > 0) {
+              summary.addRaw(`\n> ℹ️ **v3 Cache Keys Detected**: ${cacheKeyVersions.v3} caches use v3 format. Consider migrating to v4 for consistency.\n\n`);
+            }
             if (cacheKeyVersions.legacy > 0) {
-              summary.addRaw(`\n> ⚠️ **Legacy Cache Keys Detected**: ${cacheKeyVersions.legacy} caches use old format. Consider migrating to v3 format.\n\n`);
+              summary.addRaw(`\n> ⚠️ **Legacy Cache Keys Detected**: ${cacheKeyVersions.legacy} caches use old format. Strongly recommend migrating to v4 format.\n\n`);
             }
             
             summary.addHeading('📅 Cache Age Distribution (by creation date)', 3)
@@ -387,15 +418,16 @@ jobs:
             });
             
             if (deviceArray.length > 0) {
+              // ✅ UPDATED: Show v4/v3/Legacy counts per device
               summary.addHeading('📱 Top 15 Devices by Cache Size', 3)
                 .addTable([
                   [{data: 'Device', header: true}, {data: 'Count', header: true}, {data: 'Size (GB)', header: true}, 
-                   {data: 'v3/Legacy', header: true}, {data: 'Last Access', header: true}, {data: 'OS Versions', header: true}],
+                   {data: 'v4/v3/Legacy', header: true}, {data: 'Last Access', header: true}, {data: 'OS Versions', header: true}],
                   ...deviceArray.slice(0, 15).map(([device, data]) => [
                     device,
                     data.count.toString(),
                     (data.size / 1024 / 1024 / 1024).toFixed(2),
-                    `${data.v3Count}/${data.legacyCount}`,
+                    `${data.v4Count}/${data.v3Count}/${data.legacyCount}`,
                     `${Math.floor((new Date() - data.lastAccessed) / (1000 * 60 * 60 * 24))}d ago`,
                     Array.from(data.osVersions).join(', ') || 'N/A'
                   ])
@@ -443,8 +475,12 @@ jobs:
               summary.addRaw(`\n✅ **Healthy**: Cache usage is normal (${usagePercent}%). No immediate action needed.\n\n`);
             }
             
+            // ✅ UPDATED: Recommendations for v3 and legacy caches
+            if (cacheKeyVersions.v3 > 0) {
+              summary.addRaw(`- 🔄 **v3 Migration**: ${cacheKeyVersions.v3} v3 caches detected. Consider migrating to v4 format for consistency.\n`);
+            }
             if (cacheKeyVersions.legacy > 0) {
-              summary.addRaw(`- 🔄 **Migration**: ${cacheKeyVersions.legacy} legacy caches detected. Run migration cleanup to adopt v3 format.\n`);
+              summary.addRaw(`- 🔄 **Legacy Migration**: ${cacheKeyVersions.legacy} legacy caches detected. Run migration cleanup to adopt v4 format.\n`);
             }
             
             if (lastAccessDistribution.stale > 0) {
@@ -525,6 +561,8 @@ jobs:
               const ageDays = Math.floor((new Date() - cacheDate) / (1000 * 60 * 60 * 24));
               const accessAgeDays = Math.floor((new Date() - lastAccessDate) / (1000 * 60 * 60 * 24));
               
+              // ✅ UPDATED: Support v4 format
+              const isV4Format = cacheKey.startsWith('ccache-ksun-v4-');
               const isV3Format = cacheKey.startsWith('ccache-ksun-v3-');
               const isStableKey = cacheKey.endsWith('-stable');
               
@@ -536,7 +574,18 @@ jobs:
               let kernel = null;
               let osVersion = null;
               
-              if (isV3Format) {
+              // ✅ UPDATED: Parse v4 format
+              if (isV4Format) {
+                const v4Match = cacheKey.match(/^ccache-ksun-v4-([^-]+)-([^-]+)-([^-]+)-([^-]+)-([^-]+)(?:-([^-]+))?$/);
+                if (v4Match) {
+                  device = v4Match[1];        // OP13
+                  osVersion = v4Match[2];     // OOS15
+                  // androidVer = v4Match[3]; // android14
+                  kernel = v4Match[4];        // 6.1
+                  // clangVer = v4Match[5];   // r510928
+                  // branch = v4Match[6];     // stable (optional)
+                }
+              } else if (isV3Format) {
                 const v3Match = cacheKey.match(/^ccache-ksun-v3-([^-]+-[\d.]+)-([A-Za-z0-9.-]+(?:-[A-Za-z0-9.-]+)*)-(clang-[A-Za-z0-9.-]+)-([A-Za-z0-9._-]+)(-stable)?$/);
                 if (v3Match) {
                   kernel = v3Match[1];
@@ -590,7 +639,8 @@ jobs:
                 
                 case 'ccache_stale':
                   if (cacheKey.startsWith('ccache-') && lastAccessDate < staleCutoffDate) {
-                    if (isV3Format && isStableKey && lastAccessDate >= veryStaleCutoffDate && !forceCleanup) {
+                    // ✅ UPDATED: Protect both v4 and v3 stable keys
+                    if ((isV4Format || isV3Format) && isStableKey && lastAccessDate >= veryStaleCutoffDate && !forceCleanup) {
                       return { delete: false, reason: 'stable_recent' };
                     }
                     patternMatch = true;
@@ -627,6 +677,7 @@ jobs:
                 reason: patternMatch ? 'matched' : 'pattern_mismatch',
                 category: category,
                 isStable: isStableKey,
+                isV4: isV4Format,
                 isV3: isV3Format,
                 device: device,
                 accessAgeDays: accessAgeDays
@@ -636,7 +687,7 @@ jobs:
             let totalDeleted = 0;
             let totalFreed = 0;
             const deletionStats = {
-              ccache: { count: 0, size: 0, v3: 0, legacy: 0, stable: 0 },
+              ccache: { count: 0, size: 0, v4: 0, v3: 0, legacy: 0, stable: 0 },
               apt: { count: 0, size: 0 },
               kernel: { count: 0, size: 0 },
               other: { count: 0, size: 0 }
@@ -689,7 +740,9 @@ jobs:
                   stats.size += cache.size_in_bytes;
                   
                   if (decision.category === 'ccache') {
-                    if (decision.isV3) stats.v3++;
+                    // ✅ UPDATED: Track v4, v3, and legacy deletions
+                    if (decision.isV4) stats.v4++;
+                    else if (decision.isV3) stats.v3++;
                     else stats.legacy++;
                     if (decision.isStable) stats.stable++;
                     if (decision.device) deletedDevices.add(decision.device);
@@ -707,7 +760,7 @@ jobs:
                 } else if (decision.reason === 'recently_used') {
                   console.log(`⏳ Protecting recently used cache: ${cache.key} (accessed ${decision.accessAgeDays}h ago)`);
                 } else if (decision.reason === 'stable_recent') {
-                  console.log(`🔒 Protecting v3 stable cache: ${cache.key} (accessed ${decision.accessAgeDays}d ago)`);
+                  console.log(`🔒 Protecting stable cache: ${cache.key} (accessed ${decision.accessAgeDays}d ago)`);
                 }
               }
               
@@ -762,9 +815,13 @@ jobs:
               ]);
             
             if (deletionStats.ccache.count > 0) {
+              // ✅ UPDATED: Show v4, v3, and legacy breakdown
               summary.addHeading('🔑 ccache Format Breakdown', 3)
                 .addTable([
                   [{data: 'Format', header: true}, {data: 'Count', header: true}, {data: 'Percentage', header: true}],
+                  ['v4 format', 
+                   deletionStats.ccache.v4.toString(),
+                   `${((deletionStats.ccache.v4 / deletionStats.ccache.count) * 100).toFixed(1)}%`],
                   ['v3 format', 
                    deletionStats.ccache.v3.toString(),
                    `${((deletionStats.ccache.v3 / deletionStats.ccache.count) * 100).toFixed(1)}%`],
@@ -777,10 +834,11 @@ jobs:
                 ]);
             }
             
+            // ✅ UPDATED: Protection rules for v4 and v3
             summary.addRaw(`\n### 🛡️ Active Protection Rules\n\n`)
               .addTable([
                 [{data: 'Protection', header: true}, {data: 'Threshold', header: true}, {data: 'Status', header: true}],
-                ['v3 Stable Keys', '30 days since last access', forceCleanup ? '✅ Overridden' : '🔒 Active'],
+                ['v4/v3 Stable Keys', '30 days since last access', forceCleanup ? '✅ Overridden' : '🔒 Active'],
                 ['Recently Used Caches', '2 hours since last access', forceCleanup ? '✅ Overridden' : '🔒 Active'],
                 ['Device Filter', deviceFilter, 'Active'],
                 ['Age Threshold', `${cacheAgeDays} days`, 'Active']
@@ -1107,10 +1165,17 @@ jobs:
                 cacheCount++;
                 
                 if (cache.key.startsWith('ccache-')) {
+                  // ✅ UPDATED: Support v4 format in final report
+                  const isV4Format = cache.key.startsWith('ccache-ksun-v4-');
                   const isV3Format = cache.key.startsWith('ccache-ksun-v3-');
                   let device = null;
                   
-                  if (isV3Format) {
+                  if (isV4Format) {
+                    const v4Match = cache.key.match(/^ccache-ksun-v4-([^-]+)-([^-]+)-([^-]+)-([^-]+)-([^-]+)(?:-([^-]+))?$/);
+                    if (v4Match) {
+                      device = v4Match[1];
+                    }
+                                    } else if (isV3Format) {
                     const v3Match = cache.key.match(/^ccache-ksun-v3-([^-]+-[\d.]+)-([A-Za-z0-9.-]+(?:-[A-Za-z0-9.-]+)*)-(clang-[A-Za-z0-9.-]+)-([A-Za-z0-9._-]+)(-stable)?$/);
                     if (v3Match) {
                       device = v3Match[4];
@@ -1183,7 +1248,7 @@ jobs:
               summary.addHeading('🔥 Most Active Devices (Last 30 Days)', 3)
                 .addTable([
                   [{data: 'Device', header: true}, {data: 'Build Activity', header: true}, {data: 'Status', header: true}],
-                                    ...topDevices.map(([device, count]) => [
+                  ...topDevices.map(([device, count]) => [
                     device,
                     count.toString(),
                     count > 10 ? '🔥 Very Active' : count > 5 ? '✅ Active' : '📊 Moderate'
