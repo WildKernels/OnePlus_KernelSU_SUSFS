@@ -403,7 +403,7 @@ runs:
       if: ${{ inputs.clean != 'true' }}
       with:
         path: ${{ env.CCACHE_DIR }}        
-        key: ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-${{ inputs.ksun_branch }}
+        key: ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-
         restore-keys: |
           ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-${{ env.CLANG_VERSION_SHORT }}-
           ccache-ksun-v4-kernel-${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}-
