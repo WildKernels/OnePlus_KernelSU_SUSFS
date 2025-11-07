@@ -1,7 +1,7 @@
 {
   "model": "OP11r",
   "soc": "waipio",
-  "branch": "oneplus/sm8475",
+  "branch": "wild/sm8475",
   "manifest": "oneplus_11r_u.xml",
   "android_version": "android12",
   "kernel_version": "5.10",

@@ -1,7 +1,7 @@
 {
   "model": "OP-ACE-2",
   "soc": "waipio",
-  "branch": "oneplus/sm8475",
+  "branch": "wild/sm8475",
   "manifest": "oneplus_ace2_v.xml",
   "android_version": "android12",
   "kernel_version": "5.10",

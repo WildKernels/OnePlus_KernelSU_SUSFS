@@ -1,7 +1,7 @@
 {
   "model": "OP-ACE-2-PRO",
   "soc": "kalama",
-  "branch": "oneplus/sm8550",
+  "branch": "wild/sm8550",
   "manifest": "oneplus_ace2_pro_v.xml",
   "android_version": "android13",
   "kernel_version": "5.15",
