@@ -2,7 +2,7 @@
   "model": "OP-PAD-2-PRO",
   "soc": "sun",
   "branch": "wild/sm8750",
-  "manifest": "oneplus_pad_2_pro.xml",
+  "manifest": "oneplus_pad_2_pro_v.xml",
   "android_version": "android15",
   "kernel_version": "6.6",
   "os_version": "OOS15",

@@ -2,7 +2,7 @@
   "model": "OP13S",
   "soc": "sun",
   "branch": "wild/sm8750",
-  "manifest": "oneplus_13s.xml",
+  "manifest": "oneplus_13s_v.xml",
   "android_version": "android15",
   "kernel_version": "6.6",
   "os_version": "OOS15",
