@@ -1,0 +1,15 @@
+{
+  "model": "OP-PAD-PRO",
+  "soc": "pineapple",
+  "branch": "wild/sm8650",
+  "manifest": "oneplus_pad_pro_u.xml",
+  "android_version": "android14",
+  "kernel_version": "6.1",
+  "os_version": "OOS14",
+  "hmbird": false,
+  "susfs": true,
+  "bbg": true,
+  "bbr": true,
+  "ttl": true,
+  "ip_set": true
+}
