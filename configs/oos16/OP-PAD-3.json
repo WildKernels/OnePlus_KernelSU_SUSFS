@@ -1,0 +1,15 @@
+{
+  "model": "OP-PAD-3",
+  "soc": "sun",
+  "branch": "wild/sm8750",
+  "manifest": "oneplus_pad_3_w.xml",
+  "android_version": "android15",
+  "kernel_version": "6.6",
+  "os_version": "OOS15",
+  "hmbird": true,
+  "susfs": true,
+  "bbg": true,
+  "bbr": true,
+  "ttl": true,
+  "ip_set": true
+}
