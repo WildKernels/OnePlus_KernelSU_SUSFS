@@ -1,0 +1,16 @@
+{
+  "model": "OP-ACE-3",
+  "soc": "kalama",
+  "branch": "wild/sm8550",
+  "manifest": "oneplus_ace3_v.xml",
+  "android_version": "android13",
+  "kernel_version": "5.15",
+  "os_version": "OOS15",
+  "disk_cleanup": false,
+  "hmbird": false,
+  "susfs": true,
+  "bbg": true,
+  "bbr": true,
+  "ttl": true,
+  "ip_set": true
+}
