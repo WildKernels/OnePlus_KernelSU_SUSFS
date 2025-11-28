@@ -1,0 +1,16 @@
+{
+  "model": "OP-PAD-2",
+  "soc": "pineapple",
+  "branch": "wild/sm8650",
+  "manifest": "oneplus_pad2_w.xml",
+  "android_version": "android14",
+  "kernel_version": "6.1",
+  "os_version": "OOS16",
+  "disk_cleanup": false,
+  "hmbird": false,
+  "susfs": true,
+  "bbg": true,
+  "bbr": true,
+  "ttl": true,
+  "ip_set": true
+}
