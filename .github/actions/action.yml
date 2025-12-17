@@ -850,6 +850,16 @@ runs:
         echo "✅ SUSFS patches applied"
         echo "::endgroup::"
 
+    - name: Apply HymoFS
+      shell: bash
+      if: >
+        (env.ANDROID_VER == 'android15' && env.KERNEL_VER == '6.6') ||
+        (env.ANDROID_VER == 'android13' && env.KERNEL_VER == '5.15')
+      run: |
+        cd "$CONFIG/kernel_platform/common"
+        patch -p1 --verbose -F 3 < "../../../kernel_patches/experimental/hymofs/hymofs_fs_file.patch"
+        patch -p1 --verbose -F 3 < "../../../kernel_patches/experimental/hymofs/hymofs_with_susfs_${{ env.ANDROID_VER }}_${{ env.KERNEL_VER }}.patch"
+        echo "CONFIG_HYMOFS=y" >> ./arch/arm64/configs/gki_defconfig
 
     - name: Apply Other Patches
       shell: bash
