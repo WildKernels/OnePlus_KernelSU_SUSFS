@@ -879,13 +879,17 @@ runs:
           echo "Hmbird not enabled, skipping fengchi patch"
         fi
         
-        patch -p1 --forward "../../../kernel_patches/common/optimized_mem_operations.patch"
-        patch -p1 --forward "../../../kernel_patches/common/file_struct_8bytes_align.patch"
-        patch -p1 --forward "../../../kernel_patches/common/reduce_cache_pressure.patch"
+        patch -p1 --forward < "../../../kernel_patches/common/optimized_mem_operations.patch"
+        patch -p1 --forward < "../../../kernel_patches/common/file_struct_8bytes_align.patch"
+        patch -p1 --forward < "../../../kernel_patches/common/reduce_cache_pressure.patch"
         if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
-          patch -p1 --forward "../../../kernel_patches/common/clear_page_16bytes_align.patch"
+          patch -p1 --forward < "../../../kernel_patches/common/clear_page_16bytes_align.patch"
+          echo "Patching unicode!"
+          patch -p1 --forward < "../../../kernel_patches/common/unicode_bypass_fix_6.1-.patch"
         else
           cat "../../../kernel_patches/common/clear_page_16bytes_align.patch" | sed -e 's/SYM_FUNC_START_PI(clear_page)/SYM_FUNC_START_PI(__pi_clear_page)/' | patch -p1 -F3 --forward
+          echo "Patching unicode!"
+          patch -p1 --forward < "../../../kernel_patches/common/unicode_bypass_fix_6.1+.patch"
         fi
         
         echo "✅ Other patches applied"
