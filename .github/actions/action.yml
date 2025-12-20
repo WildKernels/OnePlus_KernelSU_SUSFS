@@ -1200,7 +1200,8 @@ runs:
         
         if [ -n "${RUSTC_BIN_PATH:-}" ]; then
           export PATH="${BASE_PATH}:${RUSTC_BIN_PATH}:${PATH}"
-          export RUSTC="rustc"
+          export LIBCLANG_PATH="$CLANG_BIN_PATH/../lib64"
+          export RUSTC="$RUSTC_BIN_PATH/rustc"
           export BINDGEN="bindgen"
         else
           export PATH="${BASE_PATH}:${PATH}"
