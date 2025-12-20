@@ -1285,9 +1285,9 @@ runs:
         
         ./scripts/rust_is_available.sh
         
-        KCFLAGS="$KCFLAGS -Wno-error -pipe -fno-stack-protector ${KCFLAGS_EXTRA}"
+        KCFLAGS="$KCFLAGS -Wno-error -pipe ${KCFLAGS_EXTRA}"
         KCPPFLAGS="$KCPPFLAGS -DCONFIG_OPTIMIZE_INLINING"
-        
+        # -fno-stack-protector
         echo "============================================"
         echo "🔧 Build Configuration"
         echo "============================================"
