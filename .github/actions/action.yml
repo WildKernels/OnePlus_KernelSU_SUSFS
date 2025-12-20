@@ -1023,6 +1023,7 @@ runs:
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n
         CONFIG_OPTIMIZE_INLINING=y
+        CONFIG_FRAME_WARN=0
         EOF
         echo "::endgroup::"
 
@@ -1055,97 +1056,97 @@ runs:
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
         echo "::endgroup::"
 
-    # - name: Run sed and perl Commands
-      # shell: bash
-      # if: ${{ env.OP_KERNEL_VERSION == '6.12' }}
-      # run: |
-        # echo "Changing to configuration directory: $CONFIG..."
-        # cd "$CONFIG/kernel_platform"
+    - name: Run sed and perl Commands
+      shell: bash
+      if: ${{ env.OP_KERNEL_VERSION == '6.12' }}
+      run: |
+        echo "Changing to configuration directory: $CONFIG..."
+        cd "$CONFIG/kernel_platform"
         
-        # echo "Running sed commands..."
+        echo "Running sed commands..."
         
-        # sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
-        # sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_NONE=y/' "./common/arch/arm64/configs/gki_defconfig"
-        # sed -i 's/CONFIG_LTO_CLANG_THIN=y/CONFIG_LTO_CLANG_NONE=y/' "./common/arch/arm64/configs/gki_defconfig"
-        # cat >> ./common/arch/arm64/configs/gki_defconfig <<EOF
-        # CONFIG_TCP_CONG_BIC=n
-        # CONFIG_TCP_CONG_WESTWOOD=n
-        # CONFIG_TCP_CONG_HTCP=n
-        # CONFIG_LOCALVERSION="-OP-Wild"
-        # CONFIG_ANDROID_BINDER_IPC_RUST=m
-        # EOF
+        sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
+        sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_NONE=y/' "./common/arch/arm64/configs/gki_defconfig"
+        sed -i 's/CONFIG_LTO_CLANG_THIN=y/CONFIG_LTO_CLANG_NONE=y/' "./common/arch/arm64/configs/gki_defconfig"
+        cat >> ./common/arch/arm64/configs/gki_defconfig <<EOF
+        CONFIG_TCP_CONG_BIC=n
+        CONFIG_TCP_CONG_WESTWOOD=n
+        CONFIG_TCP_CONG_HTCP=n
+        CONFIG_LOCALVERSION="-OP-Wild"
+        CONFIG_ANDROID_BINDER_IPC_RUST=m
+        EOF
         
-        # # sed -i '/_ARM64_GKI_MODULES_LIST = \[/,/\]/ {
-            # # /\]/i\
-            # # "net/ipv4/tcp_bic.ko",\
-            # # "net/ipv4/tcp_htcp.ko",\
-            # # "net/ipv4/tcp_westwood.ko",
-        # # }' ./common/modules.bzl
+        # sed -i '/_ARM64_GKI_MODULES_LIST = \[/,/\]/ {
+            # /\]/i\
+            # "net/ipv4/tcp_bic.ko",\
+            # "net/ipv4/tcp_htcp.ko",\
+            # "net/ipv4/tcp_westwood.ko",
+        # }' ./common/modules.bzl
         
-        # # sed -i "s/$(printf '\044'){{kernelrelease}}/\"$(printf '\044'){{kernelrelease}}\"/g" ./build/kernel/kleaf/impl/kernel_modules_install.bzl
-        # # sed -i -e '/_GKI_AARCH64_MAKE_GOALS/,/]/ s/"modules",\?//g' -e '/_GKI_AARCH64_MAKE_GOALS/,/]/ {/^[[:space:]]*$/d}' -e 's/module_implicit_outs = get_gki_modules_list("arm64") + get_kunit_modules_list("arm64")/module_implicit_outs = []/' common/BUILD.bazel
-        # # sed -i -e 's/":tests_zip_arm64",//' -e '/extra_dist/,/]/ {/^[[:space:]]*$/d}' -e 's/kmi_enforced = True,/kmi_enforced = False,/' -e 's/kmi_symbol_list_strict_mode = True,/kmi_symbol_list_strict_mode = False,/' -e 's/trim_nonlisted_kmi = True,/trim_nonlisted_kmi = False,/' common/BUILD.bazel
+        # sed -i "s/$(printf '\044'){{kernelrelease}}/\"$(printf '\044'){{kernelrelease}}\"/g" ./build/kernel/kleaf/impl/kernel_modules_install.bzl
+        # sed -i -e '/_GKI_AARCH64_MAKE_GOALS/,/]/ s/"modules",\?//g' -e '/_GKI_AARCH64_MAKE_GOALS/,/]/ {/^[[:space:]]*$/d}' -e 's/module_implicit_outs = get_gki_modules_list("arm64") + get_kunit_modules_list("arm64")/module_implicit_outs = []/' common/BUILD.bazel
+        # sed -i -e 's/":tests_zip_arm64",//' -e '/extra_dist/,/]/ {/^[[:space:]]*$/d}' -e 's/kmi_enforced = True,/kmi_enforced = False,/' -e 's/kmi_symbol_list_strict_mode = True,/kmi_symbol_list_strict_mode = False,/' -e 's/trim_nonlisted_kmi = True,/trim_nonlisted_kmi = False,/' common/BUILD.bazel
         
-        # # Run sed commands for modifications
-        # sed -i 's/check_defconfig//' ./common/build.config.gki
+        # Run sed commands for modifications
+        sed -i 's/check_defconfig//' ./common/build.config.gki
         
-        # if [[ "$OP_KERNEL_VERSION" == "6.12" ]]; then
-          # sed -i '/check_defconfig = select({/,/}/c\        check_defconfig = "disabled"' ./build/kernel/kleaf/common_kernels.bzl
-        # fi
+        if [[ "$OP_KERNEL_VERSION" == "6.12" ]]; then
+          sed -i '/check_defconfig = select({/,/}/c\        check_defconfig = "disabled"' ./build/kernel/kleaf/common_kernels.bzl
+        fi
         
-        # # sed -i 's/echo "${KERNELVERSION}${file_localversion}${config_localversion}${LOCALVERSION}${scm_version}"/echo "${KERNEL_FULL_VER}${config_localversion}"/' ./common/scripts/setlocalversion
-        # # chmod +x ./common/scripts/setlocalversion
-        # sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
-        # sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
+        # sed -i 's/echo "${KERNELVERSION}${file_localversion}${config_localversion}${LOCALVERSION}${scm_version}"/echo "${KERNEL_FULL_VER}${config_localversion}"/' ./common/scripts/setlocalversion
+        # chmod +x ./common/scripts/setlocalversion
+        sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
+        sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
         
-        # # Run perl command to modify UTS_VERSION
-        # DATESTR=$(date -u)
-        # perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
+        # Run perl command to modify UTS_VERSION
+        DATESTR=$(date -u)
+        perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
 
-    # - name: Build the Kernel
-      # shell: bash
-      # if: ${{ env.OP_KERNEL_VERSION == '6.12' }}
-      # run: |
-        # echo "Changing to configuration directory: $CONFIG..."
-        # cd "$CONFIG"
+    - name: Build the Kernel
+      shell: bash
+      if: ${{ env.OP_KERNEL_VERSION == '6.12' }}
+      run: |
+        echo "Changing to configuration directory: $CONFIG..."
+        cd "$CONFIG"
         
-        # echo "Building the kernel..."
-        # # Clear Cache
-        # sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
+        echo "Building the kernel..."
+        # Clear Cache
+        sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
         
-        # (stdbuf -oL bash -c '
-          # while true; do
-            # echo "=== $(date) ==="
-            # free -h
-            # echo "======"
-            # df -h
-            # echo "======"
-            # top -b -n 1 | head -n 15
-            # echo ""
-            # sleep 60
-          # done
-        # ') &
-        # MONITOR_PID=$!
-        # trap "kill $MONITOR_PID" EXIT
+        (stdbuf -oL bash -c '
+          while true; do
+            echo "=== $(date) ==="
+            free -h
+            echo "======"
+            df -h
+            echo "======"
+            top -b -n 1 | head -n 15
+            echo ""
+            sleep 60
+          done
+        ') &
+        MONITOR_PID=$!
+        trap "kill $MONITOR_PID" EXIT
         
-        # KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
-        # BASE_PATH="/usr/lib/ccache:${CLANG_BIN_PATH}:${KERNEL_PATH}/prebuilts/kernel-build-tools/linux-x86/bin/:${KERNEL_PATH}/prebuilts/kernel-build-tools/linux_musl-x86/bin/"
-        # export PATH="${BASE_PATH}:${PATH}"
+        KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
+        BASE_PATH="/usr/lib/ccache:${CLANG_BIN_PATH}:${KERNEL_PATH}/prebuilts/kernel-build-tools/linux-x86/bin/:${KERNEL_PATH}/prebuilts/kernel-build-tools/linux_musl-x86/bin/"
+        export PATH="${BASE_PATH}:${PATH}"
         
-        # BUILD_START=$(date +%s)
-        # cd kernel_platform
-        # ./tools/bazel build --config=fast --config=stamp --lto=none //common:kernel_aarch64_dist --disk_cache="$CCACHE_DIR" --sandbox_writable_path="$CCACHE_DIR" --verbose_failures --sandbox_debug || exit 1
+        BUILD_START=$(date +%s)
+        cd kernel_platform
+        ./tools/bazel build --config=fast --config=stamp --lto=none --subcommands //common:kernel_aarch64_dist --disk_cache="$CCACHE_DIR" --sandbox_writable_path="$CCACHE_DIR" --verbose_failures --sandbox_debug || exit 1
         
-        # BUILD_END=$(date +%s)
-        # BUILD_TIME=$((BUILD_END - BUILD_START))
+        BUILD_END=$(date +%s)
+        BUILD_TIME=$((BUILD_END - BUILD_START))
         
-        # echo "BUILD_START=$BUILD_START" >> "$GITHUB_ENV"
-        # echo "BUILD_END=$BUILD_END" >> "$GITHUB_ENV"
-        # echo "BUILD_TIME=$BUILD_TIME" >> "$GITHUB_ENV"
+        echo "BUILD_START=$BUILD_START" >> "$GITHUB_ENV"
+        echo "BUILD_END=$BUILD_END" >> "$GITHUB_ENV"
+        echo "BUILD_TIME=$BUILD_TIME" >> "$GITHUB_ENV"
 
     - name: Build Kernel
       shell: bash
-      # if: ${{ env.OP_KERNEL_VERSION != '6.12' }}
+      if: ${{ env.OP_KERNEL_VERSION != '6.12' }}
       env:
         PYTHONWARNINGS: "ignore:invalid escape sequence"
       run: |
