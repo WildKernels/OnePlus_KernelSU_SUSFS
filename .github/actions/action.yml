@@ -220,6 +220,22 @@ runs:
         echo "✅ Dependencies installed"
         echo "::endgroup::"
 
+    - name: Setup RUST
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: "1.82.0"
+
+    - name: Show Rust version
+      shell: bash
+      run: rustc -V
+
+    - name: Install bindgen if you ever need it
+      shell: bash
+      run: |
+        rustup toolchain install nightly
+        rustup default nightly
+        cargo +nightly install bindgen-cli --version 0.69.5
+
     - name: Setup Base Environment
       shell: bash
       run: |
@@ -354,7 +370,7 @@ runs:
         RUSTC_FOUND=false
         for base in "$KP/prebuilts" "$KP/prebuilts-master"; do
           [ -d "$base/clang/host/linux-x86" ] || continue
-          latest=$(ls -d "$base"/clang/host/linux-x86/clang-r*/ 2>/dev/null | sort -V | tail -n1 || true)
+          latest=$(ls -d "$base"/clang/host/linux-x86/clang-r*/ 2>/dev/null | sort -V | head -n1 || true)
           if [ -n "$latest" ] && [ -x "$latest/bin/clang" ]; then
             CLANG_BIN="$latest/bin"
             CLANG_FOUND=true
@@ -1002,7 +1018,7 @@ runs:
         echo "::group::Add Build based configs"
         cd "$CONFIG/kernel_platform"
         cat >> common/arch/arm64/configs/gki_defconfig <<EOF
-        CONFIG_LTO_CLANG_THIN=y
+        CONFIG_LTO_CLANG_NONE=y
         CONFIG_LTO_CLANG=y
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n
@@ -1243,9 +1259,18 @@ runs:
         fi
         
         scripts/config --file "$OUT/.config" -e LTO_CLANG_NONE
-        scripts/config --file "$OUT/.config" -e LTO_CLANG
+        scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
+        scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
+        scripts/config --file "$OUT/.config" -d TCP_CONG_BIC
+        scripts/config --file "$OUT/.config" -d TCP_CONG_WESTWOOD
+        scripts/config --file "$OUT/.config" -d CONFIG_TCP_CONG_HTCP
+        scripts/config --file "$OUT/.config" -d GENKSYMS
         scripts/config --file "$OUT/.config" -m ANDROID_BINDER_IPC_RUST
         scripts/config --file "$OUT/.config" -e RUST
+        scripts/config --file "$OUT/.config" -e GENDWARFKSYMS
+        scripts/config --file "$OUT/.config" -e EXTENDED_MODVERSIONS
+        scripts/config --file "$OUT/.config" -e MODULE_SCMVERSION
+        scripts/config --file "$OUT/.config" -e CFI_ICALL_NORMALIZE_INTEGERS
         make O="$OUT" olddefconfig
         
         cat "$OUT/.config"
