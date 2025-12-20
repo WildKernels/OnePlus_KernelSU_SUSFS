@@ -1200,8 +1200,8 @@ runs:
         
         if [ -n "${RUSTC_BIN_PATH:-}" ]; then
           export PATH="${BASE_PATH}:${RUSTC_BIN_PATH}:${PATH}"
-          # export RUSTC="$RUSTC_BIN_PATH/rustc"
-          # export BINDGEN="${KERNEL_PATH}/prebuilts/clang-tools/linux-x86/bin/bindgen"
+          export RUSTC="rustc"
+          export BINDGEN="bindgen"
         else
           export PATH="${BASE_PATH}:${PATH}"
         fi
@@ -1241,6 +1241,7 @@ runs:
         echo "============================================"
         
         make O="$OUT" gki_defconfig
+        make LLVM=1 rustavailable
         
         if [ -n "${CUSTOM_LOCALVERSION:-}" ]; then
           scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${CUSTOM_LOCALVERSION}"
