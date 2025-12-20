@@ -1051,7 +1051,7 @@ runs:
         KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
         cd "$KERNEL_PATH/common"
         mkdir -p out
-        CUSTOM_LOCALVERSION="-${ANDROID_VER}-OP-Wild"
+        CUSTOM_LOCALVERSION="-${ANDROID_VER}-5-o-gbd2553d74228-OP-Wild"
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
         echo "::endgroup::"
 
@@ -1270,8 +1270,14 @@ runs:
         scripts/config --file "$OUT/.config" -e RUST
         scripts/config --file "$OUT/.config" -e GENDWARFKSYMS
         scripts/config --file "$OUT/.config" -e EXTENDED_MODVERSIONS
-        scripts/config --file "$OUT/.config" -e MODULE_SCMVERSION
         scripts/config --file "$OUT/.config" -e CFI_ICALL_NORMALIZE_INTEGERS
+        
+        scripts/config --file "$OUT/.config" -d TRIM_UNUSED_KSYMS
+        scripts/config --file "$OUT/.config" -e MODULE_ALLOW_BTF_MISMATCH
+        scripts/config --file "$OUT/.config" --set-str MODULE_SIG_PROTECT_LIST ""
+        scripts/config --file "$OUT/.config" -d MODULE_SIG_PROTECT
+        scripts/config --file "$OUT/.config" -d MODULE_SCMVERSION
+        
         make O="$OUT" olddefconfig
         
         cat "$OUT/.config"
