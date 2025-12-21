@@ -7,7 +7,7 @@
   "kernel_version": "6.12",
   "os_version": "OOS16",
   "rust_build": true,
-  "disk_cleanup": false,
+  "disk_cleanup": true,
   "hmbird": false,
   "susfs": true,
   "bbg": true,
