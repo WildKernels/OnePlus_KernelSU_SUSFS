@@ -13,45 +13,9 @@
   
   <project remote="origin" name="android_kernel_modules_and_devicetree_oneplus_sm8850" path="./" revision="oneplus/sm8850_b_16.0.0_oneplus_15" clone-depth="1"/>
   
-  <!-- <project remote="aosp" name="platform/build/bazel_common_rules" path="kernel_platform/build/bazel_common_rules" revision="65f7a037277610bad11048a53548abc2b40b4fbe" clone-depth="1" groups="ddk"/> -->
-  <!-- <project remote="aosp" name="platform/external/bazel-contrib-bazel_features" path="kernel_platform/external/bazel-contrib-bazel_features" clone-depth="1" groups="ddk-external"/> -->
-  <!-- <project remote="aosp" name="platform/external/bazel-skylib" path="kernel_platform/external/bazel-skylib" clone-depth="1" groups="ddk-external"/> -->
-  <!-- <project remote="aosp" name="platform/external/bazelbuild-bazel-central-registry" path="kernel_platform/external/bazelbuild-bazel-central-registry" clone-depth="1" groups="ddk-external"/> -->
-  <!-- <project remote="aosp" name="platform/external/bazelbuild-platforms" path="kernel_platform/external/bazelbuild-platforms" clone-depth="1" groups="ddk-external"/> -->
-  <!-- <project remote="aosp" name="platform/external/bazelbuild-rules_cc" path="kernel_platform/external/bazelbuild-rules_cc" clone-depth="1" groups="ddk-external"/> -->
-  <!-- <project remote="aosp" name="platform/external/bazelbuild-rules_license" path="kernel_platform/external/bazelbuild-rules_license" clone-depth="1" groups="ddk-external"/> -->
-  <!-- <project remote="aosp" name="platform/external/bazelbuild-rules_pkg" path="kernel_platform/external/bazelbuild-rules_pkg" clone-depth="1" groups="ddk-external"/> -->
-  <!-- <project remote="aosp" name="platform/external/bazelbuild-rules_python" path="kernel_platform/external/bazelbuild-rules_python" clone-depth="1" groups="ddk-external"/> -->
-  <!-- <project remote="aosp" name="platform/external/bazelbuild-rules_rust" path="kernel_platform/external/bazelbuild-rules_rust" clone-depth="1" groups="ddk-external" /> -->
-  <!-- <project remote="aosp" name="platform/external/bazelbuild-rules_shell" path="kernel_platform/external/bazelbuild-rules_shell" clone-depth="1" groups="ddk-external"/> -->
-  <!-- <project remote="aosp" name="platform/external/dtc" path="kernel_platform/external/qcom-dtc" clone-depth="1"/> -->
-  <!-- <project remote="aosp" name="platform/external/lz4" path="kernel_platform/external/lz4" clone-depth="1" groups="ddk"/> -->
-  <!-- <project remote="aosp" name="platform/external/pigz" path="kernel_platform/external/pigz" clone-depth="1" groups="ddk"/> -->
-  <!-- <project remote="aosp" name="platform/external/python/absl-py" path="kernel_platform/external/python/absl-py" clone-depth="1" groups="ddk-external"/> -->
-  <!-- <project remote="aosp" name="platform/external/toybox" path="kernel_platform/external/toybox" clone-depth="1" groups="ddk"/> -->
-  <!-- <project remote="aosp" name="platform/external/zlib" path="kernel_platform/external/zlib" clone-depth="1" groups="ddk"/> -->
-  <!-- <project remote="aosp" name="platform/external/zopfli" path="kernel_platform/external/zopfli" clone-depth="1" groups="ddk"/> -->
-  
-  <!-- <project remote="aosp" name="platform/prebuilts/jdk/jdk11" path="kernel_platform/prebuilts/jdk/jdk11" clone-depth="1"/> -->
-  <!-- <project remote="aosp" name="platform/system/libufdt" path="kernel_platform/external/libufdt" clone-depth="1"/> -->
-  <!-- <project remote="aosp" name="platform/system/tools/mkbootimg" path="kernel_platform/tools/mkbootimg" clone-depth="1"/> -->
-  <!-- <project remote="aosp" name="toolchain/prebuilts/ndk/r26" path="kernel_platform/prebuilts/ndk-r26" clone-depth="1" groups="ddk"/> -->
-  <!-- <project remote="aosp" name="platform/tools/tradefederation/prebuilts" path="kernel_platform/prebuilts/tradefed" clone-depth="1"/> -->
-  
-  <!-- <project remote="aosp" name="platform/external/libcap-ng" path="kernel_platform/external/libcap-ng" clone-depth="1"/> -->
-  <!-- <project remote="aosp" name="platform/external/libcap" path="kernel_platform/external/libcap" clone-depth="1"/> -->
-  
-  <!-- <project remote="aosp" name="kernel/common-modules/trusty" path="kernel_platform/common-modules/trusty" clone-depth="1"/> -->
   <project remote="aosp" name="kernel/prebuilts/build-tools" path="kernel_platform/prebuilts/kernel-build-tools" clone-depth="1" groups="ddk">
     <linkfile dest="kernel_platform/build/prebuilts/kernel-build-tools" src="."/>
   </project>
-  <!-- <project remote="aosp" name="platform/prebuilts/asuite" path="kernel_platform/prebuilts/asuite" clone-depth="1"/> -->
-  <!-- <project remote="aosp" name="platform/prebuilts/build-tools" path="kernel_platform/prebuilts/build-tools" clone-depth="1" groups="ddk"> -->
-    <!-- <linkfile dest="kernel_platform/build/prebuilts/build-tools" src="."/> -->
-  <!-- </project> -->
-  <!-- <project remote="aosp" name="platform/prebuilts/clang-tools" path="kernel_platform/prebuilts/clang-tools" clone-depth="1" groups="ddk"> -->
-    <!-- <linkfile dest="kernel_platform/build/prebuilts/clang-tools" src="."/> -->
-  <!-- </project> -->
   <project remote="aosp" name="platform/prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8" path="kernel_platform/prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8" clone-depth="1" groups="ddk">
     <linkfile dest="kernel_platform/build/build-tools/sysroot" src="sysroot"/>
   </project>
