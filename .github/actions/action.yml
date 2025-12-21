@@ -227,24 +227,44 @@ runs:
         echo "✅ Dependencies installed"
         echo "::endgroup::"
 
-    - name: Setup RUST
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      if: ${{ env.OP_RUST_BUILD == 'true' }}
-      with:
-        toolchain: "1.82.0"
+    # - name: Setup RUST
+      # uses: actions-rust-lang/setup-rust-toolchain@v1
+      # if: ${{ env.OP_RUST_BUILD == 'true' }}
+      # with:
+        # toolchain: "1.82.0"
 
-    - name: Show Rust version
-      shell: bash
-      if: ${{ env.OP_RUST_BUILD == 'true' }}
-      run: rustc -V
+    # - name: Show Rust version
+      # shell: bash
+      # if: ${{ env.OP_RUST_BUILD == 'true' }}
+      # run: rustc -V
 
-    - name: Install bindgen if you ever need it
+    # - name: Install bindgen if you ever need it
+      # shell: bash
+      # if: ${{ env.OP_RUST_BUILD == 'true' }}
+      # run: |
+        # rustup toolchain install nightly
+        # rustup default nightly
+        # cargo +nightly install bindgen-cli --version 0.69.5
+
+    - name: Install bindgen only (no rustc)
       shell: bash
       if: ${{ env.OP_RUST_BUILD == 'true' }}
       run: |
-        rustup toolchain install nightly
-        rustup default nightly
-        cargo +nightly install bindgen-cli --version 0.69.5
+        # Install bindgen via cargo (no full rustc needed)
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
+        source $HOME/.cargo/env
+        
+        # Install bindgen CLI only (~50-100MB total)
+        cargo install bindgen-cli --version 0.69.5
+        
+        # Verify
+        bindgen --version
+        which bindgen
+
+    - name: Show bindgen version
+      shell: bash
+      if: ${{ env.OP_RUST_BUILD == 'true' }}
+      run: bindgen --version
 
     - name: Setup Base Environment
       shell: bash
