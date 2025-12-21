@@ -46,9 +46,9 @@
     <linkfile dest="kernel_platform/build/prebuilts/kernel-build-tools" src="."/>
   </project>
   <!-- <project remote="aosp" name="platform/prebuilts/asuite" path="kernel_platform/prebuilts/asuite" clone-depth="1"/> -->
-  <!-- <project remote="aosp" name="platform/prebuilts/build-tools" path="kernel_platform/prebuilts/build-tools" clone-depth="1" groups="ddk"> -->
-    <!-- <linkfile dest="kernel_platform/build/prebuilts/build-tools" src="."/> -->
-  <!-- </project> -->
+  <project remote="aosp" name="platform/prebuilts/build-tools" path="kernel_platform/prebuilts/build-tools" clone-depth="1" groups="ddk">
+    <linkfile dest="kernel_platform/build/prebuilts/build-tools" src="."/>
+  </project>
   <!-- <project remote="aosp" name="platform/prebuilts/clang-tools" path="kernel_platform/prebuilts/clang-tools" clone-depth="1" groups="ddk"> -->
     <!-- <linkfile dest="kernel_platform/build/prebuilts/clang-tools" src="."/> -->
   <!-- </project> -->

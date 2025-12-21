@@ -1190,12 +1190,12 @@ runs:
         export HOSTCC="ccache clang"
         export HOSTCXX="ccache clang++"
         
-        # export RUSTC_FORCE_RUSTC_VERSION=rustc-android
-        # export HOSTRUSTFLAGS="--target x86_64-unknown-linux-gnu"
+        export RUSTC_FORCE_RUSTC_VERSION=rustc-android
+        export HOSTRUSTFLAGS="--target x86_64-unknown-linux-gnu"
         # export KBUILD_SYMTYPES=
         export DEPMOD="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/depmod"
         export DTC="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/dtc"
-        # export PROCMACROLDFLAGS="-fuse-ld=lld --rtlib=compiler-rt --sysroot=$KERNEL_PATH/build/kernel/build-tools/sysroot"
+        export PROCMACROLDFLAGS="-fuse-ld=lld --rtlib=compiler-rt --sysroot=$KERNEL_PATH/build/kernel/build-tools/sysroot"
         # export BRANCH=android16-6.12 
         # export KMI_GENERATION=5
         # export CLANG_VERSION=r536225
@@ -1299,9 +1299,9 @@ runs:
         
         make O="$OUT" olddefconfig
         
-        cat "$OUT/.config"
+        # cat "$OUT/.config"
         
-        ./scripts/rust_is_available.sh
+        # ./scripts/rust_is_available.sh
         
         KCFLAGS="$KCFLAGS -Wno-error -pipe -fno-stack-protector ${KCFLAGS_EXTRA}"
         KCPPFLAGS="$KCPPFLAGS -DCONFIG_OPTIMIZE_INLINING"
