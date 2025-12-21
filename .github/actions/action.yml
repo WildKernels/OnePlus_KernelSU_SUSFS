@@ -1018,7 +1018,7 @@ runs:
         echo "::group::Add Build based configs"
         cd "$CONFIG/kernel_platform"
         cat >> common/arch/arm64/configs/gki_defconfig <<EOF
-        CONFIG_LTO_CLANG_NONE=y
+        CONFIG_LTO_CLANG_THIN=y
         CONFIG_LTO_CLANG=y
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n
@@ -1278,8 +1278,8 @@ runs:
           KCFLAGS_EXTRA="-O2"
         fi
         
-        scripts/config --file "$OUT/.config" -e LTO_CLANG_NONE
-        scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
+        scripts/config --file "$OUT/.config" -e LTO_CLANG
+        scripts/config --file "$OUT/.config" -e LTO_CLANG_THIN
         scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
         # scripts/config --file "$OUT/.config" -d TCP_CONG_BIC
         # scripts/config --file "$OUT/.config" -d TCP_CONG_WESTWOOD
