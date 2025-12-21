@@ -1193,9 +1193,9 @@ runs:
         # export RUSTC_FORCE_RUSTC_VERSION=rustc-android
         # export HOSTRUSTFLAGS="--target x86_64-unknown-linux-gnu"
         # export KBUILD_SYMTYPES=
-        export DEPMOD="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/depmod"
-        export DTC="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/dtc"
-        export PROCMACROLDFLAGS="-fuse-ld=lld --rtlib=compiler-rt --sysroot=$KERNEL_PATH/build/kernel/build-tools/sysroot"
+        # export DEPMOD="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/depmod"
+        # export DTC="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/dtc"
+        # export PROCMACROLDFLAGS="-fuse-ld=lld --rtlib=compiler-rt --sysroot=$KERNEL_PATH/build/kernel/build-tools/sysroot"
         # export BRANCH=android16-6.12 
         # export KMI_GENERATION=5
         # export CLANG_VERSION=r536225
@@ -1292,7 +1292,7 @@ runs:
         # scripts/config --file "$OUT/.config" -e CFI_ICALL_NORMALIZE_INTEGERS
         
         # scripts/config --file "$OUT/.config" -d TRIM_UNUSED_KSYMS
-        scripts/config --file "$OUT/.config" -e MODULE_ALLOW_BTF_MISMATCH
+        # scripts/config --file "$OUT/.config" -e MODULE_ALLOW_BTF_MISMATCH
         # scripts/config --file "$OUT/.config" --set-str MODULE_SIG_PROTECT_LIST ""
         # scripts/config --file "$OUT/.config" -d MODULE_SIG_PROTECT
         # scripts/config --file "$OUT/.config" -d MODULE_SCMVERSION
