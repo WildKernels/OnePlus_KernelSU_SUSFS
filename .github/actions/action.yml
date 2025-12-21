@@ -1190,8 +1190,8 @@ runs:
         export HOSTCC="ccache clang"
         export HOSTCXX="ccache clang++"
         
-        export RUSTC_FORCE_RUSTC_VERSION=rustc-android
-        export HOSTRUSTFLAGS="--target x86_64-unknown-linux-gnu"
+        # export RUSTC_FORCE_RUSTC_VERSION=rustc-android
+        # export HOSTRUSTFLAGS="--target x86_64-unknown-linux-gnu"
         # export KBUILD_SYMTYPES=
         export DEPMOD="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/depmod"
         export DTC="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/dtc"
@@ -1200,9 +1200,9 @@ runs:
         # export KMI_GENERATION=5
         # export CLANG_VERSION=r536225
         # export RUSTC_VERSION=1.82.0
-        export AARCH64_NDK_TRIPLE=aarch64-linux-android31
-        export X86_64_NDK_TRIPLE=x86_64-linux-android31
-        export ARM_NDK_TRIPLE=arm-linux-androideabi31
+        # export AARCH64_NDK_TRIPLE=aarch64-linux-android31
+        # export X86_64_NDK_TRIPLE=x86_64-linux-android31
+        # export ARM_NDK_TRIPLE=arm-linux-androideabi31
         
         export LLVM=1 LLVM_IAS=1
         export ARCH=arm64 SUBARCH=arm64
@@ -1256,9 +1256,9 @@ runs:
         fi
         echo "============================================"
         
-        # set +u
-        # source "$KERNEL_PATH/build/kernel/_setup_env.sh" 2>/dev/null || true
-        # set -u
+        set +u
+        source "$KERNEL_PATH/build/kernel/_setup_env.sh" 2>/dev/null || true
+        set -u
         
         make O="$OUT" gki_defconfig
         
@@ -1281,13 +1281,13 @@ runs:
         scripts/config --file "$OUT/.config" -e LTO_CLANG_NONE
         scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
         scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
-        scripts/config --file "$OUT/.config" -d TCP_CONG_BIC
-        scripts/config --file "$OUT/.config" -d TCP_CONG_WESTWOOD
-        scripts/config --file "$OUT/.config" -d CONFIG_TCP_CONG_HTCP
-        scripts/config --file "$OUT/.config" -d GENKSYMS
+        # scripts/config --file "$OUT/.config" -d TCP_CONG_BIC
+        # scripts/config --file "$OUT/.config" -d TCP_CONG_WESTWOOD
+        # scripts/config --file "$OUT/.config" -d CONFIG_TCP_CONG_HTCP
+        # scripts/config --file "$OUT/.config" -d GENKSYMS
         scripts/config --file "$OUT/.config" -m ANDROID_BINDER_IPC_RUST
         scripts/config --file "$OUT/.config" -e RUST
-        scripts/config --file "$OUT/.config" -e GENDWARFKSYMS
+        # scripts/config --file "$OUT/.config" -e GENDWARFKSYMS
         # scripts/config --file "$OUT/.config" -e EXTENDED_MODVERSIONS
         # scripts/config --file "$OUT/.config" -e CFI_ICALL_NORMALIZE_INTEGERS
         
