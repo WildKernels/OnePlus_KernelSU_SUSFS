@@ -6,6 +6,7 @@
   "android_version": "android14",
   "kernel_version": "6.1",
   "os_version": "OOS14",
+  "rust_build": false,
   "disk_cleanup": true,
   "hmbird": false,
   "susfs": true,
