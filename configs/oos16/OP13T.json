@@ -6,6 +6,7 @@
   "android_version": "android15",
   "kernel_version": "6.6",
   "os_version": "OOS16",
+  "lto": "thin",
   "rust_build": false,
   "disk_cleanup": false,
   "hmbird": true,

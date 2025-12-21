@@ -96,6 +96,7 @@ runs:
         ttl="$OP_TTL"
         ip_set="$OP_IP_SET"
         rust_build="$OP_RUST_BUILD"
+        lto="$OP_LTO"
         optimize='${{ inputs.optimize_level }}'
         
         errors=()
@@ -196,6 +197,12 @@ runs:
           errors+=("Input 'rust_build' contains invalid characters. Allowed: 'true' or 'false'. Got: '$rust_build'")
         fi
         
+        if [[ -z "$lto" ]]; then
+          errors+=("Input 'lto' cannot be empty")
+        elif [[ "$lto" != "none" && "$lto" != "thin" && "$lto" != "full" ]]; then
+          errors+=("Input 'lto' contains invalid characters. Allowed: 'thin', 'full' or 'none'. Got: '$lto'")
+        fi
+        
         case "$optimize" in
           O2|O3) ;;
           *) errors+=("optimize_level must be O2 or O3. Got: '$optimize'"); ;;
@@ -226,25 +233,6 @@ runs:
         sudo apt-get clean
         echo "✅ Dependencies installed"
         echo "::endgroup::"
-
-    # - name: Setup RUST
-      # uses: actions-rust-lang/setup-rust-toolchain@v1
-      # if: ${{ env.OP_RUST_BUILD == 'true' }}
-      # with:
-        # toolchain: "1.82.0"
-
-    # - name: Show Rust version
-      # shell: bash
-      # if: ${{ env.OP_RUST_BUILD == 'true' }}
-      # run: rustc -V
-
-    # - name: Install bindgen if you ever need it
-      # shell: bash
-      # if: ${{ env.OP_RUST_BUILD == 'true' }}
-      # run: |
-        # rustup toolchain install nightly
-        # rustup default nightly
-        # cargo +nightly install bindgen-cli --version 0.69.5
 
     - name: Install bindgen only (no rustc)
       shell: bash
@@ -400,7 +388,7 @@ runs:
         RUSTC_FOUND=false
         for base in "$KP/prebuilts" "$KP/prebuilts-master"; do
           [ -d "$base/clang/host/linux-x86" ] || continue
-          latest=$(ls -d "$base"/clang/host/linux-x86/clang-r*/ 2>/dev/null | sort -V | head -n1 || true)
+          latest=$(ls -d "$base"/clang/host/linux-x86/clang-r*/ 2>/dev/null | sort -V | tail -n1 || true)
           if [ -n "$latest" ] && [ -x "$latest/bin/clang" ]; then
             CLANG_BIN="$latest/bin"
             CLANG_FOUND=true
@@ -1048,8 +1036,6 @@ runs:
         echo "::group::Add Build based configs"
         cd "$CONFIG/kernel_platform"
         cat >> common/arch/arm64/configs/gki_defconfig <<EOF
-        CONFIG_LTO_CLANG_NONE=y
-        CONFIG_LTO_CLANG=y
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n
         CONFIG_OPTIMIZE_INLINING=y
@@ -1219,6 +1205,32 @@ runs:
           scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE_O3
           KCFLAGS_EXTRA="-O2"
         fi
+        
+        case "${{ env.OP_LTO}}" in
+          "none")
+            scripts/config --file "$OUT/.config" -e LTO_CLANG
+            scripts/config --file "$OUT/.config" -e LTO_CLANG_NONE
+            scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
+            scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
+            ;;
+          "thin")
+            scripts/config --file "$OUT/.config" -e LTO_CLANG
+            scripts/config --file "$OUT/.config" -e LTO_CLANG_THIN
+            scripts/config --file "$OUT/.config" -d LTO_CLANG_NONE
+            scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
+            ;;
+          "full")
+            scripts/config --file "$OUT/.config" -e LTO_CLANG
+            scripts/config --file "$OUT/.config" -e LTO_CLANG_FULL
+            scripts/config --file "$OUT/.config" -d LTO_CLANG_NONE
+            scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
+            ;;
+          *)
+            echo "::error::Unsupported LTO option: ${{ env.OP_LTO}}"
+            exit 1
+            ;;
+        esac
+        
         
         make O="$OUT" olddefconfig
         
