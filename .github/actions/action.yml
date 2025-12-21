@@ -1193,8 +1193,8 @@ runs:
         export RUSTC_FORCE_RUSTC_VERSION=rustc-android
         export HOSTRUSTFLAGS="--target x86_64-unknown-linux-gnu"
         export KBUILD_SYMTYPES=
-        export DEPMOD=depmod
-        export DTC=$(command -v dtc)
+        export DEPMOD="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/depmod"
+        export DTC="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/dtc"
         export PROCMACROLDFLAGS="-fuse-ld=lld --rtlib=compiler-rt --sysroot=$KERNEL_PATH/build/kernel/build-tools/sysroot"
         export BRANCH=android16-6.12 
         export KMI_GENERATION=5
