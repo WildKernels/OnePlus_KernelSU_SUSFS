@@ -1018,7 +1018,7 @@ runs:
         echo "::group::Add Build based configs"
         cd "$CONFIG/kernel_platform"
         cat >> common/arch/arm64/configs/gki_defconfig <<EOF
-        CONFIG_LTO_CLANG_NONE=y
+        CONFIG_LTO_CLANG_THIN=y
         CONFIG_LTO_CLANG=y
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n
@@ -1052,7 +1052,7 @@ runs:
         KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
         cd "$KERNEL_PATH/common"
         mkdir -p out
-        CUSTOM_LOCALVERSION="-${ANDROID_VER}-5-o-gbd2553d74228-OP-Wild"
+        CUSTOM_LOCALVERSION="-${ANDROID_VER}-OP-Wild"
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
         echo "::endgroup::"
 
@@ -1190,20 +1190,6 @@ runs:
         export HOSTCC="ccache clang"
         export HOSTCXX="ccache clang++"
         
-        # export RUSTC_FORCE_RUSTC_VERSION=rustc-android
-        # export HOSTRUSTFLAGS="--target x86_64-unknown-linux-gnu"
-        # export KBUILD_SYMTYPES=
-        # export DEPMOD="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/depmod"
-        # export DTC="$KERNEL_PATH/build/prebuilts/kernel-build-tools/linux-x86/bin/dtc"
-        # export PROCMACROLDFLAGS="-fuse-ld=lld --rtlib=compiler-rt --sysroot=$KERNEL_PATH/build/kernel/build-tools/sysroot"
-        # export BRANCH=android16-6.12 
-        # export KMI_GENERATION=5
-        # export CLANG_VERSION=r536225
-        # export RUSTC_VERSION=1.82.0
-        # export AARCH64_NDK_TRIPLE=aarch64-linux-android31
-        # export X86_64_NDK_TRIPLE=x86_64-linux-android31
-        # export ARM_NDK_TRIPLE=arm-linux-androideabi31
-        
         export LLVM=1 LLVM_IAS=1
         export ARCH=arm64 SUBARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
@@ -1278,24 +1264,10 @@ runs:
           KCFLAGS_EXTRA="-O2"
         fi
         
-        scripts/config --file "$OUT/.config" -e LTO_CLANG_NONE
         scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
-        scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
-        # scripts/config --file "$OUT/.config" -d TCP_CONG_BIC
-        # scripts/config --file "$OUT/.config" -d TCP_CONG_WESTWOOD
-        # scripts/config --file "$OUT/.config" -d CONFIG_TCP_CONG_HTCP
-        # scripts/config --file "$OUT/.config" -d GENKSYMS
+        scripts/config --file "$OUT/.config" -e LTO_CLANG
         scripts/config --file "$OUT/.config" -m ANDROID_BINDER_IPC_RUST
         scripts/config --file "$OUT/.config" -e RUST
-        # scripts/config --file "$OUT/.config" -e GENDWARFKSYMS
-        # scripts/config --file "$OUT/.config" -e EXTENDED_MODVERSIONS
-        # scripts/config --file "$OUT/.config" -e CFI_ICALL_NORMALIZE_INTEGERS
-        
-        # scripts/config --file "$OUT/.config" -d TRIM_UNUSED_KSYMS
-        # scripts/config --file "$OUT/.config" -e MODULE_ALLOW_BTF_MISMATCH
-        # scripts/config --file "$OUT/.config" --set-str MODULE_SIG_PROTECT_LIST ""
-        # scripts/config --file "$OUT/.config" -d MODULE_SIG_PROTECT
-        # scripts/config --file "$OUT/.config" -d MODULE_SCMVERSION
         
         make O="$OUT" olddefconfig
         
