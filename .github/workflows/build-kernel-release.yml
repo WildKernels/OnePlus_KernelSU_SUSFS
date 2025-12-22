@@ -28,7 +28,7 @@ on:
           - android14-6.1
           - android13-5.15
           - android12-5.10
-        default: OOS16
+        default: OOS14+15+16
       ksu_options:
         description: 'Enter KernelSU build json'
         required: true
@@ -63,7 +63,7 @@ on:
       android16-6_12_susfs_branch_or_commit:
         description: 'Enter SusFS Branch or commit hash for android16-6.12'
         type: string
-        default: '55ebd0e6f72b042b03e4f817b1d30610b40a645a'
+        default: ''
 
 jobs:
   set-op-model:
