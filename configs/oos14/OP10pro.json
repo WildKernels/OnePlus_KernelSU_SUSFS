@@ -1,0 +1,18 @@
+{
+  "model": "OP10pro",
+  "soc": "waipio",
+  "branch": "wild/sm8450",
+  "manifest": "oneplus_10_pro_u.xml",
+  "android_version": "android12",
+  "kernel_version": "5.10",
+  "os_version": "OOS14",
+  "lto": "thin",
+  "rust_build": false,
+  "disk_cleanup": true,
+  "hmbird": false,
+  "susfs": true,
+  "bbg": true,
+  "bbr": true,
+  "ttl": true,
+  "ip_set": true
+}
