@@ -818,7 +818,7 @@ runs:
               cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/tiny_sulog.c" ./kernel/tiny_sulog.c
               patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch"
               # Add Pershoot tracepoint fix for no root
-              curl -Ls https://github.com/pershoot/KernelSU-Next/commit/249d468099c180b7159c240b3f3ecffe8c8d3a6f.patch | patch -p1 || true
+              curl -Ls https://github.com/pershoot/KernelSU-Next/commit/249d468099c180b7159c240b3f3ecffe8c8d3a6f.patch | sed -e 's/pr_debug/pr_info/' | patch -p1 || true
             else
               patch -p1 --forward < 10_enable_susfs_for_ksu.patch
             fi
