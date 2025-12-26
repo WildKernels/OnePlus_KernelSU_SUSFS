@@ -28,7 +28,7 @@ on:
           - android14-6.1
           - android13-5.15
           - android12-5.10
-        default: OOS14+15+16
+        default: OOS16
       ksu_options:
         description: 'Enter KernelSU build json'
         required: true
