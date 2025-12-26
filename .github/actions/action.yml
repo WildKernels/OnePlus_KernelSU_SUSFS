@@ -690,6 +690,8 @@ runs:
         
         if [ "$KSU_VERSION" -lt 12884 ]; then
           echo "NEED_HOOKS=true" >> $GITHUB_ENV
+        elif [ "${{ env.OP_SUSFS }}" = "false" ]; then
+          echo "NEED_HOOKS=true" >> $GITHUB_ENV
         else
           echo "NEED_HOOKS=false" >> $GITHUB_ENV
         fi
@@ -937,7 +939,7 @@ runs:
         set -euo pipefail
         echo "::group::Apply KSU hooks"
         cd "$CONFIG/kernel_platform/common"
-        patch -p1 < ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch
+        patch -p1 < ../../../kernel_patches/next/scope_min_manual_hooks_v1.6_kprobes.patch
         echo "✅ KSU hooks applied"
         echo "::endgroup::"
 
