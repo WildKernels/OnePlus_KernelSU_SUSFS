@@ -733,165 +733,165 @@ runs:
         echo "✅ KernelSU added (commit: ${KSU_COMMIT_SHA:0:8})"
         echo "::endgroup::"
 
-    - name: Apply SUSFS Patches
-      shell: bash
-      if: ${{ env.OP_SUSFS == 'true' }}
-      run: |
-        set -euo pipefail
-        echo "::group::Apply SUSFS patches"
-        cd "$CONFIG/kernel_platform"
-        echo "Applying SUSFS patches..."
-        cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch ./common/
-        cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
-        cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+    # - name: Apply SUSFS Patches
+      # shell: bash
+      # if: ${{ env.OP_SUSFS == 'true' }}
+      # run: |
+        # set -euo pipefail
+        # echo "::group::Apply SUSFS patches"
+        # cd "$CONFIG/kernel_platform"
+        # echo "Applying SUSFS patches..."
+        # cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch ./common/
+        # cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
+        # cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
         
-        susfs_version=$(grep '#define SUSFS_VERSION' ./common/include/linux/susfs.h | awk -F'"' '{print $2}')
-        echo "SUSVER=$susfs_version" >> $GITHUB_ENV
-        echo "SusFS Version: $susfs_version"
+        # susfs_version=$(grep '#define SUSFS_VERSION' ./common/include/linux/susfs.h | awk -F'"' '{print $2}')
+        # echo "SUSVER=$susfs_version" >> $GITHUB_ENV
+        # echo "SusFS Version: $susfs_version"
         
-        # Function to compare semantic versions
-        version_lte() {
-          [ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" = "$1" ]
-        }
+        # # Function to compare semantic versions
+        # version_lte() {
+          # [ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" = "$1" ]
+        # }
         
-        if version_lte "${susfs_version:1}" "1.5.12"; then
-          echo "NEED_HOOKS=true" >> $GITHUB_ENV
-        else
-          echo "NEED_HOOKS=false" >> $GITHUB_ENV
-        fi
+        # if version_lte "${susfs_version:1}" "1.5.12"; then
+          # echo "NEED_HOOKS=true" >> $GITHUB_ENV
+        # else
+          # echo "NEED_HOOKS=false" >> $GITHUB_ENV
+        # fi
         
-        case "$susfs_version" in
-          "v1.5.8")
-            if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-              cd ./KernelSU-Next
-            else
-              cd ./KernelSU
-            fi
-            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-            if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch  || true
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_apk_sign.c.patch" ./
-              patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_core_hook.c.patch" ./
-              patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_selinux.c.patch" ./
-              patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
-              cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_ksud.c.patch" ./
-              patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
-            else
-              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch
-            fi
-            ;;
-          "v1.5.9"|"v1.5.10"|"v1.5.11"|"v1.5.12")
-            if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-              cd ./KernelSU-Next
-            else
-              cd ./KernelSU
-            fi
-            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-            if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-              patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
-              for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
-                echo "Patching file: $file.c with fix_$file.c.patch"
-                patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch"
-              done
-              patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
-            else
-              patch -p1 --forward < 10_enable_susfs_for_ksu.patch
-            fi
-            ;;
-          "v2.0.0")
-            if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-              cd ./KernelSU-Next
-            else
-              cd ./KernelSU
-            fi
-            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-            if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-              patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
-              for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
-                echo "Patching file: $file with fix_$file.patch"
-                patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
-              done
-              patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch"
-              patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch"
-            else
-              patch -p1 --forward < 10_enable_susfs_for_ksu.patch
-            fi
-            ;;
-          *)
-            echo "::error::Unsupported SUSFS version: $susfs_version"
-            exit 1
-            ;;
-        esac
+        # case "$susfs_version" in
+          # "v1.5.8")
+            # if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
+              # cd ./KernelSU-Next
+            # else
+              # cd ./KernelSU
+            # fi
+            # cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+            # if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
+              # patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch  || true
+              # cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_apk_sign.c.patch" ./
+              # patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
+              # cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_core_hook.c.patch" ./
+              # patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
+              # cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_selinux.c.patch" ./
+              # patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
+              # cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_ksud.c.patch" ./
+              # patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
+            # else
+              # patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch
+            # fi
+            # ;;
+          # "v1.5.9"|"v1.5.10"|"v1.5.11"|"v1.5.12")
+            # if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
+              # cd ./KernelSU-Next
+            # else
+              # cd ./KernelSU
+            # fi
+            # cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+            # if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
+              # patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
+              # for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
+                # echo "Patching file: $file.c with fix_$file.c.patch"
+                # patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch"
+              # done
+              # patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
+            # else
+              # patch -p1 --forward < 10_enable_susfs_for_ksu.patch
+            # fi
+            # ;;
+          # "v2.0.0")
+            # if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
+              # cd ./KernelSU-Next
+            # else
+              # cd ./KernelSU
+            # fi
+            # cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+            # if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
+              # patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
+              # for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
+                # echo "Patching file: $file with fix_$file.patch"
+                # patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
+              # done
+              # patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch"
+              # patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch"
+            # else
+              # patch -p1 --forward < 10_enable_susfs_for_ksu.patch
+            # fi
+            # ;;
+          # *)
+            # echo "::error::Unsupported SUSFS version: $susfs_version"
+            # exit 1
+            # ;;
+        # esac
         
-        cd ../common
-        if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
-          if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
-            sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
-          fi
-        fi
+        # cd ../common
+        # if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
+          # if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
+            # sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
+          # fi
+        # fi
         
-        # Fake kernel patch to fix failures
-        fake_patched=0
-        if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
-          if ! grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
-            echo "nr_subpages Line not found. Fake Patching!"
-            sed -i -e '/int ret = 0, copied = 0;/a \\tunsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;' -e '/int ret = 0, copied = 0;/a \\tpagemap_entry_t \*res = NULL;' ./fs/proc/task_mmu.c
-            fake_patched=1
-          fi
-        fi
-        if [ "${{ env.ANDROID_VER }}" = "android12" ] && [ "${{ env.KERNEL_VER }}" = "5.10" ]; then
-          if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
-            echo "vma_pages Line not found. Fake Patching!"
-            fake_patched=1
-          fi
-        fi
-        if [ "${{ env.ANDROID_VER }}" = "android13" ] && [ "${{ env.KERNEL_VER }}" = "5.15" ]; then
-          if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
-            echo "vma_pages Line not found. Fake Patching!"
-            fake_patched=1
-          fi
-        fi
+        # # Fake kernel patch to fix failures
+        # fake_patched=0
+        # if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
+          # if ! grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
+            # echo "nr_subpages Line not found. Fake Patching!"
+            # sed -i -e '/int ret = 0, copied = 0;/a \\tunsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;' -e '/int ret = 0, copied = 0;/a \\tpagemap_entry_t \*res = NULL;' ./fs/proc/task_mmu.c
+            # fake_patched=1
+          # fi
+        # fi
+        # if [ "${{ env.ANDROID_VER }}" = "android12" ] && [ "${{ env.KERNEL_VER }}" = "5.10" ]; then
+          # if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
+            # echo "vma_pages Line not found. Fake Patching!"
+            # fake_patched=1
+          # fi
+        # fi
+        # if [ "${{ env.ANDROID_VER }}" = "android13" ] && [ "${{ env.KERNEL_VER }}" = "5.15" ]; then
+          # if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
+            # echo "vma_pages Line not found. Fake Patching!"
+            # fake_patched=1
+          # fi
+        # fi
         
-        if [ "${{ env.ANDROID_VER }}" = "android14" ] && [ "${{ env.KERNEL_VER }}" = "6.1" ]; then
-          if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
-            echo "vma_pages Line not found. Fake Patching!"
-            fake_patched=1
-          fi
-        fi
+        # if [ "${{ env.ANDROID_VER }}" = "android14" ] && [ "${{ env.KERNEL_VER }}" = "6.1" ]; then
+          # if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
+            # echo "vma_pages Line not found. Fake Patching!"
+            # fake_patched=1
+          # fi
+        # fi
         
-        patch -p1 < 50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch
+        # patch -p1 < 50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch
         
-        # Revert Fake kernel patch
-        if [ "$fake_patched" = 1 ]; then
-          if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
-            if grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
-              echo "nr_subpages Line found. Revert Fake Patching!"
-              sed -i -e '/unsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;/d' -e '/pagemap_entry_t \*res = NULL;/d' ./fs/proc/task_mmu.c
-            fi
-          fi
-          if [ "${{ env.ANDROID_VER }}" = "android12" ] && [ "${{ env.KERNEL_VER }}" = "5.10" ]; then
-            if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
-              echo "vma_pages Line found. Revert Fake Patching!"
-              sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-            fi
-          fi
-          if [ "${{ env.ANDROID_VER }}" = "android13" ] && [ "${{ env.KERNEL_VER }}" = "5.15" ]; then
-            if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
-              echo "vma_pages Line found. Revert Fake Patching!"
-              sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-            fi
-          fi
-          if [ "${{ env.ANDROID_VER }}" = "android14" ] && [ "${{ env.KERNEL_VER }}" = "6.1" ]; then
-            if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
-              echo "vma_pages Line found. Revert Fake Patching!"
-              sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-            fi
-          fi
-        fi
-        echo "✅ SUSFS patches applied"
-        echo "::endgroup::"
+        # # Revert Fake kernel patch
+        # if [ "$fake_patched" = 1 ]; then
+          # if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
+            # if grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
+              # echo "nr_subpages Line found. Revert Fake Patching!"
+              # sed -i -e '/unsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;/d' -e '/pagemap_entry_t \*res = NULL;/d' ./fs/proc/task_mmu.c
+            # fi
+          # fi
+          # if [ "${{ env.ANDROID_VER }}" = "android12" ] && [ "${{ env.KERNEL_VER }}" = "5.10" ]; then
+            # if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
+              # echo "vma_pages Line found. Revert Fake Patching!"
+              # sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
+            # fi
+          # fi
+          # if [ "${{ env.ANDROID_VER }}" = "android13" ] && [ "${{ env.KERNEL_VER }}" = "5.15" ]; then
+            # if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
+              # echo "vma_pages Line found. Revert Fake Patching!"
+              # sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
+            # fi
+          # fi
+          # if [ "${{ env.ANDROID_VER }}" = "android14" ] && [ "${{ env.KERNEL_VER }}" = "6.1" ]; then
+            # if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
+              # echo "vma_pages Line found. Revert Fake Patching!"
+              # sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
+            # fi
+          # fi
+        # fi
+        # echo "✅ SUSFS patches applied"
+        # echo "::endgroup::"
 
 
     # - name: Apply Other Patches
@@ -1030,33 +1030,33 @@ runs:
         # EOF
         # echo "::endgroup::"
 
-    - name: Add Build based configs
-      shell: bash
-      run: |
-        set -euo pipefail
-        echo "::group::Add Build based configs"
-        cd "$CONFIG/kernel_platform"
-        cat >> common/arch/arm64/configs/gki_defconfig <<EOF
-        CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
-        CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n
-        CONFIG_OPTIMIZE_INLINING=y
-        CONFIG_FRAME_WARN=0
-        CONFIG_TRACEPOINTS=y
-        EOF
-        echo "::endgroup::"
+    # - name: Add Build based configs
+      # shell: bash
+      # run: |
+        # set -euo pipefail
+        # echo "::group::Add Build based configs"
+        # cd "$CONFIG/kernel_platform"
+        # cat >> common/arch/arm64/configs/gki_defconfig <<EOF
+        # CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
+        # CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n
+        # CONFIG_OPTIMIZE_INLINING=y
+        # CONFIG_FRAME_WARN=0
+        # CONFIG_TRACEPOINTS=y
+        # EOF
+        # echo "::endgroup::"
 
-    - name: Add RUST build configs
-      shell: bash
-      if: ${{ env.OP_RUST_BUILD == 'true' }}
-      run: |
-        set -euo pipefail
-        echo "::group::Add Build based configs"
-        cd "$CONFIG/kernel_platform"
-        cat >> common/arch/arm64/configs/gki_defconfig <<EOF
-        CONFIG_ANDROID_BINDER_IPC_RUST=m
-        CONFIG_RUST=y
-        EOF
-        echo "::endgroup::"
+    # - name: Add RUST build configs
+      # shell: bash
+      # if: ${{ env.OP_RUST_BUILD == 'true' }}
+      # run: |
+        # set -euo pipefail
+        # echo "::group::Add Build based configs"
+        # cd "$CONFIG/kernel_platform"
+        # cat >> common/arch/arm64/configs/gki_defconfig <<EOF
+        # CONFIG_ANDROID_BINDER_IPC_RUST=m
+        # CONFIG_RUST=y
+        # EOF
+        # echo "::endgroup::"
 
     - name: Save Build Metadata
       id: save_metadata
@@ -1087,194 +1087,275 @@ runs:
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
         echo "::endgroup::"
 
-    - name: Build Kernel
+    # - name: Build Kernel
+      # shell: bash
+      # env:
+        # PYTHONWARNINGS: "ignore:invalid escape sequence"
+      # run: |
+        # set -euo pipefail
+        # echo "::group::Build kernel with ccache optimization"
+        
+        # KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
+        # COMMON="$KERNEL_PATH/common"
+        # cd "$COMMON"
+        # : > "$COMMON/.scmversion"
+        
+        # export PYTHONWARNINGS="${PYTHONWARNINGS}"
+        
+        # echo "Getting last commit timestamp from kernel source..."
+        # COMMIT_TIMESTAMP=$(git log -1 --format=%ct 2>/dev/null || echo "$(date +%s)")
+        # COMMIT_DATE=$(git log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M:%S' 2>/dev/null || date -u '+%Y-%m-%d %H:%M:%S')
+        # COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+        
+        # WORKSPACE="${GITHUB_WORKSPACE}"
+        # MAP="-fdebug-prefix-map=${WORKSPACE}=."
+        # MPMAP="-fmacro-prefix-map=${WORKSPACE}=."
+        # FPMAP="-ffile-prefix-map=${WORKSPACE}=."
+        
+        # export KCFLAGS="${KCFLAGS:-} $MAP $MPMAP $FPMAP -no-canonical-prefixes -fdiagnostics-color=never -Qunused-arguments -Wno-unused-command-line-argument -D__ANDROID_COMMON_KERNEL__"
+        # export KCPPFLAGS="${KCPPFLAGS:-} $MAP $MPMAP $FPMAP"
+        
+        # export LLVM=1 LLVM_IAS=1
+        # export ARCH=arm64 SUBARCH=arm64
+        # export CROSS_COMPILE=aarch64-linux-gnu-
+        # export PAHOLE="$KERNEL_PATH/prebuilts/kernel-build-tools/linux-x86/bin/pahole"
+        # export LD=ld.lld HOSTLD=ld.lld AR=llvm-ar NM=llvm-nm 
+        # export OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
+        
+        # set +u
+        # source "$KERNEL_PATH/build/kernel/_setup_env.sh" 2>/dev/null || true
+        # set -u
+        
+        # KERNEL_BUILD_DATE=$(date -u)
+        # export SOURCE_DATE_EPOCH=$COMMIT_TIMESTAMP
+        # export KBUILD_BUILD_TIMESTAMP="$KERNEL_BUILD_DATE"
+        # export KBUILD_BUILD_USER="${BUILD_USER:-kernel}"
+        # export KBUILD_BUILD_HOST="${BUILD_HOST:-kleaf}"
+        # export KBUILD_BUILD_VERSION=1
+        
+        # echo "📅 Build timestamp: $KBUILD_BUILD_TIMESTAMP (from commit $COMMIT_HASH)"
+        # echo "🔢 SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+        # echo "👤 Build user: $KBUILD_BUILD_USER"
+        # echo "🖥️  Build host: $KBUILD_BUILD_HOST"
+        
+        # export CC="ccache clang"
+        # export CXX="ccache clang++"
+        # export HOSTCC="ccache clang"
+        # export HOSTCXX="ccache clang++"
+        
+        # BASE_PATH="/usr/lib/ccache:${CLANG_BIN_PATH}:${KERNEL_PATH}/prebuilts/kernel-build-tools/linux-x86/bin/:${KERNEL_PATH}/prebuilts/kernel-build-tools/linux_musl-x86/bin/"
+        
+        # if [ -n "${RUSTC_BIN_PATH:-}" ]; then
+          # export PATH="${BASE_PATH}:${RUSTC_BIN_PATH}:${PATH}"
+          # export RUSTC="$RUSTC_BIN_PATH/rustc"
+          # if [ "${{ env.OP_RUST_BUILD}}" = "true" ]; then
+            # export LIBCLANG_PATH="$CLANG_BIN_PATH/../lib"
+            # export BINDGEN="bindgen"
+          # fi
+        # else
+          # export PATH="${BASE_PATH}:${PATH}"
+        # fi
+        
+        # if [ "${{ inputs.clean }}" = "true" ]; then
+          # echo "🧹 Clean build mode - ccache disabled"
+          # export CCACHE_DISABLE=1
+        # else
+          # echo "🚀 ccache-accelerated build"
+        # fi
+        
+        # OUT=out
+        # mkdir -p "$OUT"
+        
+        # echo "============================================"
+        # echo "🔍 Compiler & ccache Verification"
+        # echo "============================================"
+        # echo "PATH: ${PATH:0:200}..."
+        # echo "which clang: $(which clang)"
+        # echo "CC: $CC"
+        # echo "CXX: $CXX"
+        # echo "CCACHE_BASEDIR: ${CCACHE_BASEDIR:-not set}"
+        # echo ""
+        
+        # if [ "${{ inputs.clean }}" != "true" ]; then
+          # echo "ccache wrapper test:"
+          # clang --version 2>&1 | head -n1 || true
+          # echo ""
+          # echo "ccache configuration:"
+          # ccache -p | grep -E "(compression|direct_mode|readonly_direct|depend|sloppiness)" || true
+          # echo ""
+          # echo "ccache pre-build status:"
+          # ccache -s | head -n 20
+        # else
+          # echo "⚠️ Clean build - ccache bypassed"
+        # fi
+        # echo "============================================"
+        
+        # make O="$OUT" gki_defconfig
+        
+        # if [ -n "${CUSTOM_LOCALVERSION:-}" ]; then
+          # scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${CUSTOM_LOCALVERSION}"
+          # scripts/config --file "$OUT/.config" -d LOCALVERSION_AUTO || true
+          # sed -i 's/scm_version="$(scm_version --short)"/scm_version=""/' scripts/setlocalversion
+        # fi
+        
+        # if [ "${{ inputs.optimize_level }}" = "O3" ]; then
+          # scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE
+          # scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3
+          # KCFLAGS_EXTRA="-O3"
+        # else
+          # scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE
+          # scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE_O3
+          # KCFLAGS_EXTRA="-O2"
+        # fi
+        
+        # case "${{ env.OP_LTO}}" in
+          # "none")
+            # scripts/config --file "$OUT/.config" -e LTO_CLANG
+            # scripts/config --file "$OUT/.config" -e LTO_CLANG_NONE
+            # scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
+            # scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
+            # ;;
+          # "thin")
+            # scripts/config --file "$OUT/.config" -e LTO_CLANG
+            # scripts/config --file "$OUT/.config" -e LTO_CLANG_THIN
+            # scripts/config --file "$OUT/.config" -d LTO_CLANG_NONE
+            # scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
+            # ;;
+          # "full")
+            # scripts/config --file "$OUT/.config" -e LTO_CLANG
+            # scripts/config --file "$OUT/.config" -e LTO_CLANG_FULL
+            # scripts/config --file "$OUT/.config" -d LTO_CLANG_NONE
+            # scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
+            # ;;
+          # *)
+            # echo "::error::Unsupported LTO option: ${{ env.OP_LTO}}"
+            # exit 1
+            # ;;
+        # esac
+        
+        
+        # make O="$OUT" olddefconfig
+        
+        # KCFLAGS="$KCFLAGS -Wno-error -pipe -fno-stack-protector ${KCFLAGS_EXTRA}"
+        # KCPPFLAGS="$KCPPFLAGS -DCONFIG_OPTIMIZE_INLINING"
+        
+        # echo "============================================"
+        # echo "🔧 Build Configuration"
+        # echo "============================================"
+        # echo "Device: ${OP_MODEL}"
+        # echo "Kernel: ${KERNEL_FULL_VER}"
+        # echo "Threads: $(nproc --all)"
+        # echo "Optimization: ${{ inputs.optimize_level }}"
+        # echo "KCFLAGS: ${KCFLAGS:0:150}..."
+        # echo "KCPPFLAGS: ${KCPPFLAGS:0:150}..."
+        # echo "Timestamp: $KBUILD_BUILD_TIMESTAMP"
+        # echo "Workspace: $WORKSPACE"
+        
+        # if [ "${{ inputs.clean }}" != "true" ]; then
+          # echo "ccache: ENABLED"
+          # echo "  Dir: $CCACHE_DIR"
+          # echo "  Base: $CCACHE_BASEDIR"
+          # echo "  Max size: $CCACHE_MAXSIZE"
+          # echo "  Compression: zstd level 3"
+          # echo "  Features: readonly_direct, file_clone, inode_cache, depend"
+        # else
+          # echo "ccache: DISABLED (clean build)"
+        # fi
+        # echo "============================================"
+        
+        # if [ "${{ inputs.clean }}" != "true" ]; then
+          # if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -type f 2>/dev/null | head -n1)" ]; then
+            # echo "🔥 Priming cache with header preprocessing..."
+            # make -C "$COMMON" O="$OUT" headers_install prepare 2>&1 | head -n 20 || true
+            # echo ""
+          # fi
+        # fi
+        
+        # BUILD_START=$(date +%s)
+        # set -o pipefail
+        
+        # make -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" 2>&1 | tee build.log
+        
+        # BUILD_END=$(date +%s)
+        # BUILD_TIME=$((BUILD_END - BUILD_START))
+        
+        # echo "BUILD_START=$BUILD_START" >> "$GITHUB_ENV"
+        # echo "BUILD_END=$BUILD_END" >> "$GITHUB_ENV"
+        # echo "BUILD_TIME=$BUILD_TIME" >> "$GITHUB_ENV"
+        
+        # IMG="$OUT/arch/arm64/boot/Image"
+        # if [ ! -f "$IMG" ]; then
+          # echo "::error::Kernel Image missing"
+          # echo "::group::Last 100 lines of build log"
+          # tail -n 100 build.log || echo "Build log not available"
+          # echo "::endgroup::"
+          # exit 1
+        # fi
+        
+        # IMG_SIZE=$(stat -c%s "$IMG")
+        
+        # echo "============================================"
+        # echo "✅ Build Completed Successfully"
+        # echo "============================================"
+        # echo "Duration: $((BUILD_TIME / 60))m $((BUILD_TIME % 60))s"
+        # echo "Image: $(numfmt --to=iec-i --suffix=B "$IMG_SIZE")"
+        
+        # if [ "${{ inputs.clean }}" != "true" ]; then
+          # echo ""
+          # echo "📊 ccache Post-Build Statistics"
+          # echo "============================================"
+          # ccache -s
+        # fi
+        # echo "============================================"
+        # echo "::endgroup::"
+
+    - name: Run sed and perl Commands
       shell: bash
-      env:
-        PYTHONWARNINGS: "ignore:invalid escape sequence"
       run: |
-        set -euo pipefail
-        echo "::group::Build kernel with ccache optimization"
+        echo "Changing to configuration directory: $CONFIG..."
+        cd "$CONFIG/kernel_platform"
+        
+        echo "Running sed commands..."
+        
+        sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
+        sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+        sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+        
+        # Run sed commands for modifications
+        sed -i 's/check_defconfig//' ./common/build.config.gki
+
+    - name: Build the Kernel
+      shell: bash
+      run: |
+        echo "Changing to configuration directory: $CONFIG..."
+        cd "$CONFIG"
+        
+        echo "Building the kernel..."
+        # Clear Cache
+        sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
+        
+        (stdbuf -oL bash -c '
+          while true; do
+            echo "=== $(date) ==="
+            free -h
+            echo "======"
+            df -h
+            echo "======"
+            top -b -n 1 | head -n 15
+            echo ""
+            sleep 60
+          done
+        ') &
+        MONITOR_PID=$!
+        trap "kill $MONITOR_PID" EXIT
         
         KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG/kernel_platform"
-        COMMON="$KERNEL_PATH/common"
-        cd "$COMMON"
-        : > "$COMMON/.scmversion"
-        
-        export PYTHONWARNINGS="${PYTHONWARNINGS}"
-        
-        echo "Getting last commit timestamp from kernel source..."
-        COMMIT_TIMESTAMP=$(git log -1 --format=%ct 2>/dev/null || echo "$(date +%s)")
-        COMMIT_DATE=$(git log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M:%S' 2>/dev/null || date -u '+%Y-%m-%d %H:%M:%S')
-        COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-        
-        WORKSPACE="${GITHUB_WORKSPACE}"
-        MAP="-fdebug-prefix-map=${WORKSPACE}=."
-        MPMAP="-fmacro-prefix-map=${WORKSPACE}=."
-        FPMAP="-ffile-prefix-map=${WORKSPACE}=."
-        
-        export KCFLAGS="${KCFLAGS:-} $MAP $MPMAP $FPMAP -no-canonical-prefixes -fdiagnostics-color=never -Qunused-arguments -Wno-unused-command-line-argument -D__ANDROID_COMMON_KERNEL__"
-        export KCPPFLAGS="${KCPPFLAGS:-} $MAP $MPMAP $FPMAP"
-        
-        export LLVM=1 LLVM_IAS=1
-        export ARCH=arm64 SUBARCH=arm64
-        export CROSS_COMPILE=aarch64-linux-gnu-
-        export PAHOLE="$KERNEL_PATH/prebuilts/kernel-build-tools/linux-x86/bin/pahole"
-        export LD=ld.lld HOSTLD=ld.lld AR=llvm-ar NM=llvm-nm 
-        export OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
-        
-        set +u
-        source "$KERNEL_PATH/build/kernel/_setup_env.sh" 2>/dev/null || true
-        set -u
-        
-        KERNEL_BUILD_DATE=$(date -u)
-        export SOURCE_DATE_EPOCH=$COMMIT_TIMESTAMP
-        export KBUILD_BUILD_TIMESTAMP="$KERNEL_BUILD_DATE"
-        export KBUILD_BUILD_USER="${BUILD_USER:-kernel}"
-        export KBUILD_BUILD_HOST="${BUILD_HOST:-kleaf}"
-        export KBUILD_BUILD_VERSION=1
-        
-        echo "📅 Build timestamp: $KBUILD_BUILD_TIMESTAMP (from commit $COMMIT_HASH)"
-        echo "🔢 SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
-        echo "👤 Build user: $KBUILD_BUILD_USER"
-        echo "🖥️  Build host: $KBUILD_BUILD_HOST"
-        
-        export CC="ccache clang"
-        export CXX="ccache clang++"
-        export HOSTCC="ccache clang"
-        export HOSTCXX="ccache clang++"
-        
         BASE_PATH="/usr/lib/ccache:${CLANG_BIN_PATH}:${KERNEL_PATH}/prebuilts/kernel-build-tools/linux-x86/bin/:${KERNEL_PATH}/prebuilts/kernel-build-tools/linux_musl-x86/bin/"
-        
-        if [ -n "${RUSTC_BIN_PATH:-}" ]; then
-          export PATH="${BASE_PATH}:${RUSTC_BIN_PATH}:${PATH}"
-          export RUSTC="$RUSTC_BIN_PATH/rustc"
-          if [ "${{ env.OP_RUST_BUILD}}" = "true" ]; then
-            export LIBCLANG_PATH="$CLANG_BIN_PATH/../lib"
-            export BINDGEN="bindgen"
-          fi
-        else
-          export PATH="${BASE_PATH}:${PATH}"
-        fi
-        
-        if [ "${{ inputs.clean }}" = "true" ]; then
-          echo "🧹 Clean build mode - ccache disabled"
-          export CCACHE_DISABLE=1
-        else
-          echo "🚀 ccache-accelerated build"
-        fi
-        
-        OUT=out
-        mkdir -p "$OUT"
-        
-        echo "============================================"
-        echo "🔍 Compiler & ccache Verification"
-        echo "============================================"
-        echo "PATH: ${PATH:0:200}..."
-        echo "which clang: $(which clang)"
-        echo "CC: $CC"
-        echo "CXX: $CXX"
-        echo "CCACHE_BASEDIR: ${CCACHE_BASEDIR:-not set}"
-        echo ""
-        
-        if [ "${{ inputs.clean }}" != "true" ]; then
-          echo "ccache wrapper test:"
-          clang --version 2>&1 | head -n1 || true
-          echo ""
-          echo "ccache configuration:"
-          ccache -p | grep -E "(compression|direct_mode|readonly_direct|depend|sloppiness)" || true
-          echo ""
-          echo "ccache pre-build status:"
-          ccache -s | head -n 20
-        else
-          echo "⚠️ Clean build - ccache bypassed"
-        fi
-        echo "============================================"
-        
-        make O="$OUT" gki_defconfig
-        
-        if [ -n "${CUSTOM_LOCALVERSION:-}" ]; then
-          scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${CUSTOM_LOCALVERSION}"
-          scripts/config --file "$OUT/.config" -d LOCALVERSION_AUTO || true
-          sed -i 's/scm_version="$(scm_version --short)"/scm_version=""/' scripts/setlocalversion
-        fi
-        
-        if [ "${{ inputs.optimize_level }}" = "O3" ]; then
-          scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE
-          scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3
-          KCFLAGS_EXTRA="-O3"
-        else
-          scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE
-          scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE_O3
-          KCFLAGS_EXTRA="-O2"
-        fi
-        
-        case "${{ env.OP_LTO}}" in
-          "none")
-            scripts/config --file "$OUT/.config" -e LTO_CLANG
-            scripts/config --file "$OUT/.config" -e LTO_CLANG_NONE
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
-            ;;
-          "thin")
-            scripts/config --file "$OUT/.config" -e LTO_CLANG
-            scripts/config --file "$OUT/.config" -e LTO_CLANG_THIN
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_NONE
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
-            ;;
-          "full")
-            scripts/config --file "$OUT/.config" -e LTO_CLANG
-            scripts/config --file "$OUT/.config" -e LTO_CLANG_FULL
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_NONE
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
-            ;;
-          *)
-            echo "::error::Unsupported LTO option: ${{ env.OP_LTO}}"
-            exit 1
-            ;;
-        esac
-        
-        
-        make O="$OUT" olddefconfig
-        
-        KCFLAGS="$KCFLAGS -Wno-error -pipe -fno-stack-protector ${KCFLAGS_EXTRA}"
-        KCPPFLAGS="$KCPPFLAGS -DCONFIG_OPTIMIZE_INLINING"
-        
-        echo "============================================"
-        echo "🔧 Build Configuration"
-        echo "============================================"
-        echo "Device: ${OP_MODEL}"
-        echo "Kernel: ${KERNEL_FULL_VER}"
-        echo "Threads: $(nproc --all)"
-        echo "Optimization: ${{ inputs.optimize_level }}"
-        echo "KCFLAGS: ${KCFLAGS:0:150}..."
-        echo "KCPPFLAGS: ${KCPPFLAGS:0:150}..."
-        echo "Timestamp: $KBUILD_BUILD_TIMESTAMP"
-        echo "Workspace: $WORKSPACE"
-        
-        if [ "${{ inputs.clean }}" != "true" ]; then
-          echo "ccache: ENABLED"
-          echo "  Dir: $CCACHE_DIR"
-          echo "  Base: $CCACHE_BASEDIR"
-          echo "  Max size: $CCACHE_MAXSIZE"
-          echo "  Compression: zstd level 3"
-          echo "  Features: readonly_direct, file_clone, inode_cache, depend"
-        else
-          echo "ccache: DISABLED (clean build)"
-        fi
-        echo "============================================"
-        
-        if [ "${{ inputs.clean }}" != "true" ]; then
-          if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -type f 2>/dev/null | head -n1)" ]; then
-            echo "🔥 Priming cache with header preprocessing..."
-            make -C "$COMMON" O="$OUT" headers_install prepare 2>&1 | head -n 20 || true
-            echo ""
-          fi
-        fi
+        export PATH="${BASE_PATH}:${PATH}"
         
         BUILD_START=$(date +%s)
-        set -o pipefail
-        
-        make -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" 2>&1 | tee build.log
+        cd kernel_platform
+        ./tools/bazel build --config=fast --config=stamp --lto=none //common:kernel_aarch64_dist --disk_cache="$CCACHE_DIR" --sandbox_writable_path="$CCACHE_DIR" --verbose_failures --sandbox_debug || exit 1
         
         BUILD_END=$(date +%s)
         BUILD_TIME=$((BUILD_END - BUILD_START))
@@ -1282,32 +1363,6 @@ runs:
         echo "BUILD_START=$BUILD_START" >> "$GITHUB_ENV"
         echo "BUILD_END=$BUILD_END" >> "$GITHUB_ENV"
         echo "BUILD_TIME=$BUILD_TIME" >> "$GITHUB_ENV"
-        
-        IMG="$OUT/arch/arm64/boot/Image"
-        if [ ! -f "$IMG" ]; then
-          echo "::error::Kernel Image missing"
-          echo "::group::Last 100 lines of build log"
-          tail -n 100 build.log || echo "Build log not available"
-          echo "::endgroup::"
-          exit 1
-        fi
-        
-        IMG_SIZE=$(stat -c%s "$IMG")
-        
-        echo "============================================"
-        echo "✅ Build Completed Successfully"
-        echo "============================================"
-        echo "Duration: $((BUILD_TIME / 60))m $((BUILD_TIME % 60))s"
-        echo "Image: $(numfmt --to=iec-i --suffix=B "$IMG_SIZE")"
-        
-        if [ "${{ inputs.clean }}" != "true" ]; then
-          echo ""
-          echo "📊 ccache Post-Build Statistics"
-          echo "============================================"
-          ccache -s
-        fi
-        echo "============================================"
-        echo "::endgroup::"
 
     - name: 📊 ccache Post-Build Statistics
       id: ccache_stats

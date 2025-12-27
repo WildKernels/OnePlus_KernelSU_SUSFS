@@ -1,12 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
   <remote fetch="https://git.codelinaro.org/clo/la" name="clo-la"/>
-  <default remote="clo-la" revision="dummy_revision" sync-c="true" sync-tags="false"/>
   <remote fetch="https://github.com/OnePlusOSS" name="origin"/>
+  <default remote="clo-la" revision="dummy_revision" sync-c="true" sync-tags="false"/>
   <project remote="origin" name="android_kernel_common_oneplus_sm8550" path="kernel_platform/common" revision="oneplus/sm8550_b_16.0.0_oneplus_11">
     <linkfile dest=".source_date_epoch_dir" src="."/>
   </project>
+  <project remote="origin" name="android_kernel_oneplus_sm8550" path="kernel_platform/msm-kernel" revision="oneplus/sm8550_b_16.0.0_oneplus_11"/>
   <project remote="origin" name="android_kernel_modules_and_devicetree_oneplus_sm8550" path="./" revision="oneplus/sm8550_b_16.0.0_oneplus_11"/>
   <project remote="clo-la" name="kernel/prebuilts/build-tools" path="kernel_platform/prebuilts/kernel-build-tools" revision="a27755ba41db8a1487c7d2ac7d0da22ec5e593c7" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernel_platform/build/bazel_common_rules" path="kernel_platform/build/bazel_common_rules" revision="2158c0cec82374e92e9599e3a8fd9ec5c10ba7ad" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernel_platform/external/bazel-skylib" path="kernel_platform/external/bazel-skylib" revision="8908ad2471f44bf192a869189c35fb74ff8aa307" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernel_platform/external/dtc" path="kernel_platform/external/dtc" revision="7d93a906f90ff0613866b167871a5bbba47ed320" upstream="refs/heads/kernel.build.lnx.1.0.r2-rel"/>
+  <project remote="clo-la" name="kernel_platform/external/python/absl-py" path="kernel_platform/external/python/absl-py" revision="2e47753264acc4dfb16031e1156201dc5498ef65" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernel_platform/external/stardoc" path="kernel_platform/external/stardoc" revision="d8a0631cb67f57ab54c7939e9c052bca8a78fc2a" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernel_platform/prebuilts/bazel/linux-x86_64" path="kernel_platform/prebuilts/bazel/linux-x86_64" revision="c0955edda06e82a14b37a23b68d0811d7cd16bb8" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernel_platform/prebuilts/build-tools" path="kernel_platform/prebuilts/build-tools" revision="fe528f8d0a32bde2ae487801cbab4e05de91f218" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernel_platform/prebuilts/jdk/jdk11" path="kernel_platform/prebuilts/jdk/jdk11" revision="30b304c89fb78d9d77ed2c016df44acea2232363" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernel_platform/system/tools/mkbootimg" path="kernel_platform/tools/mkbootimg" revision="db9f3716c72d7612fc507b89d1fc3876f061350e" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernel_platform/toolchain/prebuilts/ndk/r23" path="kernel_platform/prebuilts/ndk-r23" revision="93532f3052c14fbb337ff57d5732128dc7481ee6" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
   <project remote="clo-la" name="kernelplatform/prebuilts-master/clang/host/linux-x86" path="kernel_platform/prebuilts/clang/host/linux-x86" revision="c420e3ab93e51a2f2ab4f8e8b517463c34a7e8bd" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernelplatform/prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8" path="kernel_platform/prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8" revision="58f2f7c11b5309aa4d15079b398852670b5baf7b" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
 </manifest>
