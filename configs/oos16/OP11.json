@@ -10,7 +10,7 @@
   "rust_build": false,
   "disk_cleanup": false,
   "hmbird": false,
-  "susfs": false,
+  "susfs": true,
   "bbg": false,
   "bbr": true,
   "ttl": true,
