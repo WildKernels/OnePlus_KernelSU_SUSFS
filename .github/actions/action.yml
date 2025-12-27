@@ -690,8 +690,6 @@ runs:
         
         if [ "$KSU_VERSION" -lt 12884 ]; then
           echo "NEED_HOOKS=true" >> $GITHUB_ENV
-        elif [ "${{ env.OP_SUSFS }}" = "false" ]; then
-          echo "NEED_HOOKS=true" >> $GITHUB_ENV
         else
           echo "NEED_HOOKS=false" >> $GITHUB_ENV
         fi
