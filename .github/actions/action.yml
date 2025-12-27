@@ -1355,7 +1355,7 @@ runs:
         
         BUILD_START=$(date +%s)
         cd kernel_platform
-        ./tools/bazel build --config=fast --config=stamp --lto=none //common:kernel_aarch64_dist --disk_cache="$CCACHE_DIR" --sandbox_writable_path="$CCACHE_DIR" --verbose_failures --sandbox_debug || exit 1
+        ./tools/bazel build --config=stamp --lto=none //common:kernel_aarch64_dist --disk_cache="$CCACHE_DIR" --sandbox_writable_path="$CCACHE_DIR" --verbose_failures --sandbox_debug || exit 1
         
         BUILD_END=$(date +%s)
         BUILD_TIME=$((BUILD_END - BUILD_START))
