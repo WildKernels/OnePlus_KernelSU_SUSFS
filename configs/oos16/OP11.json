@@ -11,7 +11,7 @@
   "disk_cleanup": false,
   "hmbird": false,
   "susfs": true,
-  "bbg": false,
+  "bbg": true,
   "bbr": true,
   "ttl": true,
   "ip_set": true
