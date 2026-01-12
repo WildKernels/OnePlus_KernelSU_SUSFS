@@ -46,6 +46,7 @@ on:
           - OP-Nord-5
           - OP-NORD-4
           - OP-NORD-4-CE
+          - OP-NORD-CE-5
           - OP-NORD-CE4-LITE
           # OnePlus Ace Series
           - OP-ACE-6T

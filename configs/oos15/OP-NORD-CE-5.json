@@ -1,0 +1,19 @@
+{
+  "model": "OP-NORD-CE-5",
+  "soc": "dimensity_83xx",
+  "branch": "wild/mt6897",
+  "manifest": "oneplus_nord_ce5_v.xml",
+  "android_version": "android14",
+  "kernel_version": "6.1",
+  "os_version": "OOS15",
+  "lto": "thin",
+  "rust_build": false,
+  "disk_cleanup": false,
+  "hmbird": false,
+  "susfs": true,
+  "bbg": true,
+  "bbr": true,
+  "ttl": true,
+  "ip_set": true,
+  "uname": "OP-WILD"
+}
