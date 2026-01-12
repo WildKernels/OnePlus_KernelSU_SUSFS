@@ -1,0 +1,19 @@
+{
+  "model": "OP-ACE-5-ULTRA",
+  "soc": "dimensity9400",
+  "branch": "wild/mt6991",
+  "manifest": "oneplus_ace5_ultra_w.xml",
+  "android_version": "android15",
+  "kernel_version": "6.6",
+  "os_version": "OOS16",
+  "lto": "thin",
+  "rust_build": false,
+  "disk_cleanup": false,
+  "hmbird": true,
+  "susfs": true,
+  "bbg": true,
+  "bbr": true,
+  "ttl": true,
+  "ip_set": true,
+  "uname": "OP-WILD"
+}
