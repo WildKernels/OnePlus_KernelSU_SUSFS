@@ -67,6 +67,7 @@ on:
           - OP-PAD-2-SM8650
           - OP-PAD-2-MT6991
           - OP-PAD-PRO
+          - OP-PAD-MT6983
       
       cache_pattern:
         type: choice
