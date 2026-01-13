@@ -63,7 +63,7 @@ on:
           - OP-OPEN
           - OP-PAD-3
           - OP-PAD-2-PRO
-          - OP-PAD-2
+          - OP-PAD-2-SM8650
           - OP-PAD-PRO
       
       cache_pattern:

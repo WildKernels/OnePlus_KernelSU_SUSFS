@@ -1,8 +1,8 @@
 {
-  "model": "OP-PAD-2",
+  "model": "OP-PAD-2-SM8650",
   "soc": "pineapple",
   "branch": "wild/sm8650",
-  "manifest": "oneplus_pad2_v.xml",
+  "manifest": "oneplus_pad2_sm8650_v.xml",
   "android_version": "android14",
   "kernel_version": "6.1",
   "os_version": "OOS15",
