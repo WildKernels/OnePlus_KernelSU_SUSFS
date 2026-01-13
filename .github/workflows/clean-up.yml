@@ -64,6 +64,7 @@ on:
           - OP-ACE-2
           - OP-ACE-2V
           - OP-ACE-RACE
+          - OP-ACE
           # OnePlus Tablets & Others
           - OP-OPEN
           - OP-PAD-3-SM8750

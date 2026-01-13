@@ -1,0 +1,19 @@
+{
+  "model": "OP-ACE",
+  "soc": "dimensity8000",
+  "branch": "wild/mt6895",
+  "manifest": "oneplus_ace_u.xml",
+  "android_version": "android12",
+  "kernel_version": "5.10",
+  "os_version": "OOS14",
+  "lto": "thin",
+  "rust_build": false,
+  "disk_cleanup": false,
+  "hmbird": false,
+  "susfs": true,
+  "bbg": true,
+  "bbr": true,
+  "ttl": true,
+  "ip_set": true,
+  "uname": "OP-WILD"
+}
