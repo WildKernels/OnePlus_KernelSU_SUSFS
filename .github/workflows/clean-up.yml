@@ -42,6 +42,7 @@ on:
           - OP11r
           - OP10pro
           - OP10t
+          - OP10r
           # OnePlus Nord Series
           - OP-Nord-5
           - OP-NORD-4
