@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <remote fetch="https://git.codelinaro.org/clo/la" name="clo-la"/>
+  <default remote="clo-la" revision="dummy_revision" sync-c="true" sync-tags="false"/>
+  <remote fetch="https://github.com/OnePlusOSS" name="origin"/>
+  <project remote="origin" name="android_kernel_oneplus_mt6991" path="kernel-6.6" revision="oneplus/mt6991_b_16.0.0_pad_2">
+    <linkfile dest="kernel_platform/common" src="."/>
+  </project>
+  <project remote="origin" name="android_kernel_modules_and_devicetree_oneplus_mt6991" path="./" revision="oneplus/mt6991_b_16.0.0_pad_2"/>
+  <project remote="clo-la" name="kernel/prebuilts/build-tools" path="kernel_platform/prebuilts/kernel-build-tools" revision="434f141b6d22a773a163fa9c707b19b4d254d989" upstream="refs/heads/ks-kernel.lnx.4.0.r1-rel" groups="ddk">
+    <linkfile dest="kernel_platform/build/prebuilts/kernel-build-tools" src="."/>
+  </project>
+  <project remote="clo-la" name="kernelplatform/prebuilts-master/clang/host/linux-x86" path="kernel_platform/prebuilts/clang/host/linux-x86" revision="b099698c583b8361ca771f3cc8d6af6f729f39b3" upstream="refs/heads/ks-kernel.lnx.4.0.r1-rel" groups="ddk"/>
+</manifest>

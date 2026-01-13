@@ -64,6 +64,7 @@ on:
           - OP-PAD-3
           - OP-PAD-2-PRO
           - OP-PAD-2-SM8650
+          - OP-PAD-2-MT6991
           - OP-PAD-PRO
       
       cache_pattern:
