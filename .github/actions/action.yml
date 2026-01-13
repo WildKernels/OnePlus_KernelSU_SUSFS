@@ -1147,6 +1147,14 @@ runs:
         CUSTOM_LOCALVERSION="-${ANDROID_VER}-${OP_UNAME}"
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
 
+    - name: Disable GPUEB
+      shell: bash
+      if: ${{ env.KERNEL_VER == '5.10' && (startsWith(env.OP_SOC, 'dimensity') || startsWith(env.OP_SOC, 'helio')) }}
+      run: |
+        set -euo pipefail
+        echo "Disabling GPUEB for MTK kernel 5.10"
+        sed -i '/obj-y.*gpueb/d' "$COMMON_KERNEL_FOLDER/drivers/gpu/mediatek/Makefile"
+
     - name: Build Kernel
       shell: bash
       env:
