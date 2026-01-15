@@ -1004,6 +1004,33 @@ runs:
           cat "$KERNEL_PATCHES_FOLDER/common/clear_page_16bytes_align.patch" | sed -e 's/SYM_FUNC_START_PI(clear_page)/SYM_FUNC_START_PI(__pi_clear_page)/' | patch -p1 -F3 --forward
         fi
         
+        
+        echo "Patching add_limitation_scaling_min_freq.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/add_limitation_scaling_min_freq.patch"
+        echo "Patching re_write_limitation_scaling_min_freq.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/re_write_limitation_scaling_min_freq.patch"
+        echo "Patching adjust_cpu_scan_order.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/adjust_cpu_scan_order.patch"
+        echo "Patching avoid_extra_s2idle_wake_attempts.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/avoid_extra_s2idle_wake_attempts.patch"
+        echo "Patching disable_cache_hot_buddy.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/disable_cache_hot_buddy.patch"
+        echo "Patching f2fs_enlarge_min_fsync_blocks.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/f2fs_enlarge_min_fsync_blocks.patch"
+        echo "Patching increase_ext4_default_commit_age.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/increase_ext4_default_commit_age.patch"
+        echo "Patching increase_sk_mem_packets.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/increase_sk_mem_packets.patch"
+        echo "Patching reduce_pci_pme_wakeups.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/reduce_pci_pme_wakeups.patch"
+        echo "Patching silence_irq_cpu_logspam.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/silence_irq_cpu_logspam.patch"
+        echo "Patching silence_system_logspam.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/silence_system_logspam.patch"
+        echo "Patching use_unlikely_wrap_cpufreq.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/use_unlikely_wrap_cpufreq.patch"
+        
+        
         echo "✅ Other patches applied"
         echo "::endgroup::"
 
