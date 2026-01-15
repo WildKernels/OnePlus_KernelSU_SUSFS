@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <remote fetch="https://git.codelinaro.org/clo/la" name="clo-la"/>
+  <remote fetch="https://github.com/OnePlusOSS" name="origin"/>
+  
+  <remote fetch="https://android.googlesource.com" name="aosp"/>
+  <default revision="main-kernel-2025" remote="aosp" sync-j="4" />
+  <superproject name="kernel/superproject" remote="aosp" revision="common-android16-6.12-2025-09" />
+  
+  <project remote="origin" name="android_kernel_common_oneplus_sm8845" path="kernel_platform/common" revision="oneplus/sm8845_b_16.0.0_oneplus_15r" clone-depth="1">
+    <linkfile dest="kernel_platform/.source_date_epoch_dir" src="."/>
+  </project>
+  
+  <project remote="origin" name="android_kernel_modules_and_devicetree_oneplus_sm8845" path="./" revision="oneplus/sm8845_b_16.0.0_oneplus_15r" clone-depth="1"/>
+  
+  <project remote="aosp" name="kernel/prebuilts/build-tools" path="kernel_platform/prebuilts/kernel-build-tools" clone-depth="1" groups="ddk">
+    <linkfile dest="kernel_platform/build/prebuilts/kernel-build-tools" src="."/>
+  </project>
+  <project remote="aosp" name="platform/prebuilts/clang/host/linux-x86" path="kernel_platform/prebuilts/clang/host/linux-x86" clone-depth="1" groups="ddk" />
+  <project remote="aosp" name="platform/prebuilts/rust" path="kernel_platform/prebuilts/rust" clone-depth="1" groups="ddk" />
+</manifest>
