@@ -1,0 +1,19 @@
+{
+  "model": "OP-PAD-GO-2",
+  "soc": "dimensity7300ultra",
+  "branch": "wild/mt6878",
+  "manifest": "oneplus_pad_go_2_mt6878_w.xml",
+  "android_version": "android14",
+  "kernel_version": "6.1",
+  "os_version": "OOS16",
+  "lto": "thin",
+  "rust_build": false,
+  "disk_cleanup": false,
+  "hmbird": false,
+  "susfs": true,
+  "bbg": true,
+  "bbr": true,
+  "ttl": true,
+  "ip_set": true,
+  "uname": "OP-WILD"
+}
