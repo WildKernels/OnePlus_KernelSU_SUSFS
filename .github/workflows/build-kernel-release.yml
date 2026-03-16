@@ -560,9 +560,11 @@ jobs:
           git push origin $NEW_TAG
 
       - name: 📥 Download Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ./downloaded-artifacts
+          merge-multiple: true
+          skip-decompress: true
 
       - name: 📝 Generate Device List and Final Release Notes
         id: generate-notes
@@ -572,17 +574,24 @@ jobs:
           # Collect build metadata
           declare -A device_info
           
-          JSON_BUILD_DATA=$(jq -c '.' ./downloaded-artifacts/build-matrix/matrix.json)
+          JSON_BUILD_DATA=$(jq -c '.' ./downloaded-artifacts/matrix.json)
           
-          for file in $(find downloaded-artifacts -name "*.txt" -type f | sort); do
+          for file in $(find downloaded-artifacts -maxdepth 1 -name "*.zip" -type f | sort); do
             if [ -f "$file" ]; then
-              full_model=$(basename "$file" .txt)
-              model=$(echo "$full_model" | sed -E 's/_[^_]*$//')
-              kernel_version=$(sed -n '1p' "$file")
-              os_version=$(sed -n '2p' "$file")
-              ksu_type=$(sed -n '3p' "$file")
-              ksu_ver=$(sed -n '4p' "$file")
-              susfs_ver=$(sed -n '5p' "$file")
+              zipname=$(basename "$file" .zip)
+              rest="${zipname#AK3_}"
+              IFS='_' read -ra parts <<< "$rest"
+              model="${parts[0]}"
+              os_version="${parts[1]}"
+              kernel_version="${parts[2]}"
+              ksu_type="${parts[3]}"
+              ksu_ver="${parts[4]}"
+              if [ "${parts[5]:-}" = "SuSFS" ]; then
+                susfs_ver="${parts[6]:-unknown}"
+              else
+                susfs_ver="none"
+              fi
+              full_model="${model}_${os_version}"
               device_info["$full_model"]="$model|$os_version|$kernel_version|$ksu_type|$ksu_ver|$susfs_ver"
             fi
           done
@@ -860,7 +869,7 @@ jobs:
 
       - name: 📤 Upload Release Assets Dynamically
         run: |
-          for file in ./downloaded-artifacts/*/*.zip; do
+          for file in ./downloaded-artifacts/*.zip; do
             if [ -f "$file" ]; then
               echo "Uploading $file..."
               gh release upload "${{ env.NEW_TAG }}" "$file" --clobber
@@ -877,12 +886,12 @@ jobs:
           ## 🎉 Release Created Successfully
           
           **Tag:** [\`${{ env.NEW_TAG }}\`](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.NEW_TAG }})  
-          **Kernels:** $(find ./downloaded-artifacts -name "*.zip" | wc -l)
+          **Kernels:** $(find ./downloaded-artifacts -maxdepth 1 -name "*.zip" -type f | wc -l)
           
           ### 📦 Assets
           EOF
           
-          for zip in ./downloaded-artifacts/*/*.zip; do
+          for zip in ./downloaded-artifacts/*.zip; do
             if [ -f "$zip" ]; then
               name=$(basename "$zip")
               size=$(stat -c%s "$zip")
