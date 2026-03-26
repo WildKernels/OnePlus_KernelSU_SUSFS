@@ -1,0 +1,20 @@
+{
+  "model": "OP-PAD-3-MT6897",
+  "soc": "dimensity_83xx",
+  "branch": "wild/mt6897",
+  "manifest": "oneplus_pad_3_mt6897_w.xml",
+  "android_version": "android14",
+  "kernel_version": "6.1",
+  "os_version": "OOS16",
+  "lto": "thin",
+  "rust_build": false,
+  "disk_cleanup": false,
+  "hmbird": false,
+  "susfs": true,
+  "bbg": true,
+  "bbr": true,
+  "ttl": true,
+  "ip_set": true,
+  "unicode": true,
+  "uname": "OP-WILD"
+}
