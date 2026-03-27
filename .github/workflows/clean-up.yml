@@ -29,6 +29,8 @@ on:
           - android13-5.10
           - android12-5.10
           # OnePlus Phones
+          - OP15T
+          - OP15r
           - OP15
           - OP13
           - OP13-CPH
