@@ -99,6 +99,8 @@ runs:
         lto="$OP_LTO"
         uname="$OP_UNAME"
         unicode="$OP_UNICODE"
+        c_compiler="$OP_C_COMPILER"
+        rust_compiler="$OP_RUST_COMPILER"
         optimize='${{ inputs.optimize_level }}'
         
         errors=()
@@ -216,6 +218,10 @@ runs:
         elif [[ "$unicode" != "true" && "$unicode" != "false" ]]; then
           errors+=("Input 'unicode' contains invalid characters. Allowed: 'true' or 'false'. Got: '$unicode'")
         fi
+        
+        # OP_C_COMPILER currently has no checks!
+        
+        # OP_RUST_COMPILER currently has no checks!
         
         case "$optimize" in
           O2|O3) ;;
@@ -411,62 +417,49 @@ runs:
         echo "   Host: $BUILD_HOST"
         echo "::endgroup::"
 
-    - name: Detect Clang and Rust
+    - name: Check or Detect Clang
       shell: bash
       run: |
         set -euo pipefail
         echo "::group::Detect Clang"
         CLANG_FOUND=false
-        RUSTC_FOUND=false
-        for base in "$KERNEL_PLATFORM_FOLDER/prebuilts" "$KERNEL_PLATFORM_FOLDER/prebuilts-master"; do
-          [ -d "$base/clang/host/linux-x86" ] || continue
-          latest=$(ls -d "$base"/clang/host/linux-x86/clang-r*/ 2>/dev/null | sort -V | tail -n1 || true)
-          if [ -n "$latest" ] && [ -x "$latest/bin/clang" ]; then
-            CLANG_BIN="$latest/bin"
+        
+        if [ -z "$OP_C_COMPILER" ]; then
+          for base in "$KERNEL_PLATFORM_FOLDER/prebuilts" "$KERNEL_PLATFORM_FOLDER/prebuilts-master"; do
+            [ -d "$base/clang/host/linux-x86" ] || continue
+            latest=$(ls -d "$base/clang/host/linux-x86/clang-r"* 2>/dev/null | sort -V | tail -n1 || true)
+            if [ -n "$latest" ] && [ -x "$latest/bin/clang" ]; then
+              CLANG_BIN="$latest/bin"
+              CLANG_FOUND=true
+              break
+            fi
+          done
+        else
+          if [ -x "$CONFIG_FOLDER/$OP_C_COMPILER/clang" ]; then
+            CLANG_BIN="$CONFIG_FOLDER/$OP_C_COMPILER"
             CLANG_FOUND=true
-            break
           fi
-        done
-        for base in "$KERNEL_PLATFORM_FOLDER/prebuilts" "$KERNEL_PLATFORM_FOLDER/prebuilts-master"; do
-          [ -d "$base/rust/linux-x86/" ] || continue
-          ls -la "$base/rust/linux-x86/"
-          latest=$(ls -d "$base/rust/linux-x86/1."* 2>/dev/null | sort -V | head -n1 || true)
-          if [ -n "$latest" ] && [ -x "$latest/bin/rustc" ]; then
-            RUSTC_BIN="$latest/bin"
-            RUSTC_FOUND=true
-            break
-          fi
-        done
-        if ! $CLANG_FOUND && command -v clang >/dev/null 2>&1; then
+        fi
+        
+        if [ "$CLANG_FOUND" = false ] && command -v clang >/dev/null 2>&1; then
           CLANG_BIN="$(dirname "$(command -v clang)")"
           CLANG_FOUND=true
           echo "Using system clang."
         fi
-        $CLANG_FOUND || { echo "::error::No clang toolchain found"; exit 1; }
-        $RUSTC_FOUND || { echo "::warning::No RUST toolchain found! Ignoring";}
+        
+        [ "$CLANG_FOUND" = true ] || { echo "::error::No clang toolchain found"; exit 1; }
+        
         echo "CLANG_BIN_PATH=$CLANG_BIN" >> "$GITHUB_ENV"
-        if [ "$RUSTC_FOUND" = true ]; then
-          echo "RUSTC_BIN_PATH=$RUSTC_BIN" >> "$GITHUB_ENV"
-          RUSTC_VERSION="$("$RUSTC_BIN/rustc" --version | head -n1)"
-          echo "RUSTC_VERSION=$RUSTC_VERSION" >> "$GITHUB_ENV"
-          echo "✅ Detected RUSTC: $RUSTC_VERSION"
-        fi
         
         CLANG_VERSION="$("$CLANG_BIN/clang" --version | head -n1)"
         echo "CLANG_VERSION=$CLANG_VERSION" >> "$GITHUB_ENV"
-        echo "✅ Detected Clang: $CLANG_VERSION"
-        echo "::endgroup::"
-
-    - name: Derive Clang Short Version
-      shell: bash
-      run: |
-        set -euo pipefail
-        echo "::group::Derive Clang fingerprint"
         
-        short="$("${CLANG_BIN_PATH}/clang" --version | sed -n '1s/.*clang-r\([0-9.]\+\).*/\1/p')"
+        echo "Derive Clang fingerprint"
+        
+        short="$("${CLANG_BIN}/clang" --version | sed -n '1s/.*clang-r\([0-9.]\+\).*/\1/p')"
         
         if [ -z "$short" ]; then
-          short="$("${CLANG_BIN_PATH}/clang" --version | sha256sum | cut -c1-8)"
+          short="$("${CLANG_BIN}/clang" --version | sha256sum | cut -c1-8)"
           echo "⚠️ Could not extract clang-r version, using hash: $short"
         else
           echo "✅ Clang version fingerprint: $short"
@@ -474,10 +467,41 @@ runs:
         
         echo "CLANG_VERSION_SHORT=$short" >> "$GITHUB_ENV"
         
-        CLANG_FULL_VERSION="$("${CLANG_BIN_PATH}/clang" --version | head -n1)"
-        echo "CLANG_FULL_VERSION=$CLANG_FULL_VERSION" >> "$GITHUB_ENV"
+        echo "✅ Detected Clang: $CLANG_VERSION"
+        echo "::endgroup::"
+
+    - name: Check or Detect Rust
+      shell: bash
+      if: ${{ env.OP_RUST_BUILD == 'true' }}
+      run: |
+        set -euo pipefail
+        echo "::group::Detect Rust"
+        RUSTC_FOUND=false
         
-        echo "Full Clang version: $CLANG_FULL_VERSION"
+        if [ -z "$OP_RUST_COMPILER" ]; then
+          for base in "$KERNEL_PLATFORM_FOLDER/prebuilts" "$KERNEL_PLATFORM_FOLDER/prebuilts-master"; do
+            [ -d "$base/rust/linux-x86" ] || continue
+            latest=$(ls -d "$base/rust/linux-x86/1."* 2>/dev/null | sort -V | head -n1 || true)
+            if [ -n "$latest" ] && [ -x "$latest/bin/rustc" ]; then
+              RUSTC_BIN="$latest/bin"
+              RUSTC_FOUND=true
+              break
+            fi
+          done
+        else
+          if [ -x "$CONFIG_FOLDER/$OP_RUST_COMPILER/rustc" ]; then
+            RUSTC_BIN="$CONFIG_FOLDER/$OP_RUST_COMPILER"
+            RUSTC_FOUND=true
+          fi
+        fi
+        
+        [ "$RUSTC_FOUND" = true ] || { echo "::error::No RUST toolchain found"; exit 1; }
+        
+        echo "RUSTC_BIN_PATH=$RUSTC_BIN" >> "$GITHUB_ENV"
+        RUSTC_VERSION="$("$RUSTC_BIN/rustc" --version | head -n1)"
+        echo "RUSTC_VERSION=$RUSTC_VERSION" >> "$GITHUB_ENV"
+        echo "✅ Detected RUSTC: $RUSTC_VERSION"
+        
         echo "::endgroup::"
 
     - name: Set Cache Environment
