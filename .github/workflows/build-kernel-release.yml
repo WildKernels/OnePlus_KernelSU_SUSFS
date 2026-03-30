@@ -71,6 +71,12 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       device_count: ${{ steps.set-matrix.outputs.count }}
+      active_gki_keys: ${{ steps.set-matrix.outputs.active_gki_keys }}
+      susfs_hash_android12_5_10: ${{ steps.set-matrix.outputs.susfs_hash_android12_5_10 }}
+      susfs_hash_android13_5_15: ${{ steps.set-matrix.outputs.susfs_hash_android13_5_15 }}
+      susfs_hash_android14_6_1:  ${{ steps.set-matrix.outputs.susfs_hash_android14_6_1 }}
+      susfs_hash_android15_6_6:  ${{ steps.set-matrix.outputs.susfs_hash_android15_6_6 }}
+      susfs_hash_android16_6_12: ${{ steps.set-matrix.outputs.susfs_hash_android16_6_12 }}
     steps:
       - name: 📥 Checkout Code (to access configs/)
         uses: actions/checkout@v6
@@ -158,15 +164,114 @@ jobs:
           
           final_count=$(echo "$merged_matrix" | jq -s length)
           
-          wrapped=$(jq -n --argjson items "$merged_matrix" '{ include: $items }')
-          
           echo "✅ Found $final_count device(s) to build"
           echo ""
           echo "Selected devices:"
           jq -r '.[] | "  - \(.model) (\(.os_version), \(.android_version)-\(.kernel_version), \(.ksu_type) - \(.ksu_hash))"' <<<"$merged_matrix"
           
-          echo "matrix=$(jq -c . <<< "$wrapped")" >> "$GITHUB_OUTPUT"
           echo "count=$count" >> "$GITHUB_OUTPUT"
+          
+          # SUSFS hash fetch
+          SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
+          
+          declare -A default_branches=(
+            ["android12-5.10"]="gki-android12-5.10"
+            ["android13-5.15"]="gki-android13-5.15"
+            ["android14-6.1"]="gki-android14-6.1"
+            ["android15-6.6"]="gki-android15-6.6"
+            ["android16-6.12"]="gki-android16-6.12"
+          )
+          
+          declare -A user_inputs=(
+            ["android12-5.10"]="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
+            ["android13-5.15"]="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
+            ["android14-6.1"]="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
+            ["android15-6.6"]="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
+            ["android16-6.12"]="${{ inputs.android16-6_12_susfs_branch_or_commit }}"
+          )
+          
+          # Function: resolves any input > 40-char hash or "unknown"
+          resolve_to_hash() {
+            local input="$1"
+            local default_branch="$2"
+            
+            if [ -z "$input" ] || [ "$input" = "next" ]; then
+              local fetched
+              fetched=$(timeout 30 git ls-remote "$SUSFS_REPO" \
+                        "refs/heads/$default_branch" 2>/dev/null \
+                        | awk '{print $1}' | head -n1 || true)
+              echo "${fetched:-unknown}"
+            else
+              local fetched
+              fetched=$(timeout 30 git ls-remote "$SUSFS_REPO" \
+                        "refs/heads/$input" "refs/tags/$input" 2>/dev/null \
+                        | awk '{print $1}' | head -n1 || true)
+              if [ -n "$fetched" ]; then
+                echo "$fetched"
+              elif [[ "$input" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "$input"
+              else
+                echo "unknown"
+              fi
+            fi
+          }
+          
+          mapfile -t active_keys < <(
+            echo "$merged_matrix" \
+              | jq -r '.[] | select(.susfs == true) | "\(.android_version)-\(.kernel_version)"' \
+              | sort -u
+          )
+          
+          echo "🔍 Resolving SUSFS hashes for: ${active_keys[*]:-none}"
+          
+          declare -A susfs_hashes
+          for key in "${active_keys[@]}"; do
+            user_val="${user_inputs[$key]:-}"
+            default_branch="${default_branches[$key]:-}"
+            resolved=$(resolve_to_hash "$user_val" "$default_branch")
+            susfs_hashes["$key"]="$resolved"
+            if [ -z "$user_val" ] || [ "$user_val" = "next" ]; then
+              echo "  $key → (auto) $resolved"
+            elif [ "$resolved" = "$user_val" ]; then
+              echo "  $key → (hash passthrough) $resolved"
+            else
+              echo "  $key → (branch resolved) $resolved"
+            fi
+          done
+          
+          # Write CSV list of active GKI versions
+          active_gki_keys_csv=$(IFS=','; echo "${active_keys[*]:-}")
+          echo "active_gki_keys=$active_gki_keys_csv" >> "$GITHUB_OUTPUT"
+          
+          # Write hash to GITHUB_OUTPUT
+          echo "susfs_hash_android12_5_10=${susfs_hashes[android12-5.10]:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "susfs_hash_android13_5_15=${susfs_hashes[android13-5.15]:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "susfs_hash_android14_6_1=${susfs_hashes[android14-6.1]:-unknown}"   >> "$GITHUB_OUTPUT"
+          echo "susfs_hash_android15_6_6=${susfs_hashes[android15-6.6]:-unknown}"   >> "$GITHUB_OUTPUT"
+          echo "susfs_hash_android16_6_12=${susfs_hashes[android16-6.12]:-unknown}" >> "$GITHUB_OUTPUT"
+          
+          # Inject susfs_resolved_hash into each device in the matrix
+          susfs_hashes_json=$(jq -n \
+            --arg a12 "${susfs_hashes[android12-5.10]:-unknown}" \
+            --arg a13 "${susfs_hashes[android13-5.15]:-unknown}" \
+            --arg a14 "${susfs_hashes[android14-6.1]:-unknown}" \
+            --arg a15 "${susfs_hashes[android15-6.6]:-unknown}" \
+            --arg a16 "${susfs_hashes[android16-6.12]:-unknown}" \
+            '{
+              "android12-5.10": $a12,
+              "android13-5.15": $a13,
+              "android14-6.1":  $a14,
+              "android15-6.6":  $a15,
+              "android16-6.12": $a16
+            }')
+          
+          merged_matrix=$(echo "$merged_matrix" | jq \
+            --argjson hashes "$susfs_hashes_json" \
+            '[.[] | . + {susfs_resolved_hash: ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown")}]')
+          
+          # Recalculate wrapped with updated matrix and write output
+          wrapped=$(jq -n --argjson items "$merged_matrix" '{ include: $items }')
+          echo "matrix=$(jq -c . <<< "$wrapped")" >> "$GITHUB_OUTPUT"
           
           echo "::endgroup::"
 
@@ -233,18 +338,36 @@ jobs:
             ["android16-6.12"]="${{ inputs.android16-6_12_susfs_branch_or_commit }}"
           )
           
-          for key in "android12-5.10" "android13-5.15" "android14-6.1" "android15-6.6" "android16-6.12"; do
-            value="${susfs_inputs[$key]}"
-            
+          declare -A step_hashes=(
+            ["android12-5.10"]="${{ steps.set-matrix.outputs.susfs_hash_android12_5_10 }}"
+            ["android13-5.15"]="${{ steps.set-matrix.outputs.susfs_hash_android13_5_15 }}"
+            ["android14-6.1"]="${{ steps.set-matrix.outputs.susfs_hash_android14_6_1 }}"
+            ["android15-6.6"]="${{ steps.set-matrix.outputs.susfs_hash_android15_6_6 }}"
+            ["android16-6.12"]="${{ steps.set-matrix.outputs.susfs_hash_android16_6_12 }}"
+          )
+          
+          # Iterate only on the GKI versions present in this run
+          IFS=',' read -ra active_keys_display \
+            <<< "${{ steps.set-matrix.outputs.active_gki_keys }}"
+          
+          for key in "${active_keys_display[@]}"; do
+            value="${susfs_inputs[$key]:-}"
+            fetched_hash="${step_hashes[$key]:-unknown}"
+
             if [ -z "$value" ]; then
-              echo "- $key: 🔄 auto (\`gki-$key\`)" >> $GITHUB_STEP_SUMMARY
-            else
+              # Auto: no input > hash resolved by ls-remote
+              echo "- $key: 🔄 auto (\`$fetched_hash\`)" >> $GITHUB_STEP_SUMMARY
+            elif [[ "$value" =~ ^[0-9a-f]{40}$ ]]; then
+              # Manual 40-char hash > direct passthrough
               echo "- $key: 📌 \`$value\`" >> $GITHUB_STEP_SUMMARY
+            else
+              # Branch name > show branch + resolved hash
+              echo "- $key: 🔀 \`$value\` (\`$fetched_hash\`)" >> $GITHUB_STEP_SUMMARY
             fi
           done
           
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> **💡 Note:** Empty values auto-map to matching \`gki-androidX-Y.Z\` branches." >> $GITHUB_STEP_SUMMARY
+          echo "> **💡 Note:** Hashes are resolved at run time via git ls-remote on susfs4ksu." >> $GITHUB_STEP_SUMMARY
           
           # Add OOS restriction note for android-kernel filters
           if [[ "${{ inputs.op_model }}" == android*-*.* ]]; then
@@ -293,50 +416,6 @@ jobs:
           curl -L -o util_free_space.sh https://raw.githubusercontent.com/apache/arrow/main/ci/scripts/util_free_space.sh
           chmod +x util_free_space.sh
           ./util_free_space.sh
-
-      - name: 🔍 Resolve SUSFS branch from inputs
-        id: susfs
-        shell: bash
-        if: ${{ matrix.susfs }}
-        run: |
-          set -euo pipefail
-          
-          key="${{ matrix.android_version }}-${{ matrix.kernel_version }}"
-          
-          echo "Looking up SUSFS branch for: $key"
-          
-          # Map kernel version to input value
-          case "$key" in
-            "android12-5.10")
-              susfs_branch="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
-              ;;
-            "android13-5.15")
-              susfs_branch="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
-              ;;
-            "android14-6.1")
-              susfs_branch="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
-              ;;
-            "android15-6.6")
-              susfs_branch="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
-              ;;
-            "android16-6.12")
-              susfs_branch="${{ inputs.android16-6_12_susfs_branch_or_commit }}"
-              ;;
-            *)
-              echo "::error::Unsupported kernel version: $key"
-              exit 1
-              ;;
-          esac
-          
-          # If empty, it will be auto-resolved to gki-* branch in the action
-          if [ -z "$susfs_branch" ]; then
-            echo "ℹ️  No custom SUSFS branch specified for $key"
-            echo "   Will auto-select: gki-$key"
-          else
-            echo "✅ Using custom SUSFS branch for $key: '$susfs_branch'"
-          fi
-          
-          echo "susfs_branch=$susfs_branch" >> "$GITHUB_OUTPUT"
 
       - name: 📥 Checkout Code
         uses: actions/checkout@v6
@@ -389,7 +468,7 @@ jobs:
           op_config_json: ${{ steps.prepare_config.outputs.config_json }}
           ksu_type: ${{ matrix.ksu_type }}
           ksu_branch_or_hash: ${{ matrix.ksu_hash }}
-          susfs_commit_hash_or_branch: ${{ steps.susfs.outputs.susfs_branch }}
+          susfs_commit_hash_or_branch: ${{ matrix.susfs_resolved_hash }}
           optimize_level: ${{ inputs.optimize_level }}
           clean: ${{ inputs.clean_build }}
 
@@ -403,7 +482,7 @@ jobs:
           echo "OS Version: ${{ matrix.os_version }}"
           echo "Kernel: ${{ matrix.android_version }}-${{ matrix.kernel_version }}"
           if [ "${{ matrix.susfs }}" = true ]; then
-            echo "SUSFS Branch: ${{ steps.susfs.outputs.susfs_branch }}"
+            echo "SUSFS Hash: ${{ matrix.susfs_resolved_hash }}"
           fi
           echo "Status: ${{ job.status }}"
           
@@ -455,7 +534,7 @@ jobs:
           
           if [ "${{ matrix.susfs }}" = true ]; then
             cat >> $GITHUB_STEP_SUMMARY << EOF
-          **SUSFS Branch:** \`${{ steps.susfs.outputs.susfs_branch || format('(auto: gki-{0}-{1})', matrix.android_version, matrix.kernel_version) }}\`
+          **SUSFS Hash:** \`${{ matrix.susfs_resolved_hash }}\`
           EOF
           fi
           
@@ -529,7 +608,7 @@ jobs:
           echo "::endgroup::"
 
   trigger-release:
-    needs: [build]
+    needs: [set-op-model, build]
     runs-on: ubuntu-latest
     if: ${{ inputs.make_release }}
     env:
@@ -609,18 +688,18 @@ jobs:
           OPTIMIZE_LEVEL="${{ inputs.optimize_level }}"
           CLEAN_BUILD="${{ inputs.clean_build }}"
           
-          # Determine SUSFS branches used
-          SUSFS_A12="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
-          SUSFS_A13="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
-          SUSFS_A14="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
-          SUSFS_A15="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
-          SUSFS_A16="${{ inputs.android16-6_12_susfs_branch_or_commit }}"
+          # Hash map for GKI version
+          declare -A susfs_map=(
+            ["android12-5.10"]="${{ needs.set-op-model.outputs.susfs_hash_android12_5_10 }}"
+            ["android13-5.15"]="${{ needs.set-op-model.outputs.susfs_hash_android13_5_15 }}"
+            ["android14-6.1"]="${{ needs.set-op-model.outputs.susfs_hash_android14_6_1 }}"
+            ["android15-6.6"]="${{ needs.set-op-model.outputs.susfs_hash_android15_6_6 }}"
+            ["android16-6.12"]="${{ needs.set-op-model.outputs.susfs_hash_android16_6_12 }}"
+          )
           
-          [ -z "$SUSFS_A12" ] && SUSFS_A12="gki-android12-5.10 (auto)"
-          [ -z "$SUSFS_A13" ] && SUSFS_A13="gki-android13-5.15 (auto)"
-          [ -z "$SUSFS_A14" ] && SUSFS_A14="gki-android14-6.1 (auto)"
-          [ -z "$SUSFS_A15" ] && SUSFS_A15="gki-android15-6.6 (auto)"
-          [ -z "$SUSFS_A16" ] && SUSFS_A16="gki-android16-6.12 (auto)"
+          # List of GKI versions present in this run
+          IFS=',' read -ra active_gki_keys \
+            <<< "${{ needs.set-op-model.outputs.active_gki_keys }}"
           
           cat << EOF > release_notes.md
           # 🎯 OnePlus Kernels with KernelSU Next & SUSFS $SUSFS_BASE_VERSION
@@ -709,13 +788,11 @@ jobs:
           
           ### 📌 SUSFS Branch Mapping
           
-          | Kernel Version | SUSFS Branch/Commit |
-          |----------------|---------------------|
-          | android12-5.10 | \`$SUSFS_A12\` |
-          | android13-5.15 | \`$SUSFS_A13\` |
-          | android14-6.1  | \`$SUSFS_A14\` |
-          | android15-6.6  | \`$SUSFS_A15\` |
-          | android16-6.12 | \`$SUSFS_A16\` |
+          | Kernel Version | SUSFS Commit |
+          |----------------|--------------|
+          $(for key in "${active_gki_keys[@]}"; do
+            echo "| $key | \`${susfs_map[$key]:-unknown}\` |"
+          done)
           
           ---
           

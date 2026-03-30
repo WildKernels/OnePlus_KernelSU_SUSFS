@@ -608,16 +608,16 @@ runs:
             ["android16-6.12"]="gki-android16-6.12"
           )
           
-          # Determine which SUSFS branch to use
+          # Determine which SUSFS ref to use
           KERNEL_KEY="${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}"
-          if [ -z "$SUSFS_INPUT" ] || [ "$SUSFS_INPUT" = "next" ]; then
-            # Empty or "next": use kernel-specific default
+          if [ -z "$SUSFS_INPUT" ] || [ "$SUSFS_INPUT" = "next" ] || [ "$SUSFS_INPUT" = "unknown" ]; then
+            # Empty, "next" or "unknown": use kernel-specific default
             SUSFS_BRANCH="${DEFAULT_SUSFS[$KERNEL_KEY]:-gki-android15-6.6}"
             echo "ℹ️  Using default SUSFS branch for $KERNEL_KEY: $SUSFS_BRANCH"
           else
-            # User provided custom branch/commit
+            # 40-char hash or branch/commit passed directly
             SUSFS_BRANCH="$SUSFS_INPUT"
-            echo "🔧 Using custom SUSFS ref: $SUSFS_BRANCH"
+            echo "🔧 Using resolved SUSFS ref: $SUSFS_BRANCH"
           fi
         fi
         
@@ -1011,7 +1011,7 @@ runs:
         echo "::group::Add BBG LSM"
         cd "$KERNEL_PLATFORM_FOLDER"
         echo "Adding BBG..."
-        if ! wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash -s fix_blkdev_rename; then
+        if ! wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash -s main; then
           echo "::warning::BBG setup script failed, continuing anyway"
         fi
         echo "CONFIG_BBG=y" >> common/arch/arm64/configs/gki_defconfig
