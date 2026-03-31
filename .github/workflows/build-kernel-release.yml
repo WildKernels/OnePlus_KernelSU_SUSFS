@@ -77,6 +77,8 @@ jobs:
       susfs_hash_android14_6_1:  ${{ steps.set-matrix.outputs.susfs_hash_android14_6_1 }}
       susfs_hash_android15_6_6:  ${{ steps.set-matrix.outputs.susfs_hash_android15_6_6 }}
       susfs_hash_android16_6_12: ${{ steps.set-matrix.outputs.susfs_hash_android16_6_12 }}
+      ksu_resolved_hash_ksun:    ${{ steps.set-matrix.outputs.ksu_resolved_hash_ksun }}
+      ksu_resolved_hash_ksu:     ${{ steps.set-matrix.outputs.ksu_resolved_hash_ksu }}
     steps:
       - name: 📥 Checkout Code (to access configs/)
         uses: actions/checkout@v6
@@ -171,6 +173,83 @@ jobs:
           
           echo "count=$count" >> "$GITHUB_OUTPUT"
           
+          KSUN_REPO="https://github.com/KernelSU-Next/KernelSU-Next"
+          KSU_REPO="https://github.com/tiann/KernelSU"
+          
+          # Shared function with SUSFS: resolves branch/tag/hash > 40-char hash
+          resolve_to_hash() {
+            local input="$1"
+            local repo="$2"
+            local default_branch="$3"
+            
+            if [ -z "$input" ]; then
+              local fetched
+              fetched=$(timeout 30 git ls-remote "$repo" \
+                        "refs/heads/$default_branch" 2>/dev/null \
+                        | awk '{print $1}' | head -n1 || true)
+              echo "${fetched:-unknown}"
+            else
+              local fetched
+              fetched=$(timeout 30 git ls-remote "$repo" \
+                        "refs/heads/$input" "refs/tags/$input" 2>/dev/null \
+                        | awk '{print $1}' | head -n1 || true)
+              if [ -n "$fetched" ]; then
+                echo "$fetched"
+              elif [[ "$input" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "$input"
+              else
+                echo "unknown"
+              fi
+            fi
+          }
+          
+          # Extract hash input for KSUN and KSU from ksu_options_normalized
+          ksun_hash_input=$(echo "$ksu_options_normalized" \
+            | jq -r 'map(select(.type == "KSUN")) | first | .hash // empty')
+          ksu_hash_input=$(echo "$ksu_options_normalized" \
+            | jq -r 'map(select(.type == "KSU")) | first | .hash // empty')
+          
+          echo "🔍 Resolving KSU/KSUN hashes..."
+          
+          # Fix KSUN (default branch: dev)
+          if [ -n "$ksun_hash_input" ]; then
+            ksun_resolved=$(resolve_to_hash "$ksun_hash_input" "$KSUN_REPO" "dev")
+            if [ -z "$ksun_hash_input" ] || [[ ! "$ksun_hash_input" =~ ^[0-9a-f]{40}$ ]] && [ "$ksun_resolved" != "$ksun_hash_input" ]; then
+              echo "  KSUN/$ksun_hash_input → (branch resolved) $ksun_resolved"
+            elif [[ "$ksun_hash_input" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "  KSUN/$ksun_hash_input → (hash passthrough) $ksun_resolved"
+            else
+              echo "  KSUN/$ksun_hash_input → $ksun_resolved"
+            fi
+          else
+            ksun_resolved="unknown"
+            echo "  KSUN → not in this run"
+          fi
+          
+          # Fix KSU default branch: main)
+          if [ -n "$ksu_hash_input" ]; then
+            ksu_resolved=$(resolve_to_hash "$ksu_hash_input" "$KSU_REPO" "main")
+            if [[ "$ksu_hash_input" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "  KSU/$ksu_hash_input → (hash passthrough) $ksu_resolved"
+            else
+              echo "  KSU/$ksu_hash_input → (branch resolved) $ksu_resolved"
+            fi
+          else
+            ksu_resolved="unknown"
+            echo "  KSU → not in this run"
+          fi
+          
+          # Write to GITHUB_OUTPUT (job outputs > trigger-release and summary)
+          echo "ksu_resolved_hash_ksun=$ksun_resolved" >> "$GITHUB_OUTPUT"
+          echo "ksu_resolved_hash_ksu=$ksu_resolved"   >> "$GITHUB_OUTPUT"
+          
+          # Inject ksu_resolved_hash into each device in the matrix
+          # Each device has ksu_type (KSUN/KSU) → assigns corresponding hash
+          merged_matrix=$(echo "$merged_matrix" | jq \
+            --arg ksun "$ksun_resolved" \
+            --arg ksu  "$ksu_resolved" \
+            '[.[] | . + {ksu_resolved_hash: (if .ksu_type == "KSUN" then $ksun else $ksu end)}]')
+          
           # SUSFS hash fetch
           SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
           
@@ -190,32 +269,6 @@ jobs:
             ["android16-6.12"]="${{ inputs.android16-6_12_susfs_branch_or_commit }}"
           )
           
-          # Function: resolves any input > 40-char hash or "unknown"
-          resolve_to_hash() {
-            local input="$1"
-            local default_branch="$2"
-            
-            if [ -z "$input" ] || [ "$input" = "next" ]; then
-              local fetched
-              fetched=$(timeout 30 git ls-remote "$SUSFS_REPO" \
-                        "refs/heads/$default_branch" 2>/dev/null \
-                        | awk '{print $1}' | head -n1 || true)
-              echo "${fetched:-unknown}"
-            else
-              local fetched
-              fetched=$(timeout 30 git ls-remote "$SUSFS_REPO" \
-                        "refs/heads/$input" "refs/tags/$input" 2>/dev/null \
-                        | awk '{print $1}' | head -n1 || true)
-              if [ -n "$fetched" ]; then
-                echo "$fetched"
-              elif [[ "$input" =~ ^[0-9a-f]{40}$ ]]; then
-                echo "$input"
-              else
-                echo "unknown"
-              fi
-            fi
-          }
-          
           mapfile -t active_keys < <(
             echo "$merged_matrix" \
               | jq -r '.[] | select(.susfs == true) | "\(.android_version)-\(.kernel_version)"' \
@@ -228,7 +281,7 @@ jobs:
           for key in "${active_keys[@]}"; do
             user_val="${user_inputs[$key]:-}"
             default_branch="${default_branches[$key]:-}"
-            resolved=$(resolve_to_hash "$user_val" "$default_branch")
+            resolved=$(resolve_to_hash "$user_val" "$SUSFS_REPO" "$default_branch")
             susfs_hashes["$key"]="$resolved"
             if [ -z "$user_val" ] || [ "$user_val" = "next" ]; then
               echo "  $key → (auto) $resolved"
@@ -288,6 +341,32 @@ jobs:
           ksu_options_raw='${{ github.event.inputs.ksu_options }}'
           ksu_options_normalized=$(echo "$ksu_options_raw" | jq -c 'map(if .type then .type |= ascii_upcase | if .hash == null then if .type == "KSUN" then .hash = "dev" elif .type == "KSU" then .hash = "main" else .hash end else . end else error("No type found") end)' 2>&1)
           
+          # Build KSU/KSUN displays with resolved hash
+          ksun_input=$(echo "$ksu_options_normalized" \
+            | jq -r 'map(select(.type == "KSUN")) | first | .hash // empty')
+          ksu_input=$(echo "$ksu_options_normalized" \
+            | jq -r 'map(select(.type == "KSU")) | first | .hash // empty')
+
+          ksun_resolved="${{ steps.set-matrix.outputs.ksu_resolved_hash_ksun }}"
+          ksu_resolved="${{ steps.set-matrix.outputs.ksu_resolved_hash_ksu }}"
+
+          ksu_display=""
+          if [ -n "$ksun_input" ]; then
+            if [[ "$ksun_input" =~ ^[0-9a-f]{40}$ ]]; then
+              ksu_display+="📌 \`KSUN\`, \`$ksun_input\`"
+            else
+              ksu_display+="🔀 \`KSUN\`, \`$ksun_input\` (\`$ksun_resolved\`)"
+            fi
+          fi
+          if [ -n "$ksu_input" ]; then
+            [ -n "$ksu_display" ] && ksu_display+=" | "
+            if [[ "$ksu_input" =~ ^[0-9a-f]{40}$ ]]; then
+              ksu_display+="📌 \`KSU\`, \`$ksun_input\`"
+            else
+              ksu_display+="🔀 \`KSU\`, \`$ksu_input\` (\`$ksu_resolved\`)"
+            fi
+          fi
+          
           # export KSU_OPTIONS="$ksu_options_normalized"
           
           # cat >> $GITHUB_STEP_SUMMARY << 'EOF'
@@ -313,14 +392,11 @@ jobs:
           **Devices:** ${{ steps.set-matrix.outputs.count }}  
           
           **Configuration:**
-          - KSU Config: `
           EOF
           
-            # Inject the shell variable
-            printf '%s' "$ksu_options_normalized"
+            echo "- KSU Config: $ksu_display"
           
             cat << 'EOF'
-          `
           - Optimization: ${{ inputs.optimize_level }}
           - Clean Build/No Ccache: ${{ inputs.clean_build && '✅ Yes' || '❌ No' }}
           - Create Release: ${{ inputs.make_release && '✅ Yes' || '❌ No' }}
@@ -467,7 +543,7 @@ jobs:
         with:
           op_config_json: ${{ steps.prepare_config.outputs.config_json }}
           ksu_type: ${{ matrix.ksu_type }}
-          ksu_branch_or_hash: ${{ matrix.ksu_hash }}
+          ksu_branch_or_hash: ${{ matrix.ksu_resolved_hash }}
           susfs_commit_hash_or_branch: ${{ matrix.susfs_resolved_hash }}
           optimize_level: ${{ inputs.optimize_level }}
           clean: ${{ inputs.clean_build }}
@@ -680,6 +756,8 @@ jobs:
           
           ksun_hash=$(echo "$ksu_options_normalized" | jq -r 'map(select(.type == "KSUN")) | first | .hash // empty')
           ksu_hash=$(echo "$ksu_options_normalized" | jq -r 'map(select(.type == "KSU")) | first | .hash // empty')
+          ksun_resolved="${{ needs.set-op-model.outputs.ksu_resolved_hash_ksun }}"
+          ksu_resolved="${{ needs.set-op-model.outputs.ksu_resolved_hash_ksu }}"
           
           # Get workflow inputs for reference
           KSUN_BRANCH="$ksun_hash"
@@ -764,14 +842,27 @@ jobs:
           | Component | Version/Setting |
           |-----------|----------------|
           EOF
+          # Display function: hash → direct hash, branch → branch (hash)
+          ksu_display_value() {
+            local input="$1"
+            local resolved="$2"
+            if [[ "$input" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "$input"
+            else
+              echo "$input ($resolved)"
+            fi
+          }
+
           if [ -n "$KSUN_BRANCH" ]; then
+            ksun_display=$(ksu_display_value "$KSUN_BRANCH" "$ksun_resolved")
             cat << EOF >> release_notes.md
-          | **KernelSU Next Branch** | \`$KSUN_BRANCH\` |
+          | **KernelSU Next Branch** | \`$ksun_display\` |
           | **KernelSU Next Version** | \`$ksu_ver_global\` |
           EOF
           elif [ -n "$KSU_BRANCH" ]; then
+            ksu_display=$(ksu_display_value "$KSU_BRANCH" "$ksu_resolved")
             cat << EOF >> release_notes.md
-          | **KernelSU Branch** | \`$KSU_BRANCH\` |
+          | **KernelSU Branch** | \`$ksu_display\` |
           | **KernelSU Version** | \`$ksu_ver_global\` |
           EOF
           else
