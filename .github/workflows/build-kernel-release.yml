@@ -77,8 +77,11 @@ jobs:
       susfs_hash_android14_6_1:  ${{ steps.set-matrix.outputs.susfs_hash_android14_6_1 }}
       susfs_hash_android15_6_6:  ${{ steps.set-matrix.outputs.susfs_hash_android15_6_6 }}
       susfs_hash_android16_6_12: ${{ steps.set-matrix.outputs.susfs_hash_android16_6_12 }}
-      ksu_resolved_hash_ksun:    ${{ steps.set-matrix.outputs.ksu_resolved_hash_ksun }}
-      ksu_resolved_hash_ksu:     ${{ steps.set-matrix.outputs.ksu_resolved_hash_ksu }}
+      ksu_resolved_hash:    ${{ steps.set-matrix.outputs.ksu_resolved_hash }}
+      ksu_options_normalized: ${{ steps.set-matrix.outputs.ksu_options_normalized }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_HTTP_TIMEOUT: 600
     steps:
       - name: 📥 Checkout Code (to access configs/)
         uses: actions/checkout@v6
@@ -164,7 +167,7 @@ jobs:
           # For each device + each ksu option → one combined entry
           merged_matrix=$(jq -n --argjson devices "$filtered" --argjson ksu_list "$ksu_options_normalized" '[ $devices[] as $dev | $ksu_list[] as $ksu | ($dev + {ksu_type: $ksu.type, ksu_hash: $ksu.hash}) ]')
           
-          final_count=$(echo "$merged_matrix" | jq -s length)
+          final_count=$(echo "$merged_matrix" | jq 'length')
           
           echo "✅ Found $final_count device(s) to build"
           echo ""
@@ -173,82 +176,78 @@ jobs:
           
           echo "count=$count" >> "$GITHUB_OUTPUT"
           
-          KSUN_REPO="https://github.com/KernelSU-Next/KernelSU-Next"
-          KSU_REPO="https://github.com/tiann/KernelSU"
+          ksu_type=$(echo "$ksu_options_normalized" | jq -r '.[0].type')
+          ksu_ref=$(echo "$ksu_options_normalized" | jq -r '.[0].hash')
           
-          # Shared function with SUSFS: resolves branch/tag/hash > 40-char hash
-          resolve_to_hash() {
-            local input="$1"
-            local repo="$2"
-            local default_branch="$3"
+          if [ "$ksu_type" == "KSUN" ]; then
+            KSU_REPO_OWNER="KernelSU-Next"
+            KSU_REPO_NAME="KernelSU-Next"
+          else
+            KSU_REPO_OWNER="tiann"
+            KSU_REPO_NAME="KernelSU"
+          fi
+          
+          HEAD_REF="refs/heads/${ksu_ref}"
+          TAG_REF="refs/tags/${ksu_ref}"
+          
+          QUERY='query($owner: String!, $name: String!, $headRef: String!, $tagRef: String!, $objRef: String!) {
+            repository(owner: $owner, name: $name) {
+              hb: ref(qualifiedName: $headRef) { t: target { ... on Commit { o: oid } } }
+              ht: ref(qualifiedName: $tagRef) { t: target { ... on Commit { o: oid } } }
+              ho: object(expression: $objRef) { ... on Commit { o: oid } }
+            }
+          }'
+          
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          RETRY_DELAY=5 # Seconds to wait between retries
+          
+          echo "Resolving $ksu_type hash ($ksu_ref)..."
+          
+          until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
+            RESULT=$(gh api graphql -f query="$QUERY" -f owner="$KSU_REPO_OWNER" -f name="$KSU_REPO_NAME" -f headRef="$HEAD_REF" -f tagRef="$TAG_REF" -f objRef="$ksu_ref" 2>/dev/null)
+            EXIT_CODE=$?
             
-            if [ -z "$input" ]; then
-              local fetched
-              fetched=$(timeout 30 git ls-remote "$repo" \
-                        "refs/heads/$default_branch" 2>/dev/null \
-                        | awk '{print $1}' | head -n1 || true)
-              echo "${fetched:-unknown}"
-            else
-              local fetched
-              fetched=$(timeout 30 git ls-remote "$repo" \
-                        "refs/heads/$input" "refs/tags/$input" 2>/dev/null \
-                        | awk '{print $1}' | head -n1 || true)
-              if [ -n "$fetched" ]; then
-                echo "$fetched"
-              elif [[ "$input" =~ ^[0-9a-f]{40}$ ]]; then
-                echo "$input"
-              else
-                echo "unknown"
-              fi
+            if [ $EXIT_CODE -eq 0 ] && [ ! -z "$RESULT" ]; then
+              echo "  ✅ API Success"
+              break
             fi
-          }
+            
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "::warning::API failed (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in ${RETRY_DELAY}s..."
+            sleep $RETRY_DELAY
+          done
           
-          # Extract hash input for KSUN and KSU from ksu_options_normalized
-          ksun_hash_input=$(echo "$ksu_options_normalized" \
-            | jq -r 'map(select(.type == "KSUN")) | first | .hash // empty')
-          ksu_hash_input=$(echo "$ksu_options_normalized" \
-            | jq -r 'map(select(.type == "KSU")) | first | .hash // empty')
-          
-          echo "🔍 Resolving KSU/KSUN hashes..."
-          
-          # Fix KSUN (default branch: dev)
-          if [ -n "$ksun_hash_input" ]; then
-            ksun_resolved=$(resolve_to_hash "$ksun_hash_input" "$KSUN_REPO" "dev")
-            if [ -z "$ksun_hash_input" ] || [[ ! "$ksun_hash_input" =~ ^[0-9a-f]{40}$ ]] && [ "$ksun_resolved" != "$ksun_hash_input" ]; then
-              echo "  KSUN/$ksun_hash_input → (branch resolved) $ksun_resolved"
-            elif [[ "$ksun_hash_input" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "  KSUN/$ksun_hash_input → (hash passthrough) $ksun_resolved"
+          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+            echo "::error::Failed to resolve $ksu_type hash after $MAX_RETRIES attempts."
+            # Optional: Fallback to passthrough if it looks like a SHA, otherwise fail
+            if [[ "$ksu_ref" =~ ^[0-9a-f]{40}$ ]]; then
+              resolved_sha="$ksu_ref"
             else
-              echo "  KSUN/$ksun_hash_input → $ksun_resolved"
+              exit 1
             fi
           else
-            ksun_resolved="unknown"
-            echo "  KSUN → not in this run"
+            # 6. Parse result if successful
+            resolved_sha=$(echo "$RESULT" | jq -r '.data.repository | (.hb.t.o // .ht.t.o // .hr.t.o // "unknown")')
           fi
           
-          # Fix KSU default branch: main)
-          if [ -n "$ksu_hash_input" ]; then
-            ksu_resolved=$(resolve_to_hash "$ksu_hash_input" "$KSU_REPO" "main")
-            if [[ "$ksu_hash_input" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "  KSU/$ksu_hash_input → (hash passthrough) $ksu_resolved"
-            else
-              echo "  KSU/$ksu_hash_input → (branch resolved) $ksu_resolved"
-            fi
+          if [[ "$resolved_sha" == "unknown" && "$ksu_ref" =~ ^[0-9a-f]{40}$ ]]; then
+            resolved_sha="$ksu_ref"
+          fi
+          
+          echo "  ✅ Resolved: $ksu_type/$ksu_ref → $resolved_sha"
+          
+          if [ "$ksu_type" == "KSUN" ]; then
+            echo "ksu_resolved_hash_ksun=$resolved_sha" >> "$GITHUB_OUTPUT"
+            echo "ksu_resolved_hash_ksu=unknown" >> "$GITHUB_OUTPUT"
           else
-            ksu_resolved="unknown"
-            echo "  KSU → not in this run"
+            echo "ksu_resolved_hash_ksu=$resolved_sha" >> "$GITHUB_OUTPUT"
+            echo "ksu_resolved_hash_ksun=unknown" >> "$GITHUB_OUTPUT"
           fi
           
-          # Write to GITHUB_OUTPUT (job outputs > trigger-release and summary)
-          echo "ksu_resolved_hash_ksun=$ksun_resolved" >> "$GITHUB_OUTPUT"
-          echo "ksu_resolved_hash_ksu=$ksu_resolved"   >> "$GITHUB_OUTPUT"
           
           # Inject ksu_resolved_hash into each device in the matrix
-          # Each device has ksu_type (KSUN/KSU) → assigns corresponding hash
-          merged_matrix=$(echo "$merged_matrix" | jq \
-            --arg ksun "$ksun_resolved" \
-            --arg ksu  "$ksu_resolved" \
-            '[.[] | . + {ksu_resolved_hash: (if .ksu_type == "KSUN" then $ksun else $ksu end)}]')
+          merged_matrix=$(echo "$merged_matrix" | jq  --arg resolved_sha "$resolved_sha" 'map(.ksu_resolved_hash = $resolved_sha)')
           
           # SUSFS hash fetch
           SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
@@ -276,6 +275,33 @@ jobs:
           )
           
           echo "🔍 Resolving SUSFS hashes for: ${active_keys[*]:-none}"
+          
+          # Function: resolves any input > 40-char hash or "unknown"
+          resolve_to_hash() {
+            local input="$1"
+            local repo="$2"
+            local default_branch="$3"
+            
+            if [ -z "$input" ]; then
+              local fetched
+              fetched=$(timeout 30 git ls-remote "$repo" \
+                        "refs/heads/$default_branch" 2>/dev/null \
+                        | awk '{print $1}' | head -n1 || true)
+              echo "${fetched:-unknown}"
+            else
+              local fetched
+              fetched=$(timeout 30 git ls-remote "$repo" \
+                        "refs/heads/$input" "refs/tags/$input" 2>/dev/null \
+                        | awk '{print $1}' | head -n1 || true)
+              if [ -n "$fetched" ]; then
+                echo "$fetched"
+              elif [[ "$input" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "$input"
+              else
+                echo "unknown"
+              fi
+            fi
+          }
           
           declare -A susfs_hashes
           for key in "${active_keys[@]}"; do
