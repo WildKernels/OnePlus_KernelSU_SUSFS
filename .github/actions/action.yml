@@ -610,8 +610,8 @@ runs:
           
           # Determine which SUSFS ref to use
           KERNEL_KEY="${{ env.ANDROID_VER }}-${{ env.KERNEL_VER }}"
-          if [ -z "$SUSFS_INPUT" ] || [ "$SUSFS_INPUT" = "next" ] || [ "$SUSFS_INPUT" = "unknown" ]; then
-            # Empty, "next" or "unknown": use kernel-specific default
+          if [ -z "$SUSFS_INPUT" ]; then
+            # use kernel-specific default
             SUSFS_BRANCH="${DEFAULT_SUSFS[$KERNEL_KEY]:-gki-android15-6.6}"
             echo "ℹ️  Using default SUSFS branch for $KERNEL_KEY: $SUSFS_BRANCH"
           else
