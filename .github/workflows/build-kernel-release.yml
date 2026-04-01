@@ -561,7 +561,7 @@ jobs:
         id: prepare_config
         shell: bash
         run: |
-          echo "config_json=$(jq -nc --argjson m '${{ toJSON(matrix) }}' '$m | del(.ksu_type, .ksu_hash)')" >> "$GITHUB_OUTPUT"
+          echo "config_json=$(jq -nc --argjson m '${{ toJSON(matrix) }}' '$m | del(.ksu_type, .ksu_hash, .ksu_resolved_hash)')" >> "$GITHUB_OUTPUT"
 
       - name: 🔨 Build Kernel
         id: build
