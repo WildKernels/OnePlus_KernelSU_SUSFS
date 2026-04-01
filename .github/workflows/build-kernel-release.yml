@@ -78,7 +78,6 @@ jobs:
       susfs_hash_android15_6_6:  ${{ steps.set-matrix.outputs.susfs_hash_android15_6_6 }}
       susfs_hash_android16_6_12: ${{ steps.set-matrix.outputs.susfs_hash_android16_6_12 }}
       ksu_resolved_hash:    ${{ steps.set-matrix.outputs.ksu_resolved_hash }}
-      ksu_options_normalized: ${{ steps.set-matrix.outputs.ksu_options_normalized }}
     env:
       GH_TOKEN: ${{ github.token }}
       GH_HTTP_TIMEOUT: 600
@@ -237,13 +236,7 @@ jobs:
           
           echo "  ✅ Resolved: $ksu_type/$ksu_ref → $resolved_sha"
           
-          if [ "$ksu_type" == "KSUN" ]; then
-            echo "ksu_resolved_hash_ksun=$resolved_sha" >> "$GITHUB_OUTPUT"
-            echo "ksu_resolved_hash_ksu=unknown" >> "$GITHUB_OUTPUT"
-          else
-            echo "ksu_resolved_hash_ksu=$resolved_sha" >> "$GITHUB_OUTPUT"
-            echo "ksu_resolved_hash_ksun=unknown" >> "$GITHUB_OUTPUT"
-          fi
+          echo "ksu_resolved_hash=$resolved_sha" >> "$GITHUB_OUTPUT"
           
           
           # Inject ksu_resolved_hash into each device in the matrix
@@ -367,48 +360,17 @@ jobs:
           ksu_options_raw='${{ github.event.inputs.ksu_options }}'
           ksu_options_normalized=$(echo "$ksu_options_raw" | jq -c 'map(if .type then .type |= ascii_upcase | if .hash == null then if .type == "KSUN" then .hash = "dev" elif .type == "KSU" then .hash = "main" else .hash end else . end else error("No type found") end)' 2>&1)
           
-          # Build KSU/KSUN displays with resolved hash
-          ksun_input=$(echo "$ksu_options_normalized" \
-            | jq -r 'map(select(.type == "KSUN")) | first | .hash // empty')
-          ksu_input=$(echo "$ksu_options_normalized" \
-            | jq -r 'map(select(.type == "KSU")) | first | .hash // empty')
-
-          ksun_resolved="${{ steps.set-matrix.outputs.ksu_resolved_hash_ksun }}"
-          ksu_resolved="${{ steps.set-matrix.outputs.ksu_resolved_hash_ksu }}"
-
+          ksu_type=$(echo "$ksu_options_normalized" | jq -r '.[0].type')
+          ksu_ref=$(echo "$ksu_options_normalized" | jq -r '.[0].hash')
+          
           ksu_display=""
-          if [ -n "$ksun_input" ]; then
-            if [[ "$ksun_input" =~ ^[0-9a-f]{40}$ ]]; then
-              ksu_display+="📌 \`KSUN\`, \`$ksun_input\`"
+          if [ "$ksu_type" = "KSUN" ] || [ "$ksu_type" = "KSU" ]; then
+            if [[ "$ksu_ref" =~ ^[0-9a-f]{40}$ ]]; then
+              ksu_display+="📌 \`$ksu_type\`, \`$ksu_ref\`"
             else
-              ksu_display+="🔀 \`KSUN\`, \`$ksun_input\` (\`$ksun_resolved\`)"
+              ksu_display+="🔀 \`$ksu_type\`, \`$ksu_ref\` (\`${{ steps.set-matrix.outputs.ksu_resolved_hash }}\`)"
             fi
           fi
-          if [ -n "$ksu_input" ]; then
-            [ -n "$ksu_display" ] && ksu_display+=" | "
-            if [[ "$ksu_input" =~ ^[0-9a-f]{40}$ ]]; then
-              ksu_display+="📌 \`KSU\`, \`$ksun_input\`"
-            else
-              ksu_display+="🔀 \`KSU\`, \`$ksu_input\` (\`$ksu_resolved\`)"
-            fi
-          fi
-          
-          # export KSU_OPTIONS="$ksu_options_normalized"
-          
-          # cat >> $GITHUB_STEP_SUMMARY << 'EOF'
-          # ## 🎯 Build Plan
-          
-          # **Target:** `${{ inputs.op_model }}`  
-          # **Devices:** ${{ steps.set-matrix.outputs.count }}  
-          
-          # **Configuration:**
-          # - KSU Config: `"$KSU_OPTIONS"`
-          # - Optimization: `${{ inputs.optimize_level }}`
-          # - Clean Build/No Ccache: ${{ inputs.clean_build && '✅ Yes' || '❌ No' }}
-          # - Create Release: ${{ inputs.make_release && '✅ Yes' || '❌ No' }}
-          
-          # **SUSFS Configuration:**
-          # EOF
           
           {
             cat << 'EOF'
@@ -780,14 +742,9 @@ jobs:
           ksu_options_raw='${{ github.event.inputs.ksu_options }}'
           ksu_options_normalized=$(echo "$ksu_options_raw" | jq -c 'map(if .type then .type |= ascii_upcase | if .hash == null then if .type == "KSUN" then .hash = "dev" elif .type == "KSU" then .hash = "main" else .hash end else . end else error("No type found") end)' 2>&1)
           
-          ksun_hash=$(echo "$ksu_options_normalized" | jq -r 'map(select(.type == "KSUN")) | first | .hash // empty')
-          ksu_hash=$(echo "$ksu_options_normalized" | jq -r 'map(select(.type == "KSU")) | first | .hash // empty')
-          ksun_resolved="${{ needs.set-op-model.outputs.ksu_resolved_hash_ksun }}"
-          ksu_resolved="${{ needs.set-op-model.outputs.ksu_resolved_hash_ksu }}"
-          
-          # Get workflow inputs for reference
-          KSUN_BRANCH="$ksun_hash"
-          KSU_BRANCH="$ksu_hash"
+          ksu_type=$(echo "$ksu_options_normalized" | jq -r '.[0].type')
+          ksu_ref=$(echo "$ksu_options_normalized" | jq -r '.[0].hash')
+          ksu_resolved_hash="${{ needs.set-op-model.outputs.ksu_resolved_hash }}"
           
           OPTIMIZE_LEVEL="${{ inputs.optimize_level }}"
           CLEAN_BUILD="${{ inputs.clean_build }}"
@@ -878,15 +835,14 @@ jobs:
               echo "$input ($resolved)"
             fi
           }
-
-          if [ -n "$KSUN_BRANCH" ]; then
-            ksun_display=$(ksu_display_value "$KSUN_BRANCH" "$ksun_resolved")
+          
+          ksu_display=$(ksu_display_value "$ksu_ref" "$ksu_resolved_hash")
+          if [ "$ksu_type" == "KSUN" ]; then
             cat << EOF >> release_notes.md
-          | **KernelSU Next Branch** | \`$ksun_display\` |
+          | **KernelSU Next Branch** | \`$ksu_display\` |
           | **KernelSU Next Version** | \`$ksu_ver_global\` |
           EOF
-          elif [ -n "$KSU_BRANCH" ]; then
-            ksu_display=$(ksu_display_value "$KSU_BRANCH" "$ksu_resolved")
+          elif [ "$ksu_type" == "KSU" ]; then
             cat << EOF >> release_notes.md
           | **KernelSU Branch** | \`$ksu_display\` |
           | **KernelSU Version** | \`$ksu_ver_global\` |
@@ -917,11 +873,11 @@ jobs:
           
           ### 🔐 Root Management
           EOF
-          if [ -n "$KSUN_BRANCH" ]; then
+          if [ "$ksu_type" == "KSUN" ]; then
             cat << EOF >> release_notes.md
           - **KernelSU Next** - Next-generation kernel-level root solution
           EOF
-          elif [ -n "$KSU_BRANCH" ]; then
+          elif [ "$ksu_type" == "KSU" ]; then
             cat << EOF >> release_notes.md
           - **KernelSU** - Kernel-level root solution
           EOF
@@ -929,7 +885,7 @@ jobs:
           cat << EOF >> release_notes.md
           - **SUSFS $SUSFS_BASE_VERSION** - Advanced hiding and security features
           EOF
-          if [ -n "$KSUN_BRANCH" ] && [ "${ksu_ver_global:-0}" -lt 12884 ]; then
+          if [ "$ksu_type" == "KSUN" ] && [ "${ksu_ver_global:-0}" -lt 12884 ]; then
             cat << EOF >> release_notes.md
           - **Magic Mount Support** - Seamless file system modifications
           EOF
@@ -974,12 +930,12 @@ jobs:
           
           ### Official Manager
           EOF
-          if [ -n "$KSUN_BRANCH" ]; then
+          if [ "$ksu_type" == "KSUN" ]; then
             cat << EOF >> release_notes.md
           - **KernelSU Next Manager**  
             → [GitHub Release](https://github.com/KernelSU-Next/KernelSU-Next/releases)
           EOF
-          elif [ -n "$KSU_BRANCH" ]; then
+          elif [ "$ksu_type" == "KSU" ]; then
             cat << EOF >> release_notes.md
           - **KernelSU Manager**  
             → [GitHub Release](https://github.com/tiann/KernelSU/releases)
