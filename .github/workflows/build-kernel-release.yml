@@ -241,6 +241,7 @@ jobs:
           
           # SUSFS hash fetch
           SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
+          PROJECT_ID="simonpunk%2fsusfs4ksu"
           
           declare -A default_branches=(
             ["android12-5.10"]="gki-android12-5.10"
@@ -266,46 +267,40 @@ jobs:
           
           echo "🔍 Resolving SUSFS hashes for: ${active_keys[*]:-none}"
           
-          # Function: resolves any input > 40-char hash or "unknown"
-          resolve_to_hash() {
-            local input="$1"
-            local repo="$2"
-            local default_branch="$3"
-            
-            if [ -z "$input" ]; then
-              local fetched
-              fetched=$(timeout 30 git ls-remote "$repo" \
-                        "refs/heads/$default_branch" 2>/dev/null \
-                        | awk '{print $1}' | head -n1 || true)
-              echo "${fetched:-unknown}"
-            else
-              local fetched
-              fetched=$(timeout 30 git ls-remote "$repo" \
-                        "refs/heads/$input" "refs/tags/$input" 2>/dev/null \
-                        | awk '{print $1}' | head -n1 || true)
-              if [ -n "$fetched" ]; then
-                echo "$fetched"
-              elif [[ "$input" =~ ^[0-9a-f]{40}$ ]]; then
-                echo "$input"
-              else
-                echo "unknown"
-              fi
-            fi
-          }
-          
           declare -A susfs_hashes
           for key in "${active_keys[@]}"; do
-            user_val="${user_inputs[$key]:-}"
-            default_branch="${default_branches[$key]:-}"
-            resolved=$(resolve_to_hash "$user_val" "$SUSFS_REPO" "$default_branch")
-            susfs_hashes["$key"]="$resolved"
-            if [ -z "$user_val" ] || [ "$user_val" = "next" ]; then
-              echo "  $key → (auto) $resolved"
-            elif [ "$resolved" = "$user_val" ]; then
-              echo "  $key → (hash passthrough) $resolved"
-            else
-              echo "  $key → (branch resolved) $resolved"
+            default_val="${default_branches[$key]}"
+            user_val="${user_inputs[$key]:-$default_val}"
+            
+            MAX_RETRIES=3
+            RETRY_COUNT=0
+            RETRY_DELAY=5
+            resolved=""
+            
+            until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
+              # We query the commit endpoint which accepts Branch, Tag, or SHA
+              RESULT=$(curl -s --fail "https://gitlab.com/api/v4/projects/${PROJECT_ID}/repository/commits/${user_val}")
+              EXIT_CODE=$?
+              
+              if [ $EXIT_CODE -eq 0 ] && [ -n "$RESULT" ]; then
+                resolved=$(echo "$RESULT" | jq -r '.id')
+                echo "  ✅ Query for $key input field Success"
+                break
+              fi
+              
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              echo "::warning::GitLab API failed (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying..."
+              sleep $RETRY_DELAY
+            done
+            
+            # Final Validation
+            if [ -z "$resolved" ] || [ "$resolved" = "null" ]; then
+               echo "::error::Could not resolve SUSFS ref '$user_val' for $key on GitLab."
+               exit 1
             fi
+            
+            susfs_hashes["$key"]="$resolved"
+            echo "  ✅ Resolved: $key → $resolved"
           done
           
           # Write CSV list of active GKI versions
@@ -425,7 +420,7 @@ jobs:
           done
           
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> **💡 Note:** Hashes are resolved at run time via git ls-remote on susfs4ksu." >> $GITHUB_STEP_SUMMARY
+          echo "> **💡 Note:** Hashes are resolved at run time via API calls before builds start." >> $GITHUB_STEP_SUMMARY
           
           # Add OOS restriction note for android-kernel filters
           if [[ "${{ inputs.op_model }}" == android*-*.* ]]; then
@@ -733,8 +728,8 @@ jobs:
             fi
           done
           
-          ksu_type="${{ fromJSON(steps.set-matrix.outputs.ksu_options_normalized)[0].type }}"
-          ksu_ref="${{ fromJSON(steps.set-matrix.outputs.ksu_options_normalized)[0].hash }}"
+          ksu_type="${{ fromJSON(needs.set-op-model.outputs.ksu_options_normalized)[0].type }}"
+          ksu_ref="${{ fromJSON(needs.set-op-model.outputs.ksu_options_normalized)[0].hash }}"
           ksu_resolved_hash="${{ needs.set-op-model.outputs.ksu_resolved_hash }}"
           
           OPTIMIZE_LEVEL="${{ inputs.optimize_level }}"
