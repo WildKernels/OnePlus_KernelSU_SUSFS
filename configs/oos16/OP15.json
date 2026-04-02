@@ -7,6 +7,7 @@
   "kernel_version": "6.12",
   "os_version": "OOS16",
   "lto": "none",
+  "zyc_compiler": "",
   "c_compiler": "kernel_platform/prebuilts/clang/host/linux-x86/clang-r547379/bin",
   "rust_compiler": "kernel_platform/prebuilts/rust/linux-x86/1.82.0/bin",
   "rust_build": true,
