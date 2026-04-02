@@ -7,7 +7,7 @@
   "kernel_version": "6.6",
   "os_version": "OOS16",
   "lto": "thin",
-  "zyc_compiler": "",
+  "zyc_compiler": "https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz",
   "c_compiler": "kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin",
   "rust_compiler": "",
   "rust_build": false,
