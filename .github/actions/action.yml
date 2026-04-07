@@ -757,6 +757,12 @@ runs:
         retry_clone "https://github.com/TheWildJames/AnyKernel3.git" "$ANYKERNEL_BRANCH"
         retry_clone "https://github.com/TheWildJames/kernel_patches.git"
         
+        echo "Applying ak3_check_ver.patch..."
+        cd "$AK3_FOLDER"
+        patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/ak3_check_ver.patch"
+        echo "✅ ak3_check_ver.patch applied"
+        cd ..
+        
         if [ "${{ env.OP_SUSFS }}" = true ]; then
           retry_clone "https://gitlab.com/simonpunk/susfs4ksu.git" "master" 0
           
