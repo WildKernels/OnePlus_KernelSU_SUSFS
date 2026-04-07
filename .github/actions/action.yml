@@ -1291,7 +1291,7 @@ runs:
         cd "$COMMON_KERNEL_FOLDER"
         KERNEL_VERSION="${{ env.KERNEL_VER }}"
         
-        if [[ "$KERNEL_VERSION" != "6.12" ]]; then
+        if [[ "$KERNEL_VERSION" != "6.12" ]] && [[ "$OP_BRANCH" != wild/mt* ]]; then
             echo "CONFIG_BPF_STREAM_PARSER=y" >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
         fi
         
