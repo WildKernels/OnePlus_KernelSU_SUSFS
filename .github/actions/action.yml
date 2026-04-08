@@ -1211,7 +1211,8 @@ runs:
         patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/silence_system_logspam.patch"
         echo "Patching use_unlikely_wrap_cpufreq.patch"
         patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/use_unlikely_wrap_cpufreq.patch"
-        
+        echo "Applying patch to enable SYSVIPC without breaking ABI"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/enable_sysvipc.patch"
         
         echo "✅ Other patches applied"
         echo "::endgroup::"
@@ -1308,6 +1309,19 @@ runs:
         EOF
         
         patch -p1 -F 3 < "$KERNEL_PATCHES_FOLDER/common/IPv6_NAT_FIX.patch"
+
+    - name: Add Droidspaces support
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "Add Droidspaces Support"
+        cd "$COMMON_KERNEL_FOLDER"
+
+        ./scripts/config --file arch/arm64/configs/gki_defconfig \
+          --enable CONFIG_SYSVIPC \
+          --enable CONFIG_DEVTMPFS \
+          --enable CONFIG_PID_NS \
+          --enable CONFIG_POSIX_MQUEUE
 
     - name: Add Build based configs
       shell: bash
