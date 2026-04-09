@@ -1212,7 +1212,7 @@ runs:
         echo "Patching use_unlikely_wrap_cpufreq.patch"
         patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/use_unlikely_wrap_cpufreq.patch"
         echo "Applying patch to enable SYSVIPC without breaking ABI"
-        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/enable_sysvipc.patch"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/oneplus/lxc_droidspaces/enable_sysvipc.patch"
         
         echo "✅ Other patches applied"
         echo "::endgroup::"
