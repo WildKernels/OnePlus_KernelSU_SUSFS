@@ -740,7 +740,7 @@ jobs:
             --jq "[.[] | select(.name | startswith(\"${SUSFS_BASE_VERSION}-r\"))] \
                   | sort_by(.name | split(\"-r\")[1] | tonumber) \
                   | last | .name // empty")
-
+          
           if [ -z "$LATEST_MATCHING_TAG" ]; then
             # No existing release for this version SUSFS → first release
             NEW_TAG="${SUSFS_BASE_VERSION}-r1"
@@ -748,7 +748,7 @@ jobs:
             # Only increment the -r* suffix of the latest release for this version
             NEW_TAG=$(echo "$LATEST_MATCHING_TAG" | awk -F'-r' '{printf "%s-r%d", $1, $2+1}')
           fi
-
+          
           echo "New tag: $NEW_TAG"
           echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
           git tag $NEW_TAG
@@ -833,7 +833,7 @@ jobs:
             feature_flags=$(jq -r --arg MODEL "$model" '
               .[] | 
               select(.model == $MODEL) |
-              "\(.hmbird // false)\t\(.susfs // false)\t\(.bbr // false)\t\(.bbg // false)\t\(.ttl // false)\t\(.ip_set // false)\t\(.unicode // false)"
+              "\(.hmbird // false)\t\(.susfs // false)\t\(.bbr // false)\t\(.bbg // false)\t\(.ttl // false)\t\(.ip_set // false)\t\(.unicode // false)\t\(.ds // false)"
             ' <<< "$JSON_BUILD_DATA")
             
             features=""
@@ -841,7 +841,7 @@ jobs:
             if [[ -z "$feature_flags" ]]; then
               echo "Warning: No JSON entry found for model: $model" >&2
             else
-              IFS=$'\t' read -r hmbird susfs bbr bbg ttl ip_set unicode <<< "$feature_flags"
+              IFS=$'\t' read -r hmbird susfs bbr bbg ttl ip_set unicode ds <<< "$feature_flags"
               
               # Build features string based on boolean values
               [[ "$hmbird" == "true" ]] && features+="🐦 HMBIRD "
@@ -851,6 +851,7 @@ jobs:
               [[ "$ttl" == "true" ]] && features+="🌐 TTL "
               [[ "$ip_set" == "true" ]] && features+="🧱 IP_SET & IPv6 NAT"
               [[ "$unicode" == "true" ]] && features+="🔧 Unicode Fix"
+              [[ "$ds" == "true" ]] && features+="💻 Droidspaces Support"
             fi
             
             printf "| %-13s | %-10s | %-16s | %-30s |\n" \
@@ -972,6 +973,7 @@ jobs:
           - **TMPFS_XATTR** - Extended attributes for tmpfs (Mountify support)
           - **TMPFS_POSIX_ACL** - POSIX ACLs for tmpfs
           - **HMBIRD SCX** - Scheduler extensions for all SM8750/MT6991 devices
+          - **Droidspaces** - Support Portable Linux containers to run full Linux environments.
           
           ---
           

@@ -105,6 +105,7 @@ runs:
         c_compiler="$OP_C_COMPILER"
         rust_compiler="$OP_RUST_COMPILER"
         zyc_compiler="$OP_ZYC_COMPILER"
+        ds="$OP_DS"
         optimize='${{ inputs.optimize_level }}'
         
         errors=()
@@ -228,6 +229,12 @@ runs:
         # OP_RUST_COMPILER currently has no checks!
         
         # OP_ZYC_COMPILER currently has no checks!
+        
+        if [[ -z "$ds" ]]; then
+          errors+=("Input 'ds' cannot be empty")
+        elif [[ "$ds" != "true" && "$ds" != "false" ]]; then
+          errors+=("Input 'ds' contains invalid characters. Allowed: 'true' or 'false'. Got: '$ds'")
+        fi
         
         case "$optimize" in
           O2|O3) ;;
@@ -1212,7 +1219,6 @@ runs:
         echo "Patching use_unlikely_wrap_cpufreq.patch"
         patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/use_unlikely_wrap_cpufreq.patch"
         
-        
         echo "✅ Other patches applied"
         echo "::endgroup::"
 
@@ -1310,6 +1316,37 @@ runs:
         EOF
         
         patch -p1 -F 3 < "$KERNEL_PATCHES_FOLDER/common/IPv6_NAT_FIX.patch"
+
+    - name: Add Droidspaces support
+      shell: bash
+      if: ${{ env.OP_DS == 'true' }}
+      run: |
+        set -euo pipefail
+        echo "::group::Add Droidspaces Support"
+        cd "$COMMON_KERNEL_FOLDER"
+        
+        echo "Applying patch to enable SYSVIPC without breaking ABI"
+        case "$OP_BRANCH" in
+          wild/sm8550|wild/sm7550)
+            patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/droidspaces/fix_sysvipc_kabi_1_2_3.patch"
+            ;;
+          *)
+            patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/droidspaces/fix_sysvipc_kabi_6_7_8.patch"
+            ;;
+        esac
+        
+        cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        CONFIG_SYSVIPC=y
+        CONFIG_DEVTMPFS=y
+        CONFIG_PID_NS=y
+        CONFIG_POSIX_MQUEUE=y
+        CONFIG_NETFILTER_XT_TARGET_REJECT=y
+        CONFIG_NETFILTER_XT_TARGET_LOG=y
+        CONFIG_NETFILTER_XT_MATCH_RECENT=y
+        EOF
+        
+        echo "✅ Droidspaces Support applied"
+        echo "::endgroup::"
 
     - name: Add Build based configs
       shell: bash
@@ -1559,7 +1596,7 @@ runs:
         BUILD_START=$(date +%s)
         set -o pipefail
         
-        make -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" 2>&1 | tee build.log
+        make -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" Image 2>&1 | tee build.log
         
         BUILD_END=$(date +%s)
         BUILD_TIME=$((BUILD_END - BUILD_START))
@@ -1722,6 +1759,20 @@ runs:
         fi
         
         cp "$IMAGE_PATH" "$AK3_FOLDER/Image"
+        
+        SYMVERS_SRC=""
+        for path in \
+          "$COMMON_KERNEL_FOLDER/out/Module.symvers" \
+          "$COMMON_KERNEL_FOLDER/out/arch/arm64/Module.symvers" \
+          "$COMMON_KERNEL_FOLDER/dist_dir/Module.symvers"
+        do
+          [[ -f "$path" ]] && SYMVERS_SRC="$path" && break
+        done
+        
+        if [[ -n "$SYMVERS_SRC" ]]; then
+          cp "$SYMVERS_SRC" "$AK3_FOLDER/Module.symvers"
+        fi
+        
         mv "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt" "$AK3_FOLDER/"
         cd "$AK3_FOLDER"
         
