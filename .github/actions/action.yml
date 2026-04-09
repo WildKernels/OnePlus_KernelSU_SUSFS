@@ -105,6 +105,7 @@ runs:
         c_compiler="$OP_C_COMPILER"
         rust_compiler="$OP_RUST_COMPILER"
         zyc_compiler="$OP_ZYC_COMPILER"
+        lxc_ds="$OP_LXC_DS"
         optimize='${{ inputs.optimize_level }}'
         
         errors=()
@@ -228,6 +229,12 @@ runs:
         # OP_RUST_COMPILER currently has no checks!
         
         # OP_ZYC_COMPILER currently has no checks!
+        
+        if [[ -z "$lxc_ds" ]]; then
+          errors+=("Input 'lxc_ds' cannot be empty")
+        elif [[ "$lxc_ds" != "true" && "$lxc_ds" != "false" ]]; then
+          errors+=("Input 'lxc_ds' contains invalid characters. Allowed: 'true' or 'false'. Got: '$lxc_ds'")
+        fi
         
         case "$optimize" in
           O2|O3) ;;
@@ -1211,8 +1218,6 @@ runs:
         patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/silence_system_logspam.patch"
         echo "Patching use_unlikely_wrap_cpufreq.patch"
         patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/common/use_unlikely_wrap_cpufreq.patch"
-        echo "Applying patch to enable SYSVIPC without breaking ABI"
-        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/oneplus/lxc_droidspaces/enable_sysvipc.patch"
         
         echo "✅ Other patches applied"
         echo "::endgroup::"
@@ -1310,18 +1315,23 @@ runs:
         
         patch -p1 -F 3 < "$KERNEL_PATCHES_FOLDER/common/IPv6_NAT_FIX.patch"
 
-    - name: Add Droidspaces support
+    - name: Add LXC / Droidspaces support
       shell: bash
+      if: ${{ env.OP_LXC_DS == 'true' }}
       run: |
         set -euo pipefail
         echo "Add Droidspaces Support"
         cd "$COMMON_KERNEL_FOLDER"
-
-        ./scripts/config --file arch/arm64/configs/gki_defconfig \
-          --enable CONFIG_SYSVIPC \
-          --enable CONFIG_DEVTMPFS \
-          --enable CONFIG_PID_NS \
-          --enable CONFIG_POSIX_MQUEUE
+        
+        echo "Applying patch to enable SYSVIPC without breaking ABI"
+        patch -p1 -F3 --forward < "$KERNEL_PATCHES_FOLDER/oneplus/lxc_droidspaces/enable_sysvipc.patch"
+        
+        cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        CONFIG_SYSVIPC = y
+        CONFIG_DEVTMPFS = y
+        CONFIG_PID_NS = y
+        CONFIG_POSIX_MQUEUE = y
+        EOF
 
     - name: Add Build based configs
       shell: bash
