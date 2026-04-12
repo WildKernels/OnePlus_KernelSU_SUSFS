@@ -833,7 +833,7 @@ jobs:
             feature_flags=$(jq -r --arg MODEL "$model" '
               .[] | 
               select(.model == $MODEL) |
-              "\(.hmbird // false)\t\(.susfs // false)\t\(.bbr // false)\t\(.bbg // false)\t\(.ttl // false)\t\(.ip_set // false)\t\(.unicode // false)\t\(.ds // false)"
+              "\(.hmbird // false)\t\(.susfs // false)\t\(.bbr // false)\t\(.bbg // false)\t\(.ttl // false)\t\(.ip_set // false)\t\(.unicode // false)\t\(.ds // false)\t\(.ntsync // false)"
             ' <<< "$JSON_BUILD_DATA")
             
             features=""
@@ -841,7 +841,7 @@ jobs:
             if [[ -z "$feature_flags" ]]; then
               echo "Warning: No JSON entry found for model: $model" >&2
             else
-              IFS=$'\t' read -r hmbird susfs bbr bbg ttl ip_set unicode ds <<< "$feature_flags"
+              IFS=$'\t' read -r hmbird susfs bbr bbg ttl ip_set unicode ds ntsync <<< "$feature_flags"
               
               # Build features string based on boolean values
               [[ "$hmbird" == "true" ]] && features+="🐦 HMBIRD "
@@ -852,6 +852,7 @@ jobs:
               [[ "$ip_set" == "true" ]] && features+="🧱 IP_SET & IPv6 NAT"
               [[ "$unicode" == "true" ]] && features+="🔧 Unicode Fix"
               [[ "$ds" == "true" ]] && features+="💻 Droidspaces Support"
+              [[ "$ntsync" == "true" ]] && features+="🔃 NTSync Support"
             fi
             
             printf "| %-13s | %-10s | %-16s | %-30s |\n" \
@@ -974,6 +975,7 @@ jobs:
           - **TMPFS_POSIX_ACL** - POSIX ACLs for tmpfs
           - **HMBIRD SCX** - Scheduler extensions for all SM8750/MT6991 devices
           - **Droidspaces** - Support Portable Linux containers to run full Linux environments.
+          - **NTSync** - Provide high-performance, low-latency synchronization primitives compatible with the Windows NT kernel API
           
           ---
           
@@ -1042,6 +1044,8 @@ jobs:
           - Additional General Optimisations.
           - Wild_KSU Manager Support.
           - Unicode Bypass Fix
+          - Droidspaces Support
+          - NTSync Support
           
           ### Previous Releases
           See [Releases Page](${{ github.server_url }}/${{ github.repository }}/releases)
