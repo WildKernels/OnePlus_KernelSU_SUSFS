@@ -44,6 +44,10 @@ on:
         description: 'Clean build (no ccache)'
         type: boolean
         default: false
+      build_timestamp:
+        description: 'Custom kernel build timestamp for uname -a (e.g. "Tue Feb 10 10:01:02 UTC 2026"). Leave empty for current time.'
+        type: string
+        default: ''
       android12-5_10_susfs_branch_or_commit:
         description: 'Enter SusFS Branch or commit hash for android12-5.10'
         type: string
@@ -579,6 +583,7 @@ jobs:
           ksu_branch_or_hash: ${{ matrix.ksu_resolved_hash }}
           susfs_commit_hash_or_branch: ${{ matrix.susfs_resolved_hash }}
           optimize_level: ${{ inputs.optimize_level }}
+          build_timestamp: ${{ inputs.build_timestamp }}
           clean: ${{ inputs.clean_build }}
 
       - name: 📊 Build statistics
