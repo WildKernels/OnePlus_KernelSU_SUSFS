@@ -70,15 +70,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      device_count: ${{ steps.set-matrix.outputs.device_count }}
-      count: ${{ steps.set-matrix.outputs.count }}
+      device_count: ${{ steps.set-matrix.outputs.count }}
       active_gki_keys: ${{ steps.set-matrix.outputs.active_gki_keys }}
       susfs_hash_android12_5_10: ${{ steps.set-matrix.outputs.susfs_hash_android12_5_10 }}
       susfs_hash_android13_5_15: ${{ steps.set-matrix.outputs.susfs_hash_android13_5_15 }}
       susfs_hash_android14_6_1:  ${{ steps.set-matrix.outputs.susfs_hash_android14_6_1 }}
       susfs_hash_android15_6_6:  ${{ steps.set-matrix.outputs.susfs_hash_android15_6_6 }}
       susfs_hash_android16_6_12: ${{ steps.set-matrix.outputs.susfs_hash_android16_6_12 }}
-      ksu_resolved_hash: ${{ steps.set-matrix.outputs.ksu_resolved_hash }}
+      ksu_resolved_hash:    ${{ steps.set-matrix.outputs.ksu_resolved_hash }}
       ksu_options_normalized: ${{ steps.set-matrix.outputs.ksu_options_normalized }}
       susfs_base_version: ${{ steps.set-matrix.outputs.susfs_base_version }}
     env:
@@ -158,9 +157,9 @@ jobs:
           esac
           
           filtered=$(jq -c "$jq_filter" matrix.json)
-          device_count=$(jq 'length' <<<"$filtered")
+          count=$(jq 'length' <<<"$filtered")
           
-          if [ "$device_count" -eq 0 ]; then
+          if [ "$count" -eq 0 ]; then
             echo "::error::No config files found for input '$input' after applying filters!"
             echo ""
             echo "Available configurations:"
@@ -171,20 +170,16 @@ jobs:
           echo "$filtered" | jq '.' > matrix.json
           
           # For each device + each ksu option → one combined entry
-          merged_matrix=$(jq -n \
-            --argjson devices "$filtered" \
-            --argjson ksu_list "$ksu_options_normalized" \
-            '[ $devices[] as $dev | $ksu_list[] as $ksu | ($dev + {ksu_type: $ksu.type, ksu_hash: $ksu.hash}) ]')
+          merged_matrix=$(jq -n --argjson devices "$filtered" --argjson ksu_list "$ksu_options_normalized" '[ $devices[] as $dev | $ksu_list[] as $ksu | ($dev + {ksu_type: $ksu.type, ksu_hash: $ksu.hash}) ]')
           
           final_count=$(echo "$merged_matrix" | jq 'length')
           
-          echo "✅ Found $device_count device(s) expanded to $final_count build(s)"
+          echo "✅ Found $final_count device(s) to build"
           echo ""
           echo "Selected devices:"
           jq -r '.[] | "  - \(.model) (\(.os_version), \(.android_version)-\(.kernel_version), \(.ksu_type) - \(.ksu_hash))"' <<<"$merged_matrix"
           
-          echo "device_count=$device_count" >> "$GITHUB_OUTPUT"
-          echo "count=$final_count" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
           
           ksu_type=$(echo "$ksu_options_normalized" | jq -r '.[0].type')
           ksu_ref=$(echo "$ksu_options_normalized" | jq -r '.[0].hash')
@@ -244,7 +239,7 @@ jobs:
           echo "ksu_resolved_hash=$resolved_sha" >> "$GITHUB_OUTPUT"
           
           # Inject ksu_resolved_hash into each device in the matrix
-          merged_matrix=$(echo "$merged_matrix" | jq --arg resolved_sha "$resolved_sha" 'map(.ksu_resolved_hash = $resolved_sha)')
+          merged_matrix=$(echo "$merged_matrix" | jq  --arg resolved_sha "$resolved_sha" 'map(.ksu_resolved_hash = $resolved_sha)')
           
           # SUSFS hash fetch
           SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
@@ -343,8 +338,8 @@ jobs:
           # Write hash to GITHUB_OUTPUT
           echo "susfs_hash_android12_5_10=${susfs_hashes[android12-5.10]:-unknown}" >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android13_5_15=${susfs_hashes[android13-5.15]:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "susfs_hash_android14_6_1=${susfs_hashes[android14-6.1]:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "susfs_hash_android15_6_6=${susfs_hashes[android15-6.6]:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "susfs_hash_android14_6_1=${susfs_hashes[android14-6.1]:-unknown}"   >> "$GITHUB_OUTPUT"
+          echo "susfs_hash_android15_6_6=${susfs_hashes[android15-6.6]:-unknown}"   >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android16_6_12=${susfs_hashes[android16-6.12]:-unknown}" >> "$GITHUB_OUTPUT"
           
           # SUSFS_VERSION — only when releasing
@@ -427,8 +422,7 @@ jobs:
           ## 🎯 Build Plan
           
           **Target:** ${{ inputs.op_model }}  
-          **Devices:** ${{ steps.set-matrix.outputs.count }}
-          **Builds:** ${{ steps.set-matrix.outputs.count }}
+          **Devices:** ${{ steps.set-matrix.outputs.count }}  
           
           **Configuration:**
           EOF
@@ -574,9 +568,7 @@ jobs:
         id: prepare_config
         shell: bash
         run: |
-          echo "config_json=$(jq -nc --argjson m '${{ toJSON(matrix) }}' \
-            '$m | del(.ksu_type, .ksu_hash, .ksu_resolved_hash, .susfs_resolved_hash, .disk_cleanup)')" \
-            >> "$GITHUB_OUTPUT"
+          echo "config_json=$(jq -nc --argjson m '${{ toJSON(matrix) }}' '$m | del(.ksu_type, .ksu_hash, .ksu_resolved_hash)')" >> "$GITHUB_OUTPUT"
 
       - name: 🔨 Build Kernel
         id: build
@@ -586,7 +578,6 @@ jobs:
           ksu_type: ${{ matrix.ksu_type }}
           ksu_branch_or_hash: ${{ matrix.ksu_resolved_hash }}
           susfs_commit_hash_or_branch: ${{ matrix.susfs_resolved_hash }}
-          build_timestamp: ${{ inputs.build_timestamp }}
           optimize_level: ${{ inputs.optimize_level }}
           clean: ${{ inputs.clean_build }}
 
