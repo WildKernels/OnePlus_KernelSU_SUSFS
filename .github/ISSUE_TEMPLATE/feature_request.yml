@@ -1,0 +1,63 @@
+name: Feature Request
+description: Request the inclusion of a kernel patch or feature in the build
+title: "[FEAT]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!NOTE]
+        > Use this template to request the addition of a kernel patch or feature to this build (e.g. droidspace, ntsync, hmbird, scheduler tweaks, etc.).
+        > KernelSU-Next and SUSFS options are managed by their respective upstream repositories — open issues there instead.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: This is a kernel patch/feature request, not a KernelSU-Next or SUSFS upstream issue.
+          required: true
+
+  - type: input
+    id: feature_name
+    attributes:
+      label: Feature / Patch Name
+      description: Name of the patch, patchset, or feature you are requesting.
+      placeholder: "e.g. ntsync, droidspace, hmbird, ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What does this feature/patch do? Why should it be included?
+      placeholder: "Describe the feature and the benefit it brings..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: source
+    attributes:
+      label: Patch / Source Reference
+      description: Link to the upstream patch, commit, repository, or any relevant reference (LKML, GitHub, XDA, etc.).
+      placeholder: |
+        - Upstream patch: https://...
+        - Reference / discussion: https://...
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Suggested Implementation (optional)
+      description: If you know how to integrate this (e.g. config key to enable, defconfig change, specific commit to cherry-pick), share it here.
+      placeholder: "e.g. Cherry-pick commit abc123 from kernel/msm-X.Y, enable CONFIG_XYZ=y..."
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other relevant information, test results, or community discussions.

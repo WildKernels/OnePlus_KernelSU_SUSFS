@@ -1,0 +1,188 @@
+name: Bug Report
+description: Report a bug or issue with the kernel
+title: "[BUG]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!IMPORTANT]
+        > These kernels are built for **Stock ROMs only** (OOS/ColorOS). Do **not** report issues on custom ROMs.
+        > If you are using a non-OnePlus device, make sure you have disabled dm-verity before flashing.
+        > Fill in **all required fields** — incomplete reports will be closed without investigation.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Confirm before submitting.
+      options:
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am running a **Stock ROM** (OOS or ColorOS).
+          required: true
+        - label: "*(Non-OnePlus devices only)* I have read the [compatibility list](../../compatibility.md) and confirmed my device is listed or uses a OnePlus kernel with a matching KMI."
+
+  - type: dropdown
+    id: device_type
+    attributes:
+      label: Device Type
+      options:
+        - OnePlus device
+        - Non-OnePlus device (using a compatible OnePlus kernel)
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device Name & Model
+      description: Full device name and model number (e.g. OnePlus 13 — PHB110, Realme GT 7 Pro — RMX5111).
+      placeholder: "e.g. OnePlus 13 — PHB110"
+    validations:
+      required: true
+
+  - type: input
+    id: non_oneplus_kernel
+    attributes:
+      label: "(Non-OnePlus only) OnePlus kernel used"
+      description: Which OnePlus device kernel are you flashing? Must match KMI. Leave blank if OnePlus device.
+      placeholder: "e.g. OnePlus 13 (android15-6.6.89)"
+
+  - type: input
+    id: oos_version
+    attributes:
+      label: OOS / COS Version
+      description: Full firmware version from Settings → About Phone.
+      placeholder: "e.g. ColorOS 15.0.0.800 / OxygenOS 15.0.0.800"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: android_version
+    attributes:
+      label: Android Version
+      options:
+        - Android 14
+        - Android 15
+        - Android 16
+    validations:
+      required: true
+
+  - type: input
+    id: manager_version
+    attributes:
+      label: Manager Version
+      description: Manager Version shown in the manager app (e.g. KSUN, KernelSU Next).
+      placeholder: "e.g. v3.2.0 (33129)"
+    validations:
+      required: true
+
+  - type: input
+    id: driver_version
+    attributes:
+      label: Kernel Driver Version
+      description: Driver version shown in the manager app (under GKI2).
+      placeholder: "e.g. 33129"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kernel_source
+    attributes:
+      label: Kernel Installation Source
+      options:
+        - GitHub Release
+        - GitHub Actions artifact
+    validations:
+      required: true
+
+  - type: input
+    id: kernel_link
+    attributes:
+      label: Kernel Release Tag or Actions Run Link
+      description: |
+        - **Release**: paste the tag (e.g. `v2.1.0-r1`) or the full GitHub release URL.
+        - **Artifact**: paste the full URL of the Actions run (e.g. `https://github.com/.../actions/runs/XXXXXXXXX`).
+      placeholder: "e.g. v2.1.0-r1 or https://github.com/.../actions/runs/..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of the issue.
+      placeholder: "Describe what is happening..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to consistently reproduce the bug.
+      placeholder: |
+        1. Flash kernel zip via ...
+        2. Open manager ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs Actual Behavior
+      placeholder: |
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Regression?
+      description: Was this working on a previous kernel version?
+      options:
+        - "Yes — worked on a previous version"
+        - "No — never worked"
+        - "Unknown / first install"
+    validations:
+      required: true
+
+  - type: input
+    id: last_working
+    attributes:
+      label: "(Regression only) Last working kernel version"
+      placeholder: "e.g. v2.1.0-r1 or 33095"
+
+  - type: textarea
+    id: manager_log
+    attributes:
+      label: Manager Log (name_log.tar.gz)
+      description: |
+        Export logs from KSUN: **Settings → Export logs** → a `name_log.tar.gz` file will be generated.
+        Attach it here by dragging and dropping the file into this field, or click the attachment icon below the text box.
+      placeholder: "Drag and drop name_log.tar.gz here, or click the attachment icon below..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: kmsg
+    attributes:
+      label: SYSTEM_LAST_KMSG (OnePlus devices only)
+      description: |
+        **OnePlus devices only** — leave blank if non-OnePlus.
+        Attach the file `/data/persist_log/backup/SYSTEM_LAST_KMSG.txt` by dragging and dropping it into this field, or click the attachment icon below the text box.
+        Also include the **file modification date** (visible in file properties or via `ls -la /data/persist_log/backup/SYSTEM_LAST_KMSG.txt`).
+      placeholder: |
+        File date: YYYY-MM-DD HH:MM
+
+        Drag and drop SYSTEM_LAST_KMSG.txt here, or click the attachment icon below...
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other relevant information (Magisk/KernelSU modules installed, previous kernel, adb logcat, screenshots, etc.).
