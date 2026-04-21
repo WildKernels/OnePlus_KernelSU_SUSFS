@@ -1,0 +1,162 @@
+name: Mirror static toolchains to GitHub Release
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure Single Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if the release already exists
+          if ! gh release view "toolchain-cache" --repo "fatalcoder524/OnePlus_KernelSU_SUSFS" >/dev/null 2>&1; then
+            echo "Release not found. Creating..."
+            gh release create "toolchain-cache" \
+              --title "Toolchains Mirror Cache" \
+              --notes "Deduplicated Toolchains" \
+              --draft \
+              --repo "fatalcoder524/OnePlus_KernelSU_SUSFS"
+          else
+            echo "Release 'toolchain-cache' already exists. Skipping creation."
+          fi
+
+  generate-mirror-matrix:
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Generate Mirror Matrix
+        id: generate-config
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "[" > all_configs.json
+          mapfile -t files < <(find configs/ -name "*.json")
+          for i in "${!files[@]}"; do
+            cat "${files[$i]}" >> all_configs.json
+            [[ $((i+1)) -lt ${#files[@]} ]] && echo "," >> all_configs.json
+          done
+          echo "]" >> all_configs.json
+
+      - name: Resolve Unique Projects
+        id: set-matrix
+        shell: python
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          import xml.etree.ElementTree as ET
+          import json
+          import os
+          import subprocess
+          import shutil
+          
+          with open('all_configs.json', 'r') as f:
+              configs = json.load(f)
+          
+          unique_toolchains = {}
+          TOOLCHAIN_KEYWORDS = ["clang", "rust"]
+          
+          print(f"Processing {len(configs)} configurations...")
+          print("-" * 50)
+          
+          for cfg in configs:
+              op_model = cfg.get('model', 'Unknown')
+              op_branch = cfg.get('branch', '')
+              op_manifest = cfg.get('manifest', '')
+              op_os_version = cfg.get('os_version', '').lower()
+              
+              xml_file = "temp_manifest.xml"
+              
+              try:
+                  if op_manifest.startswith("https://"):
+                      subprocess.run(f"curl -LfsS {op_manifest} -o {xml_file}", shell=True, check=True)
+                  elif op_branch.startswith("wild/"):
+                      shutil.copy(f"manifests/{op_os_version}/{op_manifest}", xml_file)
+                  else:
+                      url = f"https://raw.githubusercontent.com/OnePlusOSS/kernel_manifest/refs/heads/{op_branch}/{op_manifest}"
+                      subprocess.run(f"curl -LfsS {url} -o {xml_file}", shell=True, check=True)
+                  
+                  root = ET.parse(xml_file).getroot()
+                  remotes = {r.get('name'): r.get('fetch').rstrip('/') for r in root.findall('remote')}
+                  default = root.find('default')
+                  def_remote = default.get('remote')
+                  def_rev = default.get('revision')
+                  
+                  for project in root.findall('project'):
+                      name = project.get('name')
+                      match = next((x for x in TOOLCHAIN_KEYWORDS if x in name.lower()), None)
+                      
+                      if match:
+                        type_label = match
+                        remote_name = project.get('remote', def_remote)
+                        rev = project.get('revision', def_rev)
+                        base_url = remotes.get(remote_name, "")
+                        cache_filename = f"{type_label}-{rev}.tar.gz"
+                        
+                        if cache_filename not in unique_toolchains and ("git.codelinaro.org" in base_url or "googlesource.com" in base_url):
+                            if "googlesource.com" in base_url:
+                                dl_url = f"{base_url}/{name}/+archive/{rev}.tar.gz"
+                            else:
+                                dl_url = f"{base_url}/{name}/-/archive/{rev}.tar.gz"
+                            unique_toolchains[cache_filename] = {"rev": rev, "url": dl_url, "name": name, "type_label": type_label, "cache_file": cache_filename}
+                            print(f"🆕 [{op_model}][{op_os_version}] -> New {type_label} found: {rev}")
+                        else:
+                            print(f"♻️ [{op_model}][{op_os_version}] -> Using existing {type_label}: {rev}")
+              except Exception as e:
+                  print(f"⚠️ Failed to process {op_manifest}: {e}")
+          matrix = {"include": list(unique_toolchains.values())}
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"matrix={json.dumps(matrix)}\n")
+          print(f"✅ Found {len(unique_toolchains)} unique projects to mirror.")
+
+  mirror-to-release:
+    needs: [prepare-release, generate-mirror-matrix]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.generate-mirror-matrix.outputs.matrix) }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Sync & Upload
+        run: |
+          TARGET_REPO="${{ github.repository }}"
+          REV="${{ matrix.rev }}"
+          FILENAME="${{ matrix.cache_file }}"
+          
+          EXISTING_ASSETS=$(gh release view "toolchain-cache" --repo "$TARGET_REPO" --json assets --jq ".assets[].name")
+          
+          if ! echo "$EXISTING_ASSETS" | grep -q "^${FILENAME}$" && ! echo "$EXISTING_ASSETS" | grep -q "^${FILENAME}.partaa$"; then
+            echo "📥 Downloading ${{ matrix.type_label }} from ${{ matrix.url }}..."
+            curl -LfsS -# -H 'User-Agent: Mozilla/5.0' --tcp-fastopen -o "$FILENAME" "${{ matrix.url }}"
+            
+            FILE_SIZE=$(stat -c%s "$FILENAME")
+            MAX_SIZE=2000000000 # ~1.86GB
+            
+            if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
+              echo "⚠️ File is > 2GB $FILE_SIZE bytes. Splitting..."
+              split -b 1500M "$FILENAME" "${FILENAME}.part"
+              
+              for part in "${FILENAME}".part*; do
+                echo "📤 Uploading $part..."
+                gh release upload "toolchain-cache" "$part" --clobber --repo "$TARGET_REPO"
+              done
+            else
+              echo "📤 Uploading single file..."
+              gh release upload "toolchain-cache" "$FILENAME" --clobber --repo "$TARGET_REPO"
+            fi
+          else
+            echo "✅ ${{ matrix.type_label }} revision ${{ matrix.rev }} already cached."
+          fi

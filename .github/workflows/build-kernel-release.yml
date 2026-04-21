@@ -49,6 +49,11 @@ on:
         required: false
         type: boolean
         default: false
+      mirror_toolchains:
+        description: 'Do you want to sync toolchains before build? [99% runs not required]'
+        required: false
+        type: boolean
+        default: false
       build_timestamp:
         description: 'Custom kernel build timestamp for uname -a (e.g. "Tue Feb 10 10:01:02 UTC 2026"). Leave empty for current time.'
         type: string
@@ -56,11 +61,11 @@ on:
       android12-5_10_susfs_branch_or_commit:
         description: 'Enter SusFS Branch or commit hash for android12-5.10'
         type: string
-        default: ''      
+        default: ''
       android13-5_15_susfs_branch_or_commit:
         description: 'Enter SusFS Branch or commit hash for android13-5.15'
         type: string
-        default: ''      
+        default: ''
       android14-6_1_susfs_branch_or_commit:
         description: 'Enter SusFS Branch or commit hash for android14-6.1'
         type: string
@@ -465,6 +470,7 @@ jobs:
           - Clean Build/No Ccache: ${{ inputs.clean_build && '✅ Yes' || '❌ No' }}
           - Create Release: ${{ inputs.make_release && '✅ Yes' || '❌ No' }}
           - Create Debug Artifacts: ${{ inputs.debug && '✅ Yes' || '❌ No' }}
+          - Sync toolchains: ${{ inputs.mirror_toolchains && '✅ Yes' || '❌ No' }}
           
           **SUSFS Configuration:**
           EOF
@@ -515,10 +521,17 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "> **⚠️ Android-Kernel Filter:** Only OOS15 and OOS16 devices will be built for \`${{ inputs.op_model }}\`" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
+  mirror_toolchain:
+    needs: set-op-model
+    if: ${{ inputs.mirror_toolchains }}
+    uses: ./.github/workflows/mirror-toolchains.yml
+    secrets: inherit
+
   build:
     name: build (${{ matrix.model }}, ${{ matrix.soc }}, ${{ matrix.branch }}, ${{ matrix.manifest }}, ${{ matrix.android_version }}, ${{ matrix.kernel_version }}, ${{ matrix.os_version }}, ${{ matrix.ksu_type }})
-    needs: set-op-model
+    needs: [set-op-model, mirror_toolchain]
+    if: always() && needs.set-op-model.result == 'success' && (needs.mirror_toolchain.result == 'success' || needs.mirror_toolchain.result == 'skipped')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -571,7 +584,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             git curl ca-certificates build-essential clang lld flex bison \
             libelf-dev libssl-dev libncurses-dev zlib1g-dev liblz4-tool \
-            libxml2-utils rsync unzip dwarves file python3 ccache jq bc dos2unix kmod libdw-dev elfutils
+            libxml2-utils rsync unzip dwarves file python3 ccache jq bc dos2unix kmod libdw-dev elfutils pigz
           sudo apt-get clean
           echo "✅ Dependencies installed"
           echo "::endgroup::"
@@ -604,7 +617,7 @@ jobs:
 
       - name: 🔨 Build Kernel
         id: build
-        uses: ./.github/actions
+        uses: ./.github/actions/build-kernel
         with:
           op_config_json: ${{ steps.prepare_config.outputs.config_json }}
           ksu_type: ${{ matrix.ksu_type }}
@@ -614,6 +627,7 @@ jobs:
           build_timestamp: ${{ inputs.build_timestamp }}
           clean: ${{ inputs.clean_build }}
           debug: ${{ inputs.debug }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📊 Build statistics
         id: build-stat

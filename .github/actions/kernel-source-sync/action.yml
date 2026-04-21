@@ -1,0 +1,228 @@
+name: 'Download and configure Kernel Source code'
+
+inputs:
+  source_location:
+    description: 'Folder path to save Kernel source'
+    required: true
+    type: string
+  github_token:
+    description: 'GitHub Token'
+    required: true
+  debug:
+    description: 'Enable Logs'
+    required: false
+    type: boolean
+    default: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Download and Prepare Manifest
+      shell: bash
+      working-directory: ${{ inputs.source_location }}
+      run: |
+        # Download and Prepare Manifest
+        if [[ "$OP_MANIFEST" == https://* ]]; then
+          curl --fail --show-error --location --proto '=https' "$OP_MANIFEST" -o manifest.xml
+        elif [[ "$OP_BRANCH" == wild/* ]]; then
+          cp "../manifests/$(echo "$OP_OS_VERSION" | tr '[:upper:]' '[:lower:]')/$OP_MANIFEST" manifest.xml
+        else
+          curl --fail --show-error --location --proto '=https' "https://raw.githubusercontent.com/OnePlusOSS/kernel_manifest/refs/heads/$OP_BRANCH/$OP_MANIFEST" -o manifest.xml
+        fi
+
+    - name: Download Manifest Archives
+      shell: python
+      env:
+        PYTHONUNBUFFERED: "1"
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        DEBUG: ${{ inputs.debug }}
+      working-directory: ${{ inputs.source_location }}
+      run: |
+        # Download Manifest Archives
+        import xml.etree.ElementTree as ET
+        import subprocess
+        import os, shutil
+        import time
+        import glob
+        from concurrent.futures import ThreadPoolExecutor
+        import requests
+        
+        MAX_WORKERS = (os.cpu_count() or 2) * 4
+        NPROC = int(subprocess.check_output("nproc", shell=True).strip())
+        TARGET_REPO = "${{ github.repository }}"
+        TOOLCHAIN_KEYWORDS = ["clang", "rust"]
+        DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
+        aria_quiet_flags = "--quiet --summary-interval=0" if not DEBUG else ""
+        
+        print("::group::Download Manifest Archives")
+        
+        def get_release_parts(label, rev):
+            url = f"https://api.github.com/repos/{TARGET_REPO}/releases"
+            headers = {
+                "Authorization": f"token {os.environ['GITHUB_TOKEN']}",
+                "Accept": "application/vnd.github.v3+json"
+            }
+            
+            for attempt in range(3):
+                try:
+                    response = requests.get(url, headers=headers)
+                    response.raise_for_status()
+                    releases = response.json()
+                    release = next((r for r in releases if r['name'] == "Toolchains Mirror Cache" or r['tag_name'] == "toolchain-cache"), None)
+                    if not release: return []
+                    
+                    prefix = f"{label}-{rev}.tar.gz"
+                    return [(a['name'], a['url']) for a in release['assets'] if a['name'].startswith(prefix)]
+                except Exception as e:
+                    print(f"  [RETRY {attempt+1}] API failed: {e}")
+                    time.sleep(2)
+            return []
+        
+        def sync_project(task):
+            name, path, url, strip, rev = task
+            if path not in ["./", "."]:
+                os.makedirs(path, exist_ok=True)
+            
+            headers = (
+                "-H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' "
+                "-H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8' "
+                "-H 'Accept-Encoding: gzip, deflate, br' "
+                "-H 'Connection: keep-alive' "
+                "--tcp-fastopen"
+            )
+            
+            print(f"Syncing: {name} -> {path}")
+            start_time = time.time()
+            print(f"  [PENDING] {name}")
+            try:
+                match = next((x for x in TOOLCHAIN_KEYWORDS if x in name.lower()), None)
+                if match:
+                    label = match
+                    base_filename = f"{label}-{rev}.tar.gz"
+                    
+                    asset_data = get_release_parts(label, rev)
+                    
+                    if not asset_data:
+                        print(f"  [ERROR] No assets found for {base_filename} in release!")
+                        return False
+                    
+                    if DEBUG:
+                        print(f"  [CACHE] Fetching {label} toolchain: {base_filename}...")
+                    
+                    for asset_name, api_url in asset_data:
+                        aria_cmd = (
+                            f"aria2c -x16 -s16 -k1M --file-allocation=none {aria_quiet_flags} "
+                            f"--header='Authorization: token {os.environ['GITHUB_TOKEN']}' "
+                            f"--header='Accept: application/octet-stream' "
+                            f"-o {asset_name} {api_url}"
+                        )
+                        subprocess.run(aria_cmd, shell=True, check=True, capture_output=not DEBUG)
+                    
+                    parts = sorted(glob.glob(f"{base_filename}.part*"))
+                    if parts:
+                        if DEBUG:
+                            print(f"  [MERGE] Combining {len(parts)} parts for {rev}...")
+                        subprocess.run(f"cat {base_filename}.part* | tar -I 'pigz -p {NPROC} -b 256' -x --record-size=1M --no-same-owner --no-same-permissions -C {path} {strip}", shell=True, check=True)
+                        subprocess.run(f"rm {base_filename}.part*", shell=True, check=True)
+                    else:
+                        if os.path.exists(base_filename):
+                            if DEBUG:
+                                print(f"  [EXTRACT] Single file detected...")
+                            subprocess.run(f"tar -I 'pigz -p {NPROC} -b 256' -x --record-size=1M --no-same-owner --no-same-permissions -f {base_filename} -C {path} {strip}", shell=True, check=True)
+                            os.remove(base_filename)
+                        else:
+                            print(f"  [ERROR] {base_filename} missing after download!")
+                            return False
+                else:
+                    cmd = f"curl -LfsS {headers} --retry 5 --connect-timeout 30 '{url}' | tar -I 'pigz -p {NPROC} -b 256' -x --record-size=1M -C {path} {strip}"
+                    subprocess.run(cmd, shell=True, check=True)
+                
+                duration = time.time() - start_time
+                print(f"Synced {name} successfully! ({duration:.2f}s)")
+                return True
+            except subprocess.CalledProcessError as e:
+                print(f"  [ERROR] Command failed for {name}: {e.cmd}")
+                print(f"   Stderr: {e.stderr.decode() if e.stderr else 'No stderr'}")
+                return False
+            except Exception as e:
+                print(f"  [ERROR] Failed to sync {name}")
+                return False
+        
+        global_start = time.time()
+        
+        with open('manifest.xml', 'r') as f:
+            manifest_content = f.read()
+        
+        root = ET.fromstring(manifest_content)
+        top_dir = os.getcwd()
+        
+        remotes = {r.get('name'): r.get('fetch').rstrip('/') for r in root.findall('remote')}
+        default = root.find('default')
+        def_remote = default.get('remote') if default is not None else None
+        def_rev = default.get('revision') if default is not None else None
+        
+        sync_tasks = []
+        post_process_data = []
+        
+        for project in root.findall('project'):
+            name = project.get('name')
+            path = project.get('path', name)
+            remote_name = project.get('remote', def_remote)
+            rev = project.get('revision', def_rev)
+            base_url = remotes.get(remote_name)
+            
+            if not base_url: continue
+            
+            if "github.com" in base_url:
+                url = f"{base_url}/{name}/archive/{rev}.tar.gz"
+                strip = "--strip-components=1"
+            elif "googlesource.com" in base_url:
+                url = f"{base_url}/{name}/+archive/{rev}.tar.gz"
+                strip = ""
+            elif "git.codelinaro.org" in base_url:
+                url = f"{base_url}/{name}/-/archive/{rev}.tar.gz"
+                strip = "--strip-components=1"
+            else:
+                continue
+            
+            sync_tasks.append((name, path, url, strip, rev))
+            
+            for child in project:
+                if child.tag in ['linkfile', 'copyfile']:
+                    post_process_data.append((path, child))
+        
+        if DEBUG:
+            print(f"Starting parallel sync of {len(sync_tasks)} projects...")
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            success_list = list(executor.map(sync_project, sync_tasks))
+            
+            if not all(success_list):
+                print("::error::One or more projects failed to sync!")
+                print("::endgroup::")
+                exit(1)
+        
+        print("Processing linkfiles and copyfiles...")
+        for path, child in post_process_data:
+            src_rel = child.get('src')
+            dest_rel = child.get('dest')
+            if not src_rel or not dest_rel: continue
+            
+            src_path = os.path.join(top_dir, path, src_rel)
+            dest_path = os.path.join(top_dir, dest_rel)
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            
+            if child.tag == 'linkfile':
+                if os.path.lexists(dest_path): os.remove(dest_path)
+                rel_target = os.path.relpath(src_path, os.path.dirname(dest_path))
+                os.symlink(rel_target, dest_path)
+                print(f"  [Link] {dest_rel} -> {src_rel}")
+            elif child.tag == 'copyfile':
+                shutil.copy2(src_path, dest_path)
+                print(f"  [Copy] {dest_rel} from {src_rel}")
+        
+        
+        total_duration = time.time() - global_start
+        minutes = int(total_duration // 60)
+        seconds = total_duration % 60
+        print(f"Kernel Sync completed in {minutes}m {seconds:.2f}s")
+        print("::endgroup::")
