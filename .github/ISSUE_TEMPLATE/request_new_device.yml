@@ -1,5 +1,5 @@
-name: Request New Device
-description: Request support for a new device (OnePlus or non-OnePlus)
+name: Request New Device (OnePlus)
+description: Request support for a new OnePlus device
 title: "[DEVICE]: "
 labels: ["device"]
 body:
@@ -7,38 +7,28 @@ body:
     attributes:
       value: |
         > [!IMPORTANT]
+        > This form is for **OnePlus devices only** (including OPPO/Realme devices with official OnePlus kernel sources).
         > Kernels are built from **OnePlus official sources** and target **Stock ROMs only**.
-        > For non-OnePlus devices, support depends on a matching KMI with an existing OnePlus kernel.
-        > Read the [compatibility guide](../../compatibility.md) before submitting.
+        > If you want to add a **non-OnePlus device** to the compatibility list, use the [Compatibility List Request](request_compatibility.yml) form instead.
 
   - type: checkboxes
     id: prerequisites
     attributes:
       label: Prerequisites
       options:
-        - label: I have checked the [compatibility list](../../compatibility.md) and my device is not already listed.
-          required: true
         - label: I have searched existing issues to confirm this request is not a duplicate.
           required: true
-        - label: I understand that only **Stock ROMs** are supported.
+        - label: I understand that only **Stock ROMs** (OOS/ColorOS) are supported.
           required: true
-
-  - type: dropdown
-    id: device_type
-    attributes:
-      label: Device Type
-      options:
-        - OnePlus device
-        - Non-OnePlus device
-    validations:
-      required: true
+        - label: This is a **OnePlus / OPPO / Realme** device with official kernel sources.
+          required: true
 
   - type: input
     id: device_name
     attributes:
       label: Device Name & Model Number
       description: Full commercial name and model number.
-      placeholder: "e.g. Realme GT 7 Pro — RMX5111"
+      placeholder: "e.g. OnePlus 13T — PHC110"
     validations:
       required: true
 
@@ -55,14 +45,14 @@ body:
     attributes:
       label: Current Android / ROM Version
       description: Android version and OEM firmware version the device shipped with or is currently running.
-      placeholder: "e.g. Android 15 — Realme UI 6.0"
+      placeholder: "e.g. Android 15 — OxygenOS 15.0"
     validations:
       required: true
 
   - type: input
     id: kmi
     attributes:
-      label: Kernel KMI (Kernel Module Interface)
+      label: Kernel KMI
       description: |
         Find it with `uname -r` in a terminal or ADB (`adb shell uname -r`).
         Format: `androidXX-Y.ZZ.AAA` (e.g. `android15-6.6.75`).
@@ -70,59 +60,14 @@ body:
     validations:
       required: true
 
-  - type: input
-    id: matching_oneplus
-    attributes:
-      label: Matching OnePlus Kernel (KMI match)
-      description: |
-        Which OnePlus device from this repo has the same or compatible KMI?
-        XX-YY.ZZ must match exactly; AAA must be ≤ the OnePlus kernel version.
-        Leave blank if unknown — we will evaluate.
-      placeholder: "e.g. OnePlus 13 (android15-6.6.89)"
-
   - type: textarea
     id: device_info
     attributes:
-      label: Device Specifications / Source Links
-      description: |
-        Link to official specs page, kernel sources, or device tree if available.
-        This helps evaluate compatibility faster.
+      label: Kernel Source / Specs Links
+      description: Link to official kernel sources or specs page. This speeds up evaluation significantly.
       placeholder: |
-        - Specs: https://...
         - Kernel source: https://...
-        - Device tree: https://...
-
-  - type: dropdown
-    id: tested
-    attributes:
-      label: Have you already tested a compatible kernel on this device?
-      options:
-        - "Yes — it works (partially or fully)"
-        - "Yes — it did not work"
-        - "No — not tested yet"
-    validations:
-      required: true
-
-  - type: textarea
-    id: test_result
-    attributes:
-      label: Test Results (if tested)
-      description: |
-        If you already flashed a kernel, describe what works and what doesn't.
-        Include manager version, driver version, and the kernel you flashed (tag or artifact link).
-      placeholder: |
-        Kernel flashed: e.g. OnePlus 13 — v2.0.0-r1
-        Manager: e.g. KSUN v3.2.0 (33129)
-        Works: root access, modules
-        Broken: fingerprint, camera
-
-  - type: checkboxes
-    id: non_oneplus_confirm
-    attributes:
-      label: "(Non-OnePlus only) Additional confirmations"
-      options:
-        - label: I have disabled dm-verity and verification via fastboot or other means.
-        - label: I understand this is **community-supported** and may not receive official builds.
+        - Specs: https://...
 
   - type: textarea
     id: additional

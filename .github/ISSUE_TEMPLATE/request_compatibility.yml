@@ -1,0 +1,99 @@
+name: Compatibility List Request
+description: Request to add a non-OnePlus device to the compatibility list after successful testing
+title: "[COMPAT]: "
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!IMPORTANT]
+        > This form is for **non-OnePlus devices** that have been successfully tested with a compatible OnePlus kernel from this repo.
+        > Do **not** submit if you haven't tested yet — use this form only to report a **confirmed working** combination.
+        > Read the [compatibility guide](../../compatibility.md) before submitting.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have already flashed a kernel from this repo on my device and it works.
+          required: true
+        - label: I have checked the [compatibility list](../../compatibility.md) and my device is not already listed.
+          required: true
+        - label: I have searched existing issues to confirm this is not a duplicate.
+          required: true
+        - label: I have disabled dm-verity and verification via fastboot or other means.
+          required: true
+
+  - type: input
+    id: device_name
+    attributes:
+      label: Device Name & Model Number
+      description: Full commercial name and model number of your non-OnePlus device.
+      placeholder: "e.g. Realme GT 7 Pro — RMX5111"
+    validations:
+      required: true
+
+  - type: input
+    id: soc
+    attributes:
+      label: SoC (Chipset)
+      placeholder: "e.g. Snapdragon 8 Elite"
+    validations:
+      required: true
+
+  - type: input
+    id: android_version
+    attributes:
+      label: Android / ROM Version
+      description: Android version and OEM firmware version currently running.
+      placeholder: "e.g. Android 15 — Realme UI 6.0"
+    validations:
+      required: true
+
+  - type: input
+    id: kmi
+    attributes:
+      label: Kernel KMI
+      description: |
+        Find it with `uname -r` in a terminal or ADB (`adb shell uname -r`).
+        Format: `androidXX-Y.ZZ.AAA` (e.g. `android15-6.6.75`).
+      placeholder: "e.g. android15-6.6.75"
+    validations:
+      required: true
+
+  - type: input
+    id: oneplus_kernel_used
+    attributes:
+      label: OnePlus Kernel Flashed
+      description: Which OnePlus device kernel did you flash? Include the release tag or artifact link.
+      placeholder: "e.g. OnePlus 13 — v2.0.0-r1"
+    validations:
+      required: true
+
+  - type: input
+    id: manager_version
+    attributes:
+      label: Manager & Driver Version
+      description: Manager and driver version as shown in the manager app.
+      placeholder: "e.g. KSUN v3.2.0 (33129) — driver 33129"
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_result
+    attributes:
+      label: What Works / What Doesn't
+      description: Describe the test results in detail. Be specific about what is functional and what is broken.
+      placeholder: |
+        Works: root access, modules, Wi-Fi, Bluetooth, NFC
+        Broken: fingerprint, camera (front only)
+        Not tested: —
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other relevant information, links to XDA threads, Telegram discussions, etc.

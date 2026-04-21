@@ -69,11 +69,23 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: manager_type
+    attributes:
+      label: Manager Type
+      options:
+        - KernelSU-Next
+        - KernelSU
+        - WildKSU
+        - pershoot KSUN
+    validations:
+      required: true
+
   - type: input
     id: manager_version
     attributes:
       label: Manager Version
-      description: Manager Version shown in the manager app (e.g. KSUN, KernelSU Next).
+      description: Manager Version shown in the manager app.
       placeholder: "e.g. v3.2.0 (33129)"
     validations:
       required: true
@@ -155,7 +167,17 @@ body:
     id: last_working
     attributes:
       label: "(Regression only) Last working kernel version"
+      description: Only if you selected "Yes" for Regression. Which kernel version was the last one where this issue did not occur?
       placeholder: "e.g. v2.1.0-r1 or 33095"
+
+  - type: dropdown
+    id: stock_boot
+    attributes:
+      label: Boot.img stock
+      description: Working on stock boot.img?
+      options:
+        - "Yes"
+        - "No"
 
   - type: textarea
     id: manager_log
