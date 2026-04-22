@@ -1,6 +1,6 @@
 name: Feature Request
 description: Request the inclusion of a kernel patch or feature in the build
-title: "[FEAT]: "
+title: "[feat]: "
 labels: ["enhancement"]
 body:
   - type: markdown
@@ -17,7 +17,7 @@ body:
       options:
         - label: I have searched existing issues and this is not a duplicate.
           required: true
-        - label: This is a kernel patch/feature request, not a KernelSU-Next or SUSFS upstream issue.
+        - label: This is a kernel patch/feature request, not a request for KernelSU-Next or SUSFS.
           required: true
 
   - type: input

@@ -1,13 +1,13 @@
 name: Bug Report
 description: Report a bug or issue with the kernel
-title: "[BUG]: "
+title: "[bug]: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
         > [!IMPORTANT]
-        > These kernels are built for **Stock ROMs only** (OOS/ColorOS). Do **not** report issues on custom ROMs.
+        > These kernels are built for **Stock ROMs only** (OOS/COS). Do **not** report issues on custom ROMs.
         > If you are using a non-OnePlus device, make sure you have disabled dm-verity before flashing.
         > Fill in **all required fields** — incomplete reports will be closed without investigation.
 
@@ -176,8 +176,11 @@ body:
       label: Boot.img stock
       description: Working on stock boot.img?
       options:
+        - "Untested"
         - "Yes"
         - "No"
+    validations:
+      required: true
 
   - type: textarea
     id: manager_log

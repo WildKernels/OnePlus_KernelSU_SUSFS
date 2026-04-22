@@ -1,6 +1,6 @@
-name: Compatibility List Request
+name: Update Compatibility List Request
 description: Request to add a non-OnePlus device to the compatibility list after successful testing
-title: "[COMPAT]: "
+title: "[compat]: "
 labels: ["compatibility"]
 body:
   - type: markdown

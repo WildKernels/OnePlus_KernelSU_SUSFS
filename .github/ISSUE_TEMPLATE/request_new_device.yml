@@ -1,13 +1,13 @@
 name: Request New Device (OnePlus)
 description: Request support for a new OnePlus device
-title: "[DEVICE]: "
+title: "[device]: "
 labels: ["device"]
 body:
   - type: markdown
     attributes:
       value: |
         > [!IMPORTANT]
-        > This form is for **OnePlus devices only** (including OPPO/Realme devices with official OnePlus kernel sources).
+        > This form is for **OnePlus devices only** with official OnePlus kernel sources.
         > Kernels are built from **OnePlus official sources** and target **Stock ROMs only**.
         > If you want to add a **non-OnePlus device** to the compatibility list, use the [Compatibility List Request](request_compatibility.yml) form instead.
 
@@ -20,7 +20,7 @@ body:
           required: true
         - label: I understand that only **Stock ROMs** (OOS/ColorOS) are supported.
           required: true
-        - label: This is a **OnePlus / OPPO / Realme** device with official kernel sources.
+        - label: This is a **OnePlus** device with official kernel sources.
           required: true
 
   - type: input
