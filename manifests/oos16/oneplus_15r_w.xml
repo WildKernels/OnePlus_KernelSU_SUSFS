@@ -18,5 +18,4 @@
   </project>
   <project remote="aosp" name="platform/prebuilts/clang/host/linux-x86" path="kernel_platform/prebuilts/clang/host/linux-x86" clone-depth="1" groups="ddk" />
   <project remote="aosp" name="platform/prebuilts/rust" path="kernel_platform/prebuilts/rust" clone-depth="1" groups="ddk" />
-  <project remote="aosp" name="platform/prebuilts/clang-tools" path="kernel_platform/prebuilts/clang-tools" clone-depth="1" groups="ddk" />
 </manifest>
