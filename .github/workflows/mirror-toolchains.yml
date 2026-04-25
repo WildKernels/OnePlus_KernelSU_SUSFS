@@ -11,20 +11,27 @@ jobs:
   prepare-release:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
       - name: Ensure Single Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Check if the release already exists
           TARGET_REPO="${{ github.repository }}"
+          TAG_NAME="toolchain-cache"
           
-          if ! gh release view "toolchain-cache" --repo "$TARGET_REPO" >/dev/null 2>&1; then
+          if ! git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag not found. Creating backdated tag and release..."
+            
+            GIT_COMMITTER_DATE="2015-01-01T12:00:00" git tag -a "$TAG_NAME" -m "Internal Toolchains Cache"
+            git push origin "$TAG_NAME"
+            
             echo "Release not found. Creating..."
-            gh release create "toolchain-cache" \
-              --title "Toolchains Mirror Cache" \
-              --notes "Deduplicated Toolchains" \
-              --draft \
-              --repo "$TARGET_REPO"
+            gh release create "$TAG_NAME" --title "Toolchains Mirror Cache" --notes "Deduplicated Toolchains for Kernel Build" --repo "$TARGET_REPO"
           else
             echo "Release 'toolchain-cache' already exists. Skipping creation."
           fi
@@ -133,10 +140,11 @@ jobs:
           print(f"✅ Found {len(unique_toolchains)} unique projects to mirror.")
 
   mirror-to-release:
+    name: build (${{ matrix.type_label }}, ${{ matrix.rev }})
     needs: [prepare-release, generate-mirror-matrix]
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix: ${{ fromJSON(needs.generate-mirror-matrix.outputs.matrix) }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -146,19 +154,26 @@ jobs:
           TARGET_REPO="${{ github.repository }}"
           REV="${{ matrix.rev }}"
           FILENAME="${{ matrix.cache_file }}"
+          BASE_URL="https://github.com/${TARGET_REPO}/releases/download/toolchain-cache"
           
-          EXISTING_ASSETS=$(gh release view "toolchain-cache" --repo "$TARGET_REPO" --json assets --jq ".assets[].name")
+          echo "🔍 Checking if $FILENAME exists in mirror..."
           
-          if ! echo "$EXISTING_ASSETS" | grep -q "^${FILENAME}$" && ! echo "$EXISTING_ASSETS" | grep -q "^${FILENAME}.partaa$"; then
-            echo "📥 Downloading ${{ matrix.type_label }} from ${{ matrix.url }}..."
-            curl -LfsS -# -H 'User-Agent: Mozilla/5.0' --tcp-fastopen -o "$FILENAME" "${{ matrix.url }}"
+          STATUS=$(curl -IsL -o /dev/null -w "%{http_code}" "$BASE_URL/$FILENAME")
+          PART_STATUS=$(curl -IsL -o /dev/null -w "%{http_code}" "$BASE_URL/${FILENAME}.partaa")
+          
+          if [ "$STATUS" -eq 200 ] || [ "$PART_STATUS" -eq 200 ]; then
+            echo "✅ ${{ matrix.type_label }} revision ${{ matrix.rev }} already cached."
+          else
+            echo "📥 Not found. Downloading ${{ matrix.type_label }} from source..."
+            
+            aria2c -x16 -s16 -k1M -j5 --file-allocation=none --console-log-level=error --summary-interval=0 --retry-wait=5 --max-tries=10 -o "$FILENAME" "${{ matrix.url }}"
             
             FILE_SIZE=$(stat -c%s "$FILENAME")
             MAX_SIZE=2000000000 # ~1.86GB
             
             if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
-              echo "⚠️ File is > 2GB $FILE_SIZE bytes. Splitting..."
-              split -b 1500M "$FILENAME" "${FILENAME}.part"
+              echo "⚠️ File > 2GB. Splitting..."
+              split -b 1500M -a 2 "$FILENAME" "${FILENAME}.part"
               
               for part in "${FILENAME}".part*; do
                 echo "📤 Uploading $part..."
@@ -168,6 +183,4 @@ jobs:
               echo "📤 Uploading single file..."
               gh release upload "toolchain-cache" "$FILENAME" --clobber --repo "$TARGET_REPO"
             fi
-          else
-            echo "✅ ${{ matrix.type_label }} revision ${{ matrix.rev }} already cached."
           fi
