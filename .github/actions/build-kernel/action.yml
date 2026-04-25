@@ -1384,6 +1384,9 @@ runs:
             ;;
         esac
         
+        echo "Patch to fix kernel panic caused by oplus_bsp_midas"
+        patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/droidspaces/0001-Return-ghost-task-if-task-is-null-and-is-requested-b.patch"
+        
         cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
         CONFIG_SYSVIPC=y
         CONFIG_DEVTMPFS=y
