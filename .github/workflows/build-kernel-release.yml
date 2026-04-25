@@ -45,7 +45,7 @@ on:
         type: boolean
         default: false
       debug:
-        description: 'Enable dumping debug related artifacts'
+        description: 'Enable debug mode: dumping debug related artifacts and show some debug logs'
         required: false
         type: boolean
         default: false
