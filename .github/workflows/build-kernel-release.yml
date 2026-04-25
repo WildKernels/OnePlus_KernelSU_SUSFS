@@ -543,41 +543,14 @@ jobs:
       ksun_ver: ${{ steps.build-stat.outputs.ksu_version }}
       ksu_ver: ${{ steps.build-stat.outputs.ksu_version }}
     steps:
-      - name: 🧹 Emergency Disk Cleanup
-        if: ${{ matrix.disk_cleanup }}
-        run: |
-          echo "::group::Disk Usage Before Cleanup"
-          df -h
-          echo "::endgroup::"
-          
-          echo "::group::Removing Unnecessary Software"
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo apt-get clean
-          if command -v docker >/dev/null 2>&1; then
-            docker rmi $(docker images -q) 2>/dev/null || true
-          fi
-          echo "::endgroup::"
-          
-          echo "::group::Disk Usage After Cleanup"
-          df -h
-          AVAIL=$(df -h / | awk 'NR==2 {print $4}')
-          echo "✅ Available space: $AVAIL"
-          echo "::endgroup::"
-
-      - name: Download Apache Arrow's util_free_space.sh
-        if: ${{ matrix.disk_cleanup }}
-        run: |
-          curl -L -o util_free_space.sh https://raw.githubusercontent.com/apache/arrow/main/ci/scripts/util_free_space.sh
-          chmod +x util_free_space.sh
-          ./util_free_space.sh
-
       - name: 📥 Checkout Code
         uses: actions/checkout@v6
         with:
           fetch-depth: 1
+
+      - name: 🧹 Emergency Disk Cleanup
+        if: ${{ matrix.disk_cleanup }}
+        uses: ./.github/actions/disk-cleanup
 
       - name: Install Minimal Dependencies
         run: |
@@ -590,14 +563,6 @@ jobs:
             libxml2-utils rsync unzip dwarves file python3 ccache jq bc dos2unix kmod libdw-dev elfutils pigz
           sudo apt-get clean
           echo "✅ Dependencies installed"
-          echo "::endgroup::"
-
-      - name: 📦 Disk usage (pre-build)
-        run: |
-          echo "::group::Disk usage pre-build"
-          df -h /
-          du -sh "$GITHUB_WORKSPACE" 2>/dev/null || true
-          sudo rm -rf /tmp/* || true
           echo "::endgroup::"
 
       - name: ♻️ Configure ccache (bounded)
