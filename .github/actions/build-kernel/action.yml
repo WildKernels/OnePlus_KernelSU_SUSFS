@@ -615,6 +615,7 @@ runs:
       if: ${{ env.OP_RUST_BUILD == 'true'  && !env.BINDGEN_BIN_PATH }}
       run: |
         # Install bindgen via cargo (no full rustc needed)
+        set -euo pipefail
         echo "::group::Install bindgen only (no rustc)"
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
         source $HOME/.cargo/env
@@ -629,6 +630,18 @@ runs:
         
         # Verify
         bindgen --version
+        echo "::endgroup::"
+
+    - name: Test Rust & bindgen
+      shell: bash
+      if: ${{ env.OP_RUST_BUILD == 'true' }}
+      run: |
+        # Test Rust & bindgen
+        set -euo pipefail
+        echo "::group::Test Rust & bindgen"
+        cd "$COMMON_KERNEL_FOLDER"
+        export RUSTTARGET="aarch64-linux-android"
+        make V=1 rustavailable
         echo "::endgroup::"
 
 
