@@ -59,42 +59,25 @@ runs:
         DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
         aria_quiet_flags = "--quiet --summary-interval=0" if not DEBUG else ""
         
-        print("::group::Download Manifest Archives")
+        curl_headers = (
+            "-H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' "
+            "-H 'Accept: */*' "
+            "-H 'Connection: keep-alive' "
+            "--tcp-fastopen"
+        )
         
-        def get_release_parts(label, rev):
-            url = f"https://api.github.com/repos/{TARGET_REPO}/releases?per_page=100"
-            headers = {
-                "Authorization": f"token {os.environ['GITHUB_TOKEN']}",
-                "Accept": "application/vnd.github.v3+json"
-            }
-            
-            for attempt in range(3):
-                try:
-                    response = requests.get(url, headers=headers)
-                    response.raise_for_status()
-                    releases = response.json()
-                    release = next((r for r in releases if r['name'] == "Toolchains Mirror Cache" or r['tag_name'] == "toolchain-cache"), None)
-                    if not release: return []
-                    
-                    prefix = f"{label}-{rev}.tar.gz"
-                    return [(a['name'], a['url']) for a in release['assets'] if a['name'].startswith(prefix)]
-                except Exception as e:
-                    print(f"  [RETRY {attempt+1}] API failed: {e}")
-                    time.sleep(2)
-            return []
+        aria2_headers = (
+            "--header='User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' "
+            "--header='Accept: */*' "
+            "--header='Connection: keep-alive' "
+        )
+        
+        print("::group::Download Manifest Archives")
         
         def sync_project(task):
             name, path, url, strip, rev = task
             if path not in ["./", "."]:
                 os.makedirs(path, exist_ok=True)
-            
-            headers = (
-                "-H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' "
-                "-H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8' "
-                "-H 'Accept-Encoding: gzip, deflate, br' "
-                "-H 'Connection: keep-alive' "
-                "--tcp-fastopen"
-            )
             
             print(f"Syncing: {name} -> {path}")
             start_time = time.time()
@@ -108,42 +91,72 @@ runs:
                 
                 if label:
                     base_filename = f"{label}-{rev}.tar.gz"
+                    BASE_URL = f"https://github.com/{TARGET_REPO}/releases/download/toolchain-cache"
+                    found_in_cache = False
                     
-                    asset_data = get_release_parts(label, rev)
-                    
-                    if not asset_data:
-                        print(f"  [ERROR] No assets found for {base_filename} in release!")
-                        return False
-                    
-                    if DEBUG:
-                        print(f"  [CACHE] Fetching {label} toolchain: {base_filename}...")
-                    
-                    for asset_name, api_url in asset_data:
-                        aria_cmd = (
-                            f"aria2c -x16 -s16 -k1M -j5 --file-allocation=none {aria_quiet_flags} "
-                            f"--header='Authorization: token {os.environ['GITHUB_TOKEN']}' "
-                            f"--header='Accept: application/octet-stream' "
-                            f"-o {asset_name} {api_url}"
-                        )
+                    check_single = f"curl -IsL {curl_headers} --retry 5 --connect-timeout 30 -o /dev/null -w '%{{http_code}}' {BASE_URL}/{base_filename}"
+                    if subprocess.check_output(check_single, shell=True).decode().strip() == "200":
+                        if DEBUG: print(f"  [CACHE] Downloading single file: {base_filename}")
+                        aria_cmd = f"aria2c -x16 -s16 -k1M -j5 --file-allocation=none {aria_quiet_flags} {aria2_headers} -o {base_filename} {BASE_URL}/{base_filename}"
                         subprocess.run(aria_cmd, shell=True, check=True, capture_output=not DEBUG)
-                    
+                        found_in_cache = True
+                    else:
+                        if DEBUG: print(f"  [CACHE] Single file not found, checking parts for {base_filename}...")
+                        parts_to_download = []
+                        for suffix in [f"a{c}" for c in "abcdefghijklmnopqrstuvwxyz"]:
+                            part_name = f"{base_filename}.part{suffix}"
+                            check_part = f"curl -IsL {curl_headers} --retry 5 --connect-timeout 30 -o /dev/null -w '%{{http_code}}' {BASE_URL}/{part_name}"
+                            if subprocess.check_output(check_part, shell=True).decode().strip() == "200":
+                                parts_to_download.append(f"{BASE_URL}/{part_name}")
+                            else:
+                                break
+                        
+                        if parts_to_download:
+                            if DEBUG: print(f"  [CACHE] Found {len(parts_to_download)} parts. Downloading...")
+                            
+                            for part_url in parts_to_download:
+                                p_suffix = part_url.split('.part')[-1]
+                                p_name = f"{base_filename}.part{p_suffix}"
+                                
+                                if DEBUG: print(f"    -> Downloading {p_name}...")
+                                
+                                aria_cmd = (
+                                    f"aria2c -x16 -s16 -k1M -j5 --file-allocation=none "
+                                    f"{aria_quiet_flags} {aria2_headers} "
+                                    f"-o {p_name} '{part_url}'"
+                                )
+                                subprocess.run(aria_cmd, shell=True, check=True, capture_output=not DEBUG)
+                            found_in_cache = True
+                        
+                    if not found_in_cache:
+                        print(f"  [FATAL ERROR] Toolchain {base_filename} NOT FOUND in GitHub Release cache!")
+                        return False
+                        
                     parts = sorted(glob.glob(f"{base_filename}.part*"))
                     if parts:
-                        if DEBUG:
-                            print(f"  [MERGE] Combining {len(parts)} parts for {rev}...")
-                        subprocess.run(f"cat {base_filename}.part* | tar -I 'pigz -p {NPROC} -b 256' -x --record-size=1M --no-same-owner --no-same-permissions -C {path} {strip}", shell=True, check=True)
-                        subprocess.run(f"rm {base_filename}.part*", shell=True, check=True)
+                        if DEBUG: print(f"  [MERGE] Combining {len(parts)} parts for {rev}...")
+                        parts_list = " ".join(parts)
+                        merge_cmd = (
+                            f"cat {parts_list} | "
+                            f"tar -I 'pigz -p {NPROC} -b 256' -x "
+                            f"--record-size=1M --no-same-owner --no-same-permissions "
+                            f"-C {path} {strip}"
+                        )
+                        
+                        subprocess.run(merge_cmd, shell=True, check=True)
+                        subprocess.run(f"rm {parts_list}", shell=True, check=True)
                     else:
                         if os.path.exists(base_filename):
-                            if DEBUG:
-                                print(f"  [EXTRACT] Single file detected...")
-                            subprocess.run(f"tar -I 'pigz -p {NPROC} -b 256' -x --record-size=1M --no-same-owner --no-same-permissions -f {base_filename} -C {path} {strip}", shell=True, check=True)
+                            if DEBUG: print(f"  [EXTRACT] Single file detected...")
+                            single_cmd = (
+                                f"tar -I 'pigz -p {NPROC} -b 256' -x "
+                                f"--record-size=1M --no-same-owner --no-same-permissions "
+                                f"-f {base_filename} -C {path} {strip}"
+                            )
+                            subprocess.run(single_cmd, shell=True, check=True)
                             os.remove(base_filename)
-                        else:
-                            print(f"  [ERROR] {base_filename} missing after download!")
-                            return False
                 else:
-                    cmd = f"curl -LfsS {headers} --retry 5 --connect-timeout 30 '{url}' | tar -I 'pigz -p {NPROC} -b 256' -x --record-size=1M -C {path} {strip}"
+                    cmd = f"curl -LfsS {curl_headers} --retry 5 --connect-timeout 30 '{url}' | tar -I 'pigz -p {NPROC} -b 256' -x --record-size=1M -C {path} {strip}"
                     subprocess.run(cmd, shell=True, check=True)
                 
                 duration = time.time() - start_time
