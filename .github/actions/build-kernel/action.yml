@@ -1564,7 +1564,7 @@ runs:
         echo "EFFECTIVE_BUILD_TIMESTAMP=$KBUILD_BUILD_TIMESTAMP" >> "$GITHUB_ENV"
         export KBUILD_BUILD_USER="${BUILD_USER:-kernel}"
         export KBUILD_BUILD_HOST="${BUILD_HOST:-kleaf}"
-        export KBUILD_BUILD_VERSION=1               
+        export KBUILD_BUILD_VERSION=1
         echo "🔢 SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
         echo "👤 Build user: $KBUILD_BUILD_USER"
         echo "🖥️  Build host: $KBUILD_BUILD_HOST"
@@ -1613,12 +1613,10 @@ runs:
         fi
         
         if [ "${{ inputs.optimize_level }}" = "O3" ]; then
-          scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE
-          scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3
+          scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE -e CC_OPTIMIZE_FOR_PERFORMANCE_O3
           KCFLAGS_EXTRA="-O3"
         else
-          scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE
-          scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE_O3
+          scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE -d CC_OPTIMIZE_FOR_PERFORMANCE_O3
           KCFLAGS_EXTRA="-O2"
         fi
         
@@ -1628,25 +1626,12 @@ runs:
             ;;
         esac
         
+        scripts/config --file "$OUT/.config" -e LTO_CLANG -d LTO_CLANG_NONE -d LTO_CLANG_THIN -d LTO_CLANG_FULL
+        
         case "${{ env.OP_LTO}}" in
-          "none")
-            scripts/config --file "$OUT/.config" -e LTO_CLANG
-            scripts/config --file "$OUT/.config" -e LTO_CLANG_NONE
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
-            ;;
-          "thin")
-            scripts/config --file "$OUT/.config" -e LTO_CLANG
-            scripts/config --file "$OUT/.config" -e LTO_CLANG_THIN
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_NONE
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_FULL
-            ;;
-          "full")
-            scripts/config --file "$OUT/.config" -e LTO_CLANG
-            scripts/config --file "$OUT/.config" -e LTO_CLANG_FULL
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_NONE
-            scripts/config --file "$OUT/.config" -d LTO_CLANG_THIN
-            ;;
+          "none") scripts/config --file "$OUT/.config" -e LTO_CLANG_NONE ;;
+          "thin") scripts/config --file "$OUT/.config" -e LTO_CLANG_THIN ;;
+          "full") scripts/config --file "$OUT/.config" -e LTO_CLANG_FULL ;;
           *)
             echo "::error::Unsupported LTO option: ${{ env.OP_LTO}}"
             exit 1
