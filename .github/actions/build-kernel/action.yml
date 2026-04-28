@@ -924,7 +924,7 @@ runs:
         fi
         git submodule update --init --recursive
         cd KernelSU/kernel
-        BASE_VERSION=20000
+        BASE_VERSION=30000
         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" $BASE_VERSION)
         sed -i "s/DKSU_VERSION=16/DKSU_VERSION=${KSU_VERSION}/" Makefile
         
