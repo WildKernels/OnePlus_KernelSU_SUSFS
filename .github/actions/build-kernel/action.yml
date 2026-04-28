@@ -87,6 +87,24 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Get Action info
+      shell: bash
+      env:
+        ACTION_REPO_VAL: ${{ github.action_repository }}
+        ACTION_REF_VAL: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+        echo "ACTION_REPO=$ACTION_REPO_VAL" >> $GITHUB_ENV
+        echo "ACTION_REF=$ACTION_REF_VAL" >> $GITHUB_ENV
+
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v6
+      with:
+        repository: ${{ env.ACTION_REPO }}
+        ref: ${{ env.ACTION_REF }}
+        path: action-source
+        fetch-depth: 1
+
     - name: Parse op_config_json
       shell: bash
       run: |
@@ -304,7 +322,7 @@ runs:
 
     - name: Sync Kernel Source
       id: sync-kernel-source
-      uses: ./.github/actions/kernel-source-sync
+      uses: ./action-source/.github/actions/kernel-source-sync
       with:
         source_location: ${{ env.CONFIG }}
         github_token: ${{ inputs.github_token }}
@@ -646,7 +664,7 @@ runs:
 
     - name: Restore ccache cache
       id: restore-ccache-cache
-      uses: ./.github/actions/cache/restore
+      uses: ./action-source/.github/actions/cache/restore
       if: ${{ inputs.clean == false || inputs.clean == 'false' }}
       with:
         cache_path: ${{ env.CCACHE_DIR }}
@@ -659,7 +677,7 @@ runs:
 
     - name: Restore LTO LD cache
       id: restore-lto-ld-cache
-      uses: ./.github/actions/cache/restore
+      uses: ./action-source/.github/actions/cache/restore
       if: ${{ (inputs.clean == false && env.OP_LTO != 'none') || (inputs.clean == 'false' && env.OP_LTO != 'none') }}
       with:
         cache_path: ${{ env.LDCACHE_DIR }}
@@ -2061,24 +2079,33 @@ runs:
         compression-level: 0
         retention-days: 90
 
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v6
+      if: always() && steps.build_kernel_step.conclusion == 'success'
+      with:
+        path: main-source
+        fetch-depth: 1
+
     - name: Save ccache cache
       if: always() && steps.build_kernel_step.conclusion == 'success'
-      uses: ./.github/actions/cache/save
+      uses: ./action-source/.github/actions/cache/save
       with:
         cache_path: ${{ env.CCACHE_DIR }}
         cache_key: ${{ inputs.ksu_type }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-${{ env.CLANG_VERSION_SHORT }}
         cache_bucket: "ccache-cache"
         debug: ${{ inputs.debug }}
         github_token: ${{ inputs.github_token }}
+        working_dir: "./main-source"
         compression_level: 6
 
     - name: Save LTO LD cache
       if: always() && ${{ env.OP_LTO != 'none' }} && steps.build_kernel_step.conclusion == 'success'
-      uses: ./.github/actions/cache/save
+      uses: ./action-source/.github/actions/cache/save
       with:
         cache_path: ${{ env.LDCACHE_DIR }}
         cache_key: ${{ inputs.ksu_type }}-v3-LTO-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-${{ env.CLANG_VERSION_SHORT }}
         cache_bucket: "lto-cache"
         debug: ${{ inputs.debug }}
         github_token: ${{ inputs.github_token }}
+        working_dir: "./main-source"
         compression_level: 6

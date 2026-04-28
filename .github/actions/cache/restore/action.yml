@@ -35,6 +35,8 @@ runs:
         # Detect and Download Cache
         if [ "${{ inputs.debug }}" = "true" ]; then set -x; fi
         
+        cd "$GITHUB_WORKSPACE"
+        
         TAG_NAME="${{ inputs.cache_bucket }}"
         BASE_URL="https://github.com/${TARGET_REPO}/releases/download/$TAG_NAME"
         ASSETS_URL="https://github.com/${TARGET_REPO}/releases/expanded_assets/$TAG_NAME"

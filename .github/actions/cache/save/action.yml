@@ -21,6 +21,10 @@ inputs:
     required: false
     type: number
     default: 6
+  working_dir:
+    description: 'Path where .git folder exists (use only if you clone multiple repos)'
+    required: false
+    type: string
   debug:
     description: 'Enable Logs'
     required: false
@@ -39,6 +43,9 @@ runs:
         # Archive, Split, and Upload Cache
         if [ "${{ inputs.debug }}" = "true" ]; then set -x; fi
         
+        if [ "${{ inputs.working_dir }}" != "" ]; then 
+          cd "${{ inputs.working_dir }}"
+        fi
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         
