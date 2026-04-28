@@ -565,6 +565,19 @@ jobs:
           echo "✅ Dependencies installed"
           echo "::endgroup::"
 
+      - name: Install ccache with ECS by cctv18
+        run: |
+          # Install ccache with ECS by cctv18
+          set -euo pipefail
+          echo "::group::Install ccache with ECS"
+          curl -LfsS --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --tcp-fastopen -H "User-Agent: Mozilla/5.0" "https://github.com/WildKernels/kernel_patches/raw/refs/heads/main/ccache/ccache-x86-64" -o ccache
+          sudo cp -f ./ccache /usr/bin/ccache
+          sudo chmod +x /usr/bin/ccache
+          rm -f ./ccache
+          
+          echo "[DEBUG] Ccache version : $(ccache --version)"
+          echo "::endgroup::"
+
       - name: ♻️ Configure ccache & LTO cache (bounded)
         run: |
           echo "::group::Configure ccache environment"
@@ -588,6 +601,7 @@ jobs:
               "CCACHE_DIRECT=true"
               "CCACHE_FILE_CLONE=true"
               "CCACHE_INODE_CACHE=true"
+              "CCACHE_IS_KERNEL_COMPILING=true"
               "CCACHE_UMASK=002"
               "CCACHE_SLOPPINESS=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale"
             )
