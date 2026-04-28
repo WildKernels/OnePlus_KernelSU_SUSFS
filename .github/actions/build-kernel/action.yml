@@ -686,6 +686,9 @@ runs:
           echo ""
           echo "Pre-build cache statistics:"
           ccache -s | head -n 20
+          
+          echo "Updating atime to achive cache eviction"
+          find ${{ env.CCACHE_DIR }} -type f -exec touch -t $(date -d "1 day ago" +%Y%m%d%H%M) {} +
         else
           echo "⚠️ No existing cache - building from scratch"
           echo "Cache will be populated for future builds"
@@ -1713,9 +1716,9 @@ runs:
         echo "Clear Temporary cache files..."
         ccache -c
         
-        echo "ccache Statistics"
-        ccache -s
-        
+        echo "Perform cache eviction!"
+        # 3h = 10800s using seconds to support older ccache
+        ccache --evict-older-than 10800s
         
         STATS="$(ccache -s)"
         
