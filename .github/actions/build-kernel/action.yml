@@ -839,12 +839,12 @@ runs:
     - name: Clean Up ABI Protected Exports
       shell: bash
       run: |
+        echo "::group::Clean Up ABI Protected Exports"
         set -euo pipefail
         cd "$KERNEL_PLATFORM_FOLDER"
         rm -f common/android/abi_gki_protected_exports_* || true
-        rm -f msm-kernel/android/abi_gki_protected_exports_* || true
         sed -i 's/protected_modules = \[.*\]/protected_modules = []/' common/modules.bzl || true
-        df -h
+        echo "::endgroup::"
 
     - name: Add KernelSU Next
       shell: bash
