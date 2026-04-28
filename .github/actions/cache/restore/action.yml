@@ -94,15 +94,42 @@ runs:
             echo "::endgroup::"
             
             echo "::group:: Downloading Cache"
+            
+            download_asset() {
+              local filename="$1"
+              local url="$2"
+              local max_retries=3
+              local attempt=1
+              
+              while [ $attempt -le $max_retries ]; do
+                echo "  Attempt $attempt: Downloading $filename..."
+                
+                if timeout 10m aria2c "${ARIA2_OPTS[@]}" --retry-wait=10 --max-tries=10 -o "$filename" "$url"; then
+                  return 0
+                fi
+                
+                echo "  ⚠️ Download failed or timed out. Retrying in 5s..."
+                sleep 5
+                attempt=$((attempt + 1))
+              done
+              return 1
+            }
+            
             if [ "$IS_SPLIT" = "true" ]; then
               for part in {a..z}{a..z}; do
                 PART_NAME="$BASE_FILENAME$EXT.part$part"
                 if echo "$ALL_ASSETS" | grep -q "^$PART_NAME$"; then
-                  aria2c "${ARIA2_OPTS[@]}" -o "$PART_NAME" "$BASE_URL/$PART_NAME"
+                  if ! download_asset "$PART_NAME" "$BASE_URL/$PART_NAME"; then
+                    echo "::error::Failed to download $PART_NAME after multiple retries."
+                    exit 1
+                  fi
                 else break; fi
               done
             else
-                aria2c "${ARIA2_OPTS[@]}" -o "$BASE_FILENAME$EXT" "$BASE_URL/$BASE_FILENAME$EXT"
+              if ! download_asset "$BASE_FILENAME$EXT" "$BASE_URL/$BASE_FILENAME$EXT"; then
+                echo "::error::Failed to download $BASE_FILENAME$EXT after multiple retries."
+                exit 1
+              fi
             fi
             echo "::endgroup::"
             
@@ -111,19 +138,28 @@ runs:
             FINAL_ARCHIVE="$BASE_FILENAME$EXT"
             EXTRACT_DIR="$(dirname "${{ inputs.cache_path }}")"
             
+            extract_cache() {
+              local cmd="$1"
+              if [ "${{ inputs.debug }}" = "true" ]; then
+                sh -c "$cmd"
+              else
+                sh -c "$cmd" > /dev/null 2>&1
+              fi
+            }
+            
             if [ "$IS_SPLIT" = "true" ]; then
               PARTS=$(ls "$FINAL_ARCHIVE.part"* | sort)
               if [ "$COMPRESSED" = "true" ]; then
-                cat $PARTS | tar -I "zstd -d -T0" -xvf - -C "$EXTRACT_DIR" > /dev/null 2>&1
+                extract_cache "cat $PARTS | tar -I 'zstd -d -T0' -xvf - -C '$EXTRACT_DIR'"
               else
-                  cat $PARTS | tar -xvf - -C "$EXTRACT_DIR" > /dev/null 2>&1
+                extract_cache "cat $PARTS | tar -xvf - -C '$EXTRACT_DIR'"
               fi
               rm -f $PARTS
             else
               if [ "$COMPRESSED" = "true" ]; then
-                tar -I "zstd -d -T0" -xvf "$FINAL_ARCHIVE" -C "$EXTRACT_DIR" > /dev/null 2>&1
+                extract_cache "tar -I 'zstd -d -T0' -xvf '$FINAL_ARCHIVE' -C '$EXTRACT_DIR'"
               else
-                tar -xvf "$FINAL_ARCHIVE" -C "$EXTRACT_DIR" > /dev/null 2>&1
+                extract_cache "tar -xvf '$FINAL_ARCHIVE' -C '$EXTRACT_DIR'"
               fi
               rm -f "$FINAL_ARCHIVE"
             fi
