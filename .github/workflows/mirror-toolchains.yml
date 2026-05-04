@@ -1,19 +1,51 @@
-name: Mirror static toolchains to GitHub Release
+name: 🛠️ ToolChains Generator
 
 permissions:
   contents: write
 
 on:
+  schedule:
+    - cron: '0 0 * * 0' # Every Sunday at 00:00 UTC
   workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to scan (Leave empty to scan ALL branches)'
+        required: false
+        default: ''
+        type: string
   workflow_call:
+    inputs:
+      target_branch:
+        required: false
+        default: ''
+        type: string
 
 jobs:
+  determine-branches:
+    runs-on: ubuntu-latest
+    outputs:
+      branches: ${{ steps.set-branches.outputs.branches }}
+    steps:
+      - name: Set target branches
+        id: set-branches
+        run: |
+          # If it's a schedule OR manual run with empty input, scan all branches
+          INPUT_BRANCH="${{ github.event.inputs.target_branch || inputs.target_branch }}"
+          
+          if [ "${{ github.event_name }}" == "schedule" ] || [ -z "$INPUT_BRANCH" ]; then
+            echo "branches=[\"main\", \"Testing\", \"Beta-2\"]" >> "$GITHUB_OUTPUT"
+          else
+            echo "branches=[\"$INPUT_BRANCH\"]" >> "$GITHUB_OUTPUT"
+          fi
+
   prepare-release:
+    needs: determine-branches
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.inputs.target_branch || inputs.target_branch || github.ref_name }}
           fetch-depth: 0
 
       - name: Ensure Single Release
@@ -31,33 +63,55 @@ jobs:
             git push origin "$TAG_NAME"
             
             echo "Release not found. Creating..."
-            gh release create "$TAG_NAME" --title "Toolchains Mirror Cache" --notes "Deduplicated Toolchains for Kernel Build" --repo "$TARGET_REPO"
+            gh release create "$TAG_NAME" --title "SakFi Toolchains Mirror Cache" --notes "Dedicated Toolchains for SakFi Kernel Builds" --repo "$TARGET_REPO"
           else
             echo "Release 'toolchain-cache' already exists. Skipping creation."
           fi
 
   generate-mirror-matrix:
     runs-on: ubuntu-latest
-    needs: prepare-release
+    needs: [determine-branches, prepare-release]
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Checkout Code
+      - name: Checkout Generator Scripts
         uses: actions/checkout@v6
 
-      - name: Generate Mirror Matrix
-        id: generate-config
+      - name: Aggregate Configs from All Branches
+        id: aggregate-configs
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p all_branch_configs
           
+          BRANCHES_JSON='${{ needs.determine-branches.outputs.branches }}'
+          echo "Processing branches: $BRANCHES_JSON"
+          
+          # Use jq to iterate over the branches array
+          for branch in $(echo "$BRANCHES_JSON" | jq -r '.[]'); do
+            echo "📥 Fetching configs from branch: $branch"
+            mkdir -p "branch_$branch"
+            
+            # Use git checkout-index or sparse-checkout to get just the configs folder from the branch
+            # But for simplicity, we'll just use a shallow checkout of the branch
+            git fetch origin "$branch" --depth=1
+            git checkout "origin/$branch" -- configs/
+            
+            # Copy with branch prefix to avoid collisions if any
+            cp -r configs/* all_branch_configs/ || true
+          done
+          
+          # Create the aggregated JSON
           echo "[" > all_configs.json
-          mapfile -t files < <(find configs/ -name "*.json")
+          mapfile -t files < <(find all_branch_configs/ -name "*.json")
           for i in "${!files[@]}"; do
             cat "${files[$i]}" >> all_configs.json
             [[ $((i+1)) -lt ${#files[@]} ]] && echo "," >> all_configs.json
           done
           echo "]" >> all_configs.json
+          
+          echo "✅ Aggregated $(find all_branch_configs/ -name "*.json" | wc -l) configurations."
+
 
       - name: Resolve Unique Projects
         id: set-matrix
