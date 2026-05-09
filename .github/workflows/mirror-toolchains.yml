@@ -24,6 +24,9 @@ jobs:
           TARGET_REPO="${{ github.repository }}"
           TAG_NAME="toolchain-cache"
           
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
           if ! git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "Tag not found. Creating backdated tag and release..."
             
