@@ -790,7 +790,7 @@ jobs:
     needs: [set-op-model, build]
     runs-on: ubuntu-latest
     if: |
-      always() && 
+      !cancelled() && 
       needs.build.result == 'success' && 
       inputs.make_release == true
     env:
