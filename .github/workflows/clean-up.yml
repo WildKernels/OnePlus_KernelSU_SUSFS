@@ -52,6 +52,7 @@ on:
           - OP-NORD-4-CE
           - OP-NORD-CE-5
           - OP-NORD-CE4-LITE
+          - OP-NORD-N30-SE
           # OnePlus Ace Series
           - OP-TURBO-6V
           - OP-TURBO-6
