@@ -30,9 +30,6 @@ on:
         type: choice
         options: [O2, O3]
         default: O2
-      clean_build:
-        description: 'Clean build (no ccache)'
-        type: boolean
         default: false
         description: 'Enable debug mode: dumping debug related artifacts and show some debug logs'
         required: false
