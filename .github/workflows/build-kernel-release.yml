@@ -34,7 +34,6 @@ on:
         description: 'Clean build (no ccache)'
         type: boolean
         default: false
-      debug:
         description: 'Enable debug mode: dumping debug related artifacts and show some debug logs'
         required: false
         type: boolean
