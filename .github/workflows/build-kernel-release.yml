@@ -20,11 +20,6 @@ on:
           - android15-6.6
         default: android15-6.6
       ksu_options:
-        description: 'Enter KernelSU build json'
-        required: true
-        type: string
-        default: '[{"type":"ksun","hash":"dev"}]'
-      optimize_level:
         description: "Compiler optimization level"
         required: true
         type: choice
