@@ -19,7 +19,6 @@ on:
         options:
           - android15-6.6
         default: android15-6.6
-      ksu_options:
         description: "Compiler optimization level"
         required: true
         type: choice
