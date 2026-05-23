@@ -72,6 +72,7 @@ on:
           - OP-ACE
           # OnePlus Tablets & Others
           - OP-OPEN
+          - OP-PAD-4
           - OP-PAD-3-PRO
           - OP-PAD-3-SM8750
           - OP-PAD-3-MT6897
