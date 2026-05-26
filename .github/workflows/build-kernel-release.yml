@@ -789,7 +789,11 @@ jobs:
   trigger-release:
     needs: [set-op-model, build]
     runs-on: ubuntu-latest
-    if: ${{ inputs.make_release }}
+    if: |
+      !cancelled() &&
+      inputs.make_release == true &&
+      needs.build.result == 'success' &&
+      needs.set-op-model.result == 'success'
     env:
       REPO_OWNER: ${{ github.repository_owner }}
       REPO_NAME: ${{ github.event.repository.name }}

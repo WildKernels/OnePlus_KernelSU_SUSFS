@@ -56,6 +56,9 @@ jobs:
           TARGET_REPO="${{ github.repository }}"
           TAG_NAME="toolchain-cache"
           
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
           if ! git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "Tag not found. Creating backdated tag and release..."
             
@@ -160,8 +163,8 @@ jobs:
                   root = ET.parse(xml_file).getroot()
                   remotes = {r.get('name'): r.get('fetch').rstrip('/') for r in root.findall('remote')}
                   default = root.find('default')
-                  def_remote = default.get('remote')
-                  def_rev = default.get('revision')
+                  def_remote = default.get('remote') if default is not None else None
+                  def_rev = default.get('revision') if default is not None else None
                   
                   for project in root.findall('project'):
                       name = project.get('name')
@@ -177,6 +180,10 @@ jobs:
                         rev = project.get('revision', def_rev)
                         base_url = remotes.get(remote_name, "").rstrip('/')
                         cache_filename = f"{type_label}-{rev}.tar.gz"
+                        
+                        if not remote_name or not rev:
+                          print(f"⚠️ Skipping toolchain project '{name}' because remote or revision cannot be resolved.")
+                          continue
                         
                         if cache_filename not in unique_toolchains:
                             if "googlesource.com" in base_url:
