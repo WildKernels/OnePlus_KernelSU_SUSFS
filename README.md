@@ -1,5 +1,5 @@
 # 📱 OnePlusOSS Kernel Tracker
-> **Last Update:** Mon May 25 13:10:39 UTC 2026 (UTC)
+> **Last Update:** Tue May 26 00:53:28 UTC 2026 (UTC)
 Daily automated report for OnePlus Kernel branches.
 ### 📓 Kernel Manifests Report
 <details><summary><b>kernel_manifest</b></summary>
@@ -125,13 +125,13 @@ Daily automated report for OnePlus Kernel branches.
 | oneplus_pad_pro_v.xml | ✅ |
 
 ---
-#### Branch: `oneplus/sm8735` 🔄 Updated
+#### Branch: `oneplus/sm8735` ✅
 * **Latest Commit:** `48b7872`
 
 | File Name | Status |
 | :--- | :--- |
 | README.md | ✅ |
-| oneplus_nord_6.xml | 🆕 New |
+| oneplus_nord_6.xml | ✅ |
 | oneplus_turbo_6.xml | ✅ |
 
 ---
@@ -190,7 +190,7 @@ Daily automated report for OnePlus Kernel branches.
 * **Commit SHA:** `74c0227`
 * **Message:** Synchronize code for OnePlus PLU110_16.0.5.702(CN01)
 ---
-#### Branch: `oneplus/sm8735_b_16.0.0_nord_6` 🆕
+#### Branch: `oneplus/sm8735_b_16.0.0_nord_6` ✅
 * **Kernel Version:** `6.6.89`
 * **Commit SHA:** `9c76acc`
 * **Message:** Synchronize code for OnePlus CPH2793_16.0.5.702(EX01) CPH2795_16.0.5.702(EX01)
@@ -203,7 +203,7 @@ Daily automated report for OnePlus Kernel branches.
 * **Commit SHA:** `3a3d602`
 * **Message:** Synchronize code for OnePlus PLU110_16.0.5.702(CN01)
 ---
-#### Branch: `oneplus/sm8735_b_16.0.0_nord_6` 🆕
+#### Branch: `oneplus/sm8735_b_16.0.0_nord_6` ✅
 * **Kernel Version:** `6.6.89`
 * **Commit SHA:** `fccf001`
 * **Message:** Synchronize code for OnePlus CPH2793_16.0.5.702(EX01) CPH2795_16.0.5.702(EX01)
