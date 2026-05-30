@@ -1,12 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
   <remote fetch="https://git.codelinaro.org/clo/la" name="clo" review="codelinaro.org"/>
-  <default remote="clo" revision="kernel.build.lnx.1.0" sync-j="8"/>
   <remote fetch="https://github.com/OnePlusOSS" name="origin"/>
-  <project remote="origin" name="android_kernel_oneplus_mt6789" path="kernel-5.10" revision="oneplus/mt6789_b_16.0_pad_lite">
+  <remote fetch="https://github.com/WildKernels" name="wild"/>
+  <default remote="clo-la" revision="dummy_revision" sync-c="true" sync-tags="false"/>
+  <project remote="wild" name="AnyKernel3" path="AnyKernel3" revision="d1ebdc2002c557ceff9939afc3098eb88916f464"/>
+  
+  <project remote="origin" name="android_kernel_oneplus_mt6789" path="kernel-6.12" revision="oneplus/mt6789_b_16.0_pad_lite">
     <linkfile dest="kernel_platform/common" src="."/>
   </project>
+  
   <project remote="origin" name="android_kernel_modules_oneplus_mt6789" path="./" revision="oneplus/mt6789_b_16.0_pad_lite"/>
-  <project remote="clo" name="kernel/prebuilts/build-tools" path="kernel_platform/prebuilts/kernel-build-tools" revision="10ab783184f77d3ea15bf666426a7138b0f62bfc" upstream="refs/heads/ks-kernel.lnx.1.0.r1-rel"/>
-  <project remote="clo" name="kernelplatform/prebuilts-master/clang/host/linux-x86" path="kernel_platform/prebuilts-master/clang/host/linux-x86" revision="192fe0d378bb9cd4d4271de3e87145a1956fef40" upstream="refs/heads/ks-kernel.lnx.1.0.r1-rel"/>
+  
+  <project remote="clo-la" name="kernel/prebuilts/build-tools" path="kernel_platform/prebuilts/kernel-build-tools" revision="4ba19a61c7a0d63603e0d1c84eb2b610bff706a4" upstream="refs/heads/ks-kernel.lnx.5.0.r3-rel" groups="ddk">
+    <linkfile dest="kernel_platform/build/prebuilts/kernel-build-tools" src="."/>
+  </project>
+  <project remote="clo-la" name="kernelplatform/prebuilts-master/clang/host/linux-x86" path="kernel_platform/prebuilts/clang/host/linux-x86" revision="e6e84a60b1b4b68ee7de5a66fa63fc95fe9fe131" upstream="refs/heads/ks-kernel.lnx.5.0.r3-rel" groups="ddk"/>
+  <project remote="clo-la" name="kernel_platform/prebuilts/rust" path="kernel_platform/prebuilts/rust" revision="6ff98fecc15373d056564f1ad13508f812d90fa9" upstream="refs/heads/ks-kernel.lnx.5.0.r3-rel" groups="ddk"/>
+  <project remote="clo-la" name="kernel_platform/prebuilts/clang-tools" path="kernel_platform/prebuilts/clang-tools" revision="8d2e8177f56ed0543cc8866ecad6f9f32f25fffe" upstream="refs/heads/ks-kernel.lnx.5.0.r3-rel" groups="ddk">
+    <linkfile dest="kernel_platform/build/prebuilts/clang-tools" src="."/>
+  </project>
 </manifest>
