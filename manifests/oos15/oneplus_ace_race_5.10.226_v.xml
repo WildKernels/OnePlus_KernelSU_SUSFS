@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <remote fetch="https://git.codelinaro.org/clo/la" name="clo" review="codelinaro.org"/>
+  <default remote="clo" revision="kernel.build.lnx.1.0" sync-j="8"/>
+  <remote fetch="https://github.com/OnePlusOSS" name="origin"/>
+  <remote fetch="https://github.com/WildKernels" name="wild"/>
+  <project remote="wild" name="AnyKernel3" path="AnyKernel3" revision="d1ebdc2002c557ceff9939afc3098eb88916f464"/>
+  <project remote="origin" name="android_kernel_5.10_oneplus_mt6895" path="kernel-5.10" revision="6409af87cfda3739caff4ee29eb28e77abe8a290">
+    <linkfile dest="kernel_platform/common" src="."/>
+  </project>
+  <project remote="origin" name="android_vendor_mediatek_kernel_modules_mt6895" path="./" revision="b284b694533d392ec26f0235857a45e67bb1d2b9"/>
+  <project remote="clo" name="kernel/prebuilts/build-tools" path="kernel_platform/prebuilts/kernel-build-tools" revision="10ab783184f77d3ea15bf666426a7138b0f62bfc" upstream="refs/heads/ks-kernel.lnx.1.0.r1-rel"/>
+  <project remote="clo" name="kernelplatform/prebuilts-master/clang/host/linux-x86" path="kernel_platform/prebuilts-master/clang/host/linux-x86" revision="0fc3d01a780023469b7acc18c56a9cf5099a6d6c" upstream="refs/heads/ks-kernel.lnx.1.0.r1-rel"/>
+</manifest>
