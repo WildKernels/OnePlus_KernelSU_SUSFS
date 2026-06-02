@@ -1255,8 +1255,15 @@ runs:
         fi
         if [ "$OP_HMBIRD" = true ]; then
           echo "Patching hmbird!"
-          dos2unix "$KERNEL_PATCHES_FOLDER/oneplus/hmbird/fengchi_${OP_MODEL}_${OP_OS_VERSION}.patch"
-          patch -p1 -F 3 < "$KERNEL_PATCHES_FOLDER/oneplus/hmbird/fengchi_${OP_MODEL}_${OP_OS_VERSION}.patch"
+          HMBIRD_MODEL=$(echo "$OP_MODEL" | sed 's/-[0-9]\+\.[0-9]\+\.[0-9]\+$//')
+          case "$OP_MODEL" in
+            OP-ACE-5-ULTRA-6.6.50|OP-ACE-5-PRO-6.6.30|OP13-PJZ-6.6.30|OP13-CPH-6.6.56)
+              FENGCHI_DIR="$KERNEL_PATCHES_FOLDER/oneplus/hmbird/deprecated" ;;
+            *)
+              FENGCHI_DIR="$KERNEL_PATCHES_FOLDER/oneplus/hmbird" ;;
+          esac
+          dos2unix "$FENGCHI_DIR/fengchi_${HMBIRD_MODEL}_${OP_OS_VERSION}.patch"
+          patch -p1 -F 3 < "$FENGCHI_DIR/fengchi_${HMBIRD_MODEL}_${OP_OS_VERSION}.patch"
           dos2unix "$KERNEL_PATCHES_FOLDER/oneplus/hmbird/overwriter.patch"
           patch -p1 -F 3 < "$KERNEL_PATCHES_FOLDER/oneplus/hmbird/overwriter.patch"
           chmod +x ./drivers/of/overwriter/overwrite_configs/convert_configs.sh
@@ -1333,8 +1340,17 @@ runs:
         GKI_KEY="${ANDROID_VER}-${KERNEL_VER}"
         BRANCH_SUFFIX=$(basename "$OP_BRANCH")
         
-        if [[ "$OP_MODEL" == "OP10r" ]] && [[ "$OP_OS_VERSION" == "OOS15" ]]; then
-          NTSYNC_PATCH="$NTSYNC_FOLDER/ntsync_compat_android12-5.10_OOS14.patch"
+        NTSYNC_PATCH=""
+        case "$OP_MODEL" in
+          OP10r|OP-ACE-2-5.10.209|OP-ACE-2V-5.10.209|OP-PAD-MT6983-5.10.209|\
+          OP10pro-5.10.209|OP10t-5.10.209|OP-ACE-5.10.209|OP11r-5.10.209|\
+          OP-NORD-3-5.10.209)
+            if [[ "$OP_OS_VERSION" == "OOS15" ]]; then
+              NTSYNC_PATCH="$NTSYNC_FOLDER/ntsync_compat_android12-5.10_OOS14.patch"
+            fi
+            ;;
+        esac
+        if [ -n "$NTSYNC_PATCH" ]; then
           if [ ! -f "$NTSYNC_PATCH" ]; then
             echo "::error::NTSync compat patch not found for ${OP_MODEL}: $(basename $NTSYNC_PATCH)"
             exit 1
