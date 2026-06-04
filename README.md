@@ -1,5 +1,5 @@
 # 📱 OnePlusOSS Kernel Tracker
-> **Last Update:** Wed Jun  3 13:39:11 UTC 2026 (UTC)
+> **Last Update:** Thu Jun  4 00:53:26 UTC 2026 (UTC)
 Daily automated report for OnePlus Kernel branches.
 ### 📓 Kernel Manifests Report
 <details><summary><b>kernel_manifest</b></summary>
@@ -190,7 +190,7 @@ Daily automated report for OnePlus Kernel branches.
 * **Commit SHA:** `a569a64`
 * **Message:** Synchronize code for OnePlus CPH2487_15.0.0.830(EX01)
 ---
-#### Branch: `oneplus/sm8475_v_15.0.0_oneplus_10t` 🔄 Updated
+#### Branch: `oneplus/sm8475_v_15.0.0_oneplus_10t` ✅
 * **Kernel Version:** `5.10.236`
 * **Commit SHA:** `9f869b5`
 * **Message:** Synchronize code for OnePlus CPH2413_15.0.0.1800(EX01) CPH2415_15.0.0.1800(EX01) CPH2417_15.0.0.1800(EX01)
@@ -263,7 +263,7 @@ Daily automated report for OnePlus Kernel branches.
 * **Commit SHA:** `a1171b1`
 * **Message:** Synchronize code for OnePlus CPH2487_15.0.0.830(EX01)
 ---
-#### Branch: `oneplus/sm8475_v_15.0.0_oneplus_10t` 🔄 Updated
+#### Branch: `oneplus/sm8475_v_15.0.0_oneplus_10t` ✅
 * **Kernel Version:** `5.10.236`
 * **Commit SHA:** `c076c73`
 * **Message:** Synchronize code for OnePlus CPH2413_15.0.0.1800(EX01) CPH2415_15.0.0.1800(EX01) CPH2417_15.0.0.1800(EX01)
@@ -301,7 +301,7 @@ Daily automated report for OnePlus Kernel branches.
 </details>
 <details><summary><b>android_kernel_oneplus_sm8850</b></summary>
 
-#### Branch: `oneplus/sm8850_b_16.0.0_oneplus_15` 🔄 Updated
+#### Branch: `oneplus/sm8850_b_16.0.0_oneplus_15` ✅
 * **Kernel Version:** `6.11.0`
 * **Commit SHA:** `5d3c0aa`
 * **Message:** Synchronize code for OnePlus CPH2745_16.0.7.201(EX01) CPH2747_16.0.7.201(EX01) CPH2749_16.0.7.202(EX01) PLK110_16.0.7.207(CN01)
@@ -324,7 +324,7 @@ Daily automated report for OnePlus Kernel branches.
 </details>
 <details><summary><b>android_kernel_common_oneplus_sm8850</b></summary>
 
-#### Branch: `oneplus/sm8850_b_16.0.0_oneplus_15` 🔄 Updated
+#### Branch: `oneplus/sm8850_b_16.0.0_oneplus_15` ✅
 * **Kernel Version:** `6.12.23`
 * **Commit SHA:** `d9053b9`
 * **Message:** Synchronize code for OnePlus CPH2745_16.0.7.201(EX01) CPH2747_16.0.7.201(EX01) CPH2749_16.0.7.202(EX01) PLK110_16.0.7.207(CN01)
