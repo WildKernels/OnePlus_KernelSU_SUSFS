@@ -1,5 +1,5 @@
 {
-  "model": "OP13-PJZ-6.6.30",
+  "model": "OP13-6.6.30",
   "soc": "sun",
   "branch": "wild/sm8750",
   "manifest": "oneplus_13_6.6.30_v.xml",
