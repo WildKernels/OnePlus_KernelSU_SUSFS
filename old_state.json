@@ -1,4 +1,7 @@
 {
+  "android_kernel_oneplus_mt6993": {
+    "oneplus/mt6993_b_16.0_ace_6_ultra": "5ffe64e48152537197178000c3261359b174fdbc|6.12.58"
+  },
   "android_kernel_oneplus_sm8475": {
     "oneplus/sm8475_v_15.0.0_oneplus_11r": "a569a64dd0943570dc5aa0b34181e5be07c22df4|5.10.226",
     "oneplus/sm8475_v_15.0.0_oneplus_10t": "9f869b57a717f4fdb22ab2dbc77a118c4adeee63|5.10.236",

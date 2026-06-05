@@ -1,5 +1,5 @@
 # 📱 OnePlusOSS Kernel Tracker
-> **Last Update:** Fri Jun  5 00:49:16 UTC 2026 (UTC)
+> **Last Update:** Fri Jun  5 13:02:32 UTC 2026 (UTC)
 Daily automated report for OnePlus Kernel branches.
 ### 📓 Kernel Manifests Report
 <details><summary><b>kernel_manifest</b></summary>
@@ -183,6 +183,14 @@ Daily automated report for OnePlus Kernel branches.
 
 
 ### 🛠 Kernel Trees Report
+<details><summary><b>android_kernel_oneplus_mt6993</b></summary>
+
+#### Branch: `oneplus/mt6993_b_16.0_ace_6_ultra` 🆕
+* **Kernel Version:** `6.12.58`
+* **Commit SHA:** `5ffe64e`
+* **Message:** Synchronize code for OnePlus PMB110_16.0.6.103(CN01)
+---
+</details>
 <details><summary><b>android_kernel_oneplus_sm8475</b></summary>
 
 #### Branch: `oneplus/sm8475_v_15.0.0_oneplus_11r` ✅
