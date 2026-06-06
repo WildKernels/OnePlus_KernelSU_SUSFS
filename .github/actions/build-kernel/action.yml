@@ -2112,7 +2112,24 @@ runs:
         } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Upload Debug Artifacts
+      id: upload-debug-artifacts
       if: ${{ always() && !cancelled() && inputs.debug == 'true' }}
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.DEBUG_ZIP_NAME }}
+        path: ${{ env.DEBUG_ARTIFACTS_FOLDER }}
+        compression-level: 9
+        retention-days: 90
+
+    - name: Upload Debug Artifacts (retry)
+      if: ${{ always() && !cancelled() && inputs.debug == 'true' && steps.upload-debug-artifacts.outcome == 'failure' }}
+      shell: bash
+      run: |
+        echo "::warning::Debug artifact upload failed, retrying in 30s..."
+        sleep 30
+    - name: Upload Debug Artifacts (retry upload)
+      if: ${{ always() && !cancelled() && inputs.debug == 'true' && steps.upload-debug-artifacts.outcome == 'failure' }}
       uses: actions/upload-artifact@v7
       with:
         name: ${{ env.DEBUG_ZIP_NAME }}
@@ -2121,7 +2138,25 @@ runs:
         retention-days: 90
 
     - name: Upload Artifacts
+      id: upload-artifacts
       if: success() && steps.create_zip.conclusion == 'success'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.ZIP_NAME }}
+        path: ${{ env.ARTIFACTS_FOLDER }}/${{ env.ZIP_NAME }}
+        archive: false
+        compression-level: 0
+        retention-days: 90
+
+    - name: Upload Artifacts (retry)
+      if: steps.create_zip.conclusion == 'success' && steps.upload-artifacts.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::Artifact upload failed, retrying in 30s..."
+        sleep 30
+    - name: Upload Artifacts (retry upload)
+      if: steps.create_zip.conclusion == 'success' && steps.upload-artifacts.outcome == 'failure'
       uses: actions/upload-artifact@v7
       with:
         name: ${{ env.ZIP_NAME }}
@@ -2131,7 +2166,25 @@ runs:
         retention-days: 90
 
     - name: Upload ccache log
+      id: upload-ccache-log
       if: success() && inputs.debug == 'true' && steps.build_kernel_step.conclusion == 'success'
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: "${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_${{ env.KERNEL_FULL_VER }}_ccache.log"
+        path: ${{ env.CCACHE_LOGFILE }}
+        archive: false
+        compression-level: 0
+        retention-days: 90
+
+    - name: Upload ccache log (retry)
+      if: inputs.debug == 'true' && steps.build_kernel_step.conclusion == 'success' && steps.upload-ccache-log.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::ccache log upload failed, retrying in 30s..."
+        sleep 30
+    - name: Upload ccache log (retry upload)
+      if: inputs.debug == 'true' && steps.build_kernel_step.conclusion == 'success' && steps.upload-ccache-log.outcome == 'failure'
       uses: actions/upload-artifact@v7
       with:
         name: "${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_${{ env.KERNEL_FULL_VER }}_ccache.log"
