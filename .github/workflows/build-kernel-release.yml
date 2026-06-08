@@ -604,7 +604,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Get prebuilt ccache (downloaded once by prepare_ccache)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ccache-binary
           path: ccache-dl
