@@ -1,5 +1,5 @@
 # 📱 OnePlusOSS Kernel Tracker
-> **Last Update:** Mon Jun  8 00:47:33 UTC 2026 (UTC)
+> **Last Update:** Mon Jun  8 13:29:24 UTC 2026 (UTC)
 Daily automated report for OnePlus Kernel branches.
 ### 📓 Kernel Manifests Report
 <details><summary><b>kernel_manifest</b></summary>
@@ -169,20 +169,85 @@ Daily automated report for OnePlus Kernel branches.
 | oneplus_ace_6t.xml | ✅ |
 
 ---
-#### Branch: `oneplus/sm8850` ✅
-* **Latest Commit:** `d143776`
+#### Branch: `oneplus/sm8850` 🔄 Updated
+* **Latest Commit:** `ecdd480`
 
 | File Name | Status |
 | :--- | :--- |
 | README.md | ✅ |
 | oneplus_15.xml | ✅ |
 | oneplus_15t.xml | ✅ |
+| oneplus_pad_3_pro.xml | 🆕 New |
+| oneplus_pad_4.xml | 🆕 New |
 
 ---
 </details>
 
 
 ### 🛠 Kernel Trees Report
+<details><summary><b>android_kernel_5.10_oneplus_mt6895</b></summary>
+
+#### Branch: `oneplus/mt6895_v_15.0.0_oneplus_10r` ✅
+* **Kernel Version:** `5.10.209`
+* **Commit SHA:** `f3e95e7`
+* **Message:** Synchronize code for OnePlus CPH2411_15.0.0.700(EX01) CPH2423_15.0.0.700(EX01)
+---
+#### Branch: `oneplus/mt6895_v_15.0.0_ace` 🔄 Updated
+* **Kernel Version:** `5.10.236`
+* **Commit SHA:** `8baa5a3`
+* **Message:** Synchronize code for OnePlus PGKM10_15.0.0.1800(CN01)
+---
+#### Branch: `oneplus/mt6895_v_15.0.0_ace_race` ✅
+* **Kernel Version:** `5.10.236`
+* **Commit SHA:** `05dd76e`
+* **Message:** Synchronize code for OnePlus PGZ110_15.0.0.1600(CN01)
+---
+#### Branch: `oneplus/mt6895_u_14.0.0_10r` ✅
+* **Kernel Version:** `5.10.168`
+* **Commit SHA:** `6cb6910`
+* **Message:** Synchronize code for OnePlus CPH2411_14.0.0.500(EX01)
+---
+#### Branch: `oneplus/mt6895_u_14.0.0_ace` ✅
+* **Kernel Version:** `5.10.168`
+* **Commit SHA:** `6d6d842`
+* **Message:** Synchronize code for OnePlus PGKM10_14.0.0.500(CN01)
+---
+#### Branch: `oneplus/mt6895_u_14.0.0_ace_race` ✅
+* **Kernel Version:** `5.10.168`
+* **Commit SHA:** `da8b978`
+* **Message:** Synchronize code for OnePlus PGZ110_14.0.0.500(CN01)
+---
+#### Branch: `oneplus/mt6895_t_13.1.0_oneplus_ace_racing` ✅
+* **Kernel Version:** `5.10.149`
+* **Commit SHA:** `1fdc6e4`
+* **Message:** Synchronize code for oneplus PGZ110_13.1.0.180(CN01)
+---
+#### Branch: `oneplus/mt6895_t_13.0.0` ✅
+* **Kernel Version:** `5.10.110`
+* **Commit SHA:** `e877fb6`
+* **Message:** Synchronize code for OnePlus ACE PGKM10_11_C.01 and OnePlus 10R CPH2411_11_C.01/CPH2423_11_C.01
+---
+#### Branch: `oneplus/mt6895_t_13.0.0_ace_racing` ✅
+* **Kernel Version:** `5.10.110`
+* **Commit SHA:** `3e31a81`
+* **Message:** Synchronize codes for OnePlus Ace Racing Edition 5G PGZ110_11_C.01
+---
+#### Branch: `oneplus/mt6895_s_12.1_oneplus_10r` ✅
+* **Kernel Version:** `5.10.66`
+* **Commit SHA:** `764f05d`
+* **Message:** Synchronize codes for OnePlus 10R 5G OxygenOS CPH2423_11_A.04 and CPH2411_11_A.04
+---
+#### Branch: `oneplus/mt6895_s_12.1_oneplus_ace_race` ✅
+* **Kernel Version:** `5.10.66`
+* **Commit SHA:** `627e10b`
+* **Message:** Synchronize codes for oneplus_ace_race ColorOS 12.1.0 for miss code
+---
+#### Branch: `mt6895_t_13.1.0_oneplus_ace` ✅
+* **Kernel Version:** `5.10.149`
+* **Commit SHA:** `b2ed059`
+* **Message:** Synchronize code for oneplus PGKM10_13.1.0.9
+---
+</details>
 <details><summary><b>android_kernel_common_oneplus_sm8750</b></summary>
 
 #### Branch: `oneplus/sm8750_v_15.0.2_oneplus_13t` ✅
@@ -235,15 +300,15 @@ Daily automated report for OnePlus Kernel branches.
 * **Commit SHA:** `5a55344`
 * **Message:** Synchronize code for OnePlus CPH2649_16.0.7.201(EX01) CPH2653_16.0.7.201(EX01) CPH2655_16.0.7.201(EX01) PJZ110_16.0.7.201(CN01)
 ---
-#### Branch: `oneplus/sm8750_b_16.0.0_oneplus_13t` ✅
+#### Branch: `oneplus/sm8750_b_16.0.0_oneplus_13t` 🔄 Updated
 * **Kernel Version:** `6.6.89`
-* **Commit SHA:** `16fe7f1`
-* **Message:** Synchronize code for OnePlus PKX110_16.0.5.701(CN01)
+* **Commit SHA:** `bce1edf`
+* **Message:** Synchronize code for OnePlus PKX110_16.0.7.200(CN01)
 ---
-#### Branch: `oneplus/sm8750_b_16.0.0_oneplus_13s` ✅
+#### Branch: `oneplus/sm8750_b_16.0.0_oneplus_13s` 🔄 Updated
 * **Kernel Version:** `6.6.89`
-* **Commit SHA:** `5499872`
-* **Message:** Synchronize code for OnePlus CPH2723_16.0.0.211(EX01)
+* **Commit SHA:** `11d7ebe`
+* **Message:** Synchronize code for OnePlus CPH2723_16.0.7.200(EX01)
 ---
 #### Branch: `oneplus/sm8750_b_16.0.0_oneplus_ace5_pro` ✅
 * **Kernel Version:** `6.6.89`
@@ -308,15 +373,15 @@ Daily automated report for OnePlus Kernel branches.
 * **Commit SHA:** `730abe2`
 * **Message:** Synchronize code for OnePlus CPH2649_16.0.7.201(EX01) CPH2653_16.0.7.201(EX01) CPH2655_16.0.7.201(EX01) PJZ110_16.0.7.201(CN01)
 ---
-#### Branch: `oneplus/sm8750_b_16.0.0_oneplus_13t` ✅
+#### Branch: `oneplus/sm8750_b_16.0.0_oneplus_13t` 🔄 Updated
 * **Kernel Version:** `6.6.89`
-* **Commit SHA:** `9cb6546`
-* **Message:** Synchronize code for OnePlus PKX110_16.0.5.701(CN01)
+* **Commit SHA:** `dd2ad9f`
+* **Message:** Synchronize code for OnePlus PKX110_16.0.7.200(CN01)
 ---
-#### Branch: `oneplus/sm8750_b_16.0.0_oneplus_13s` ✅
+#### Branch: `oneplus/sm8750_b_16.0.0_oneplus_13s` 🔄 Updated
 * **Kernel Version:** `6.6.89`
-* **Commit SHA:** `51f8ca5`
-* **Message:** Synchronize code for OnePlus CPH2723_16.0.0.211(EX01)
+* **Commit SHA:** `820cd1b`
+* **Message:** Synchronize code for OnePlus CPH2723_16.0.7.200(EX01)
 ---
 #### Branch: `oneplus/sm8750_b_16.0.0_oneplus_ace5_pro` ✅
 * **Kernel Version:** `6.6.89`
@@ -684,69 +749,6 @@ Daily automated report for OnePlus Kernel branches.
 * **Kernel Version:** `6.6.89`
 * **Commit SHA:** `fccf001`
 * **Message:** Synchronize code for OnePlus CPH2793_16.0.5.702(EX01) CPH2795_16.0.5.702(EX01)
----
-</details>
-<details><summary><b>android_kernel_5.10_oneplus_mt6895</b></summary>
-
-#### Branch: `oneplus/mt6895_v_15.0.0_oneplus_10r` ✅
-* **Kernel Version:** `5.10.209`
-* **Commit SHA:** `f3e95e7`
-* **Message:** Synchronize code for OnePlus CPH2411_15.0.0.700(EX01) CPH2423_15.0.0.700(EX01)
----
-#### Branch: `oneplus/mt6895_v_15.0.0_ace` ✅
-* **Kernel Version:** `5.10.226`
-* **Commit SHA:** `d8e17e6`
-* **Message:** Synchronize code for OnePlus PGKM10_15.0.0.1301(CN01)
----
-#### Branch: `oneplus/mt6895_v_15.0.0_ace_race` ✅
-* **Kernel Version:** `5.10.236`
-* **Commit SHA:** `05dd76e`
-* **Message:** Synchronize code for OnePlus PGZ110_15.0.0.1600(CN01)
----
-#### Branch: `oneplus/mt6895_u_14.0.0_10r` ✅
-* **Kernel Version:** `5.10.168`
-* **Commit SHA:** `6cb6910`
-* **Message:** Synchronize code for OnePlus CPH2411_14.0.0.500(EX01)
----
-#### Branch: `oneplus/mt6895_u_14.0.0_ace` ✅
-* **Kernel Version:** `5.10.168`
-* **Commit SHA:** `6d6d842`
-* **Message:** Synchronize code for OnePlus PGKM10_14.0.0.500(CN01)
----
-#### Branch: `oneplus/mt6895_u_14.0.0_ace_race` ✅
-* **Kernel Version:** `5.10.168`
-* **Commit SHA:** `da8b978`
-* **Message:** Synchronize code for OnePlus PGZ110_14.0.0.500(CN01)
----
-#### Branch: `oneplus/mt6895_t_13.1.0_oneplus_ace_racing` ✅
-* **Kernel Version:** `5.10.149`
-* **Commit SHA:** `1fdc6e4`
-* **Message:** Synchronize code for oneplus PGZ110_13.1.0.180(CN01)
----
-#### Branch: `oneplus/mt6895_t_13.0.0` ✅
-* **Kernel Version:** `5.10.110`
-* **Commit SHA:** `e877fb6`
-* **Message:** Synchronize code for OnePlus ACE PGKM10_11_C.01 and OnePlus 10R CPH2411_11_C.01/CPH2423_11_C.01
----
-#### Branch: `oneplus/mt6895_t_13.0.0_ace_racing` ✅
-* **Kernel Version:** `5.10.110`
-* **Commit SHA:** `3e31a81`
-* **Message:** Synchronize codes for OnePlus Ace Racing Edition 5G PGZ110_11_C.01
----
-#### Branch: `oneplus/mt6895_s_12.1_oneplus_10r` ✅
-* **Kernel Version:** `5.10.66`
-* **Commit SHA:** `764f05d`
-* **Message:** Synchronize codes for OnePlus 10R 5G OxygenOS CPH2423_11_A.04 and CPH2411_11_A.04
----
-#### Branch: `oneplus/mt6895_s_12.1_oneplus_ace_race` ✅
-* **Kernel Version:** `5.10.66`
-* **Commit SHA:** `627e10b`
-* **Message:** Synchronize codes for oneplus_ace_race ColorOS 12.1.0 for miss code
----
-#### Branch: `mt6895_t_13.1.0_oneplus_ace` ✅
-* **Kernel Version:** `5.10.149`
-* **Commit SHA:** `b2ed059`
-* **Message:** Synchronize code for oneplus PGKM10_13.1.0.9
 ---
 </details>
 <details><summary><b>android_kernel_oneplus_sm8550</b></summary>
