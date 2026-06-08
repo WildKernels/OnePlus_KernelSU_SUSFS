@@ -559,7 +559,7 @@ jobs:
           fi
           echo "::endgroup::"
       - name: Upload ccache artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ccache-binary
           path: ccache
