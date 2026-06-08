@@ -2,6 +2,7 @@
 
 # 🔥 Wild Kernels for OnePlus (Oppo/Realme)
 
+[![Total Downloads](https://img.shields.io/github/downloads/sakfi/OP_KSUN_FS/total?color=green&label=total%20downloads)](https://github.com/sakfi/OP_KSUN_FS/releases)
 [![KernelSU-Next](https://img.shields.io/badge/KernelSU_Next-Supported-green)](https://kernelsu-next.github.io/webpage/)
 [![KernelSU](https://img.shields.io/badge/KernelSU-Supported-green)](https://kernelsu.org/)
 [![Wild KSU](https://img.shields.io/badge/Wild_KSU-Not%20Supported-cb2431)](https://github.com/WildKernels/Wild_KSU/)

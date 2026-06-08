@@ -1,0 +1,171 @@
+name: 🚀 Cache Warmer
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Run daily at midnight
+  workflow_dispatch: # Allow manual warming
+
+jobs:
+  generate-matrix:
+    name: 🔍 Generate Warmup Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      susfs_hash_android12_5_10: ${{ steps.set-matrix.outputs.susfs_hash_android12_5_10 }}
+      susfs_hash_android13_5_15: ${{ steps.set-matrix.outputs.susfs_hash_android13_5_15 }}
+      susfs_hash_android14_6_1:  ${{ steps.set-matrix.outputs.susfs_hash_android14_6_1 }}
+      susfs_hash_android15_6_6:  ${{ steps.set-matrix.outputs.susfs_hash_android15_6_6 }}
+      susfs_hash_android16_6_12: ${{ steps.set-matrix.outputs.susfs_hash_android16_6_12 }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            configs/
+          sparse-checkout-cone-mode: false
+
+      - name: 🔍 Generate Matrix
+        id: set-matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          # Use default SUSFS hashes from build-kernel-release.yml
+          echo "susfs_hash_android12_5_10=ce2c2b2dea28c89d33f61af898cc18a93bf65ae9" >> $GITHUB_OUTPUT
+          echo "susfs_hash_android13_5_15=529919fbc9f8aee6ee70eb3a8890ef33af0a109c" >> $GITHUB_OUTPUT
+          echo "susfs_hash_android14_6_1=d1327b62e0854603cfc26e2226e0a993ec9b0656" >> $GITHUB_OUTPUT
+          echo "susfs_hash_android15_6_6=676d202ed2cc322a2f90bcb2b56bc4f6a864acb8" >> $GITHUB_OUTPUT
+          echo "susfs_hash_android16_6_12=d20fb81b5f17e66ffeac1321a1257d53e2d16e53" >> $GITHUB_OUTPUT
+
+          echo "[" > matrix.json
+          mapfile -t all_json_files < <(find configs/ -name "*.json" -print0 | xargs -0 -n1)
+          for i in "${!all_json_files[@]}"; do
+            file="${all_json_files[$i]}"
+            if [ -f "$file" ]; then
+              jq -c '.' "$file" >> matrix.json
+              if [ $((i+1)) -lt ${#all_json_files[@]} ]; then
+                echo "," >> matrix.json
+              fi
+            fi
+          done
+          echo "]" >> matrix.json
+          
+          # Wrap the array in a matrix format
+          MATRIX=$(cat matrix.json | jq -c '{include: .}')
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+  warm-cache:
+    name: 🔨 ${{ matrix.model }} (${{ matrix.os_version }})
+    needs: generate-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v6
+
+      - name: 🏷️ Resolve SUSFS Hash
+        id: susfs_res
+        run: |
+          # Match the logic from the release workflow
+          ANDROID_VER="${{ matrix.android_version }}"
+          KERNEL_VER="${{ matrix.kernel_version }}"
+          
+          if [[ "$ANDROID_VER" == "android12" && "$KERNEL_VER" == "5.10" ]]; then
+            HASH="${{ needs.generate-matrix.outputs.susfs_hash_android12_5_10 }}"
+          elif [[ "$ANDROID_VER" == "android13" && "$KERNEL_VER" == "5.15" ]]; then
+            HASH="${{ needs.generate-matrix.outputs.susfs_hash_android13_5_15 }}"
+          elif [[ "$ANDROID_VER" == "android14" && "$KERNEL_VER" == "6.1" ]]; then
+            HASH="${{ needs.generate-matrix.outputs.susfs_hash_android14_6_1 }}"
+          elif [[ "$ANDROID_VER" == "android15" && "$KERNEL_VER" == "6.6" ]]; then
+            HASH="${{ needs.generate-matrix.outputs.susfs_hash_android15_6_6 }}"
+          elif [[ "$ANDROID_VER" == "android16" && "$KERNEL_VER" == "6.12" ]]; then
+            HASH="${{ needs.generate-matrix.outputs.susfs_hash_android16_6_12 }}"
+          else
+            HASH=""
+          fi
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Install Minimal Dependencies
+        run: |
+          set -euo pipefail
+          echo "::group::Install dependencies"
+          sudo apt-get -o Acquire::Retries=3 update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git curl ca-certificates build-essential clang lld flex bison \
+            libelf-dev libssl-dev libncurses-dev zlib1g-dev liblz4-tool \
+            libxml2-utils rsync unzip dwarves file python3 ccache jq bc dos2unix kmod libdw-dev elfutils pigz
+          sudo apt-get clean
+          echo "✅ Dependencies installed"
+          echo "::endgroup::"
+
+      - name: Install ccache with ECS by cctv18
+        run: |
+          # Install ccache with ECS by cctv18
+          set -euo pipefail
+          echo "::group::Install ccache with ECS"
+          curl -LfsS --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --tcp-fastopen -H "User-Agent: Mozilla/5.0" "https://github.com/WildKernels/kernel_patches/raw/refs/heads/main/ccache/ccache-x86-64" -o ccache
+          sudo cp -f ./ccache /usr/bin/ccache
+          sudo chmod +x /usr/bin/ccache
+          rm -f ./ccache
+          
+          echo "[DEBUG] Ccache version : $(ccache --version)"
+          echo "::endgroup::"
+
+      - name: ♻️ Configure ccache & LTO cache (bounded)
+        run: |
+          echo "::group::Configure ccache environment"
+          set -euo pipefail
+          if command -v ccache >/dev/null 2>&1; then
+            CACHE_DIR="${{ github.workspace }}/.ccache"
+            LDCACHE_DIR="${{ github.workspace }}/.ld_cache"
+            CCACHE_LOG="${{ github.workspace }}/ccache.log"
+            mkdir -p "$CACHE_DIR"
+            mkdir -p "$LDCACHE_DIR"
+            
+            SETTINGS=(
+              "CCACHE_DIR=$CACHE_DIR"
+              "LDCACHE_DIR=$LDCACHE_DIR"
+              "CCACHE_MAXSIZE=12G"
+              "CCACHE_COMPILERCHECK=content"
+              "CCACHE_BASEDIR=${GITHUB_WORKSPACE}"
+              "CCACHE_NOHASHDIR=true"
+              "CCACHE_IGNOREOPTIONS=--sysroot*"
+              "CCACHE_COMPRESSION=true"
+              "CCACHE_COMPRESSION_LEVEL=3"
+              "CCACHE_DIRECT=true"
+              "CCACHE_FILE_CLONE=true"
+              "CCACHE_INODE_CACHE=true"
+              "CCACHE_IS_KERNEL_COMPILING=true"
+              "CCACHE_UMASK=002"
+              "CCACHE_SLOPPINESS=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale"
+            )
+            
+            for setting in "${SETTINGS[@]}"; do
+              export "$setting"
+              echo "$setting" >> "$GITHUB_ENV"
+            done
+            
+            if ccache --help 2>&1 | grep -q 'depend_mode'; then
+              export CCACHE_DEPEND=true
+              echo "CCACHE_DEPEND=true" >> "$GITHUB_ENV"
+            fi
+            
+            echo "✅ ccache configured successfully"
+            echo "Current ccache configuration:"
+            ccache -p
+          else
+            echo "ccache not found, skipping configuration."
+          fi
+          echo "::endgroup::"
+
+      - name: 🔨 Warm Build
+        uses: ./.github/actions/build-kernel
+        with:
+          op_config_json: ${{ toJson(matrix) }}
+          ksu_type: "KSUN"
+          ksu_branch_or_hash: "dev"
+          susfs_commit_hash_or_branch: ${{ steps.susfs_res.outputs.hash }}
+          optimize_level: "O2"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
