@@ -551,7 +551,6 @@ jobs:
             sleep $(( attempt * 5 + RANDOM % 6 ))
           done
           if [ "$ok" = 1 ]; then
-            chmod +x ccache
             echo "✅ downloaded ccache once for all matrix jobs"
           else
             echo "::warning::custom ccache download failed; matrix jobs will fall back to the apt ccache"
