@@ -196,7 +196,7 @@ jobs:
             --slurpfile devices matrix.json \
             --slurpfile ksu_list ksu_temp.json \
             '[ $devices[0][] as $dev | $ksu_list[0][] as $ksu | ($dev + {ksu_type: $ksu.type, ksu_hash: $ksu.hash}) ]')
-
+          
           rm ksu_temp.json
           final_count=$(echo "$merged_matrix" | jq 'length')
           
@@ -434,7 +434,6 @@ jobs:
           wrapped=$(jq --slurp '{ include: .[] }' final_matrix_temp.json)
           echo "matrix=$(echo "$wrapped" | jq -c .)" >> "$GITHUB_OUTPUT"
           rm final_matrix_temp.json
-          
           echo "::endgroup::"
 
       - name: Upload build matrix
