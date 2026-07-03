@@ -1,7 +1,7 @@
 {
   "android_kernel_common_oneplus_sm6375": {
     "oneplus/sm6375_v_15.0.0_nord_ce4_lite_5g": "2d49d129e289330f03415804ed2159a39a24f89a|6.1.75",
-    "oneplus/sm6375_b_16.0.0_nord_ce4_lite_5g": "94cd858af589853584b6868e994041512a929a6a|6.1.141"
+    "oneplus/sm6375_b_16.0.0_nord_ce4_lite_5g": "e27b0d842849a0d0348f432734830ffa694a7152|6.1.141"
   },
   "android_kernel_oneplus_sm6375": {
     "oneplus/sm6375_v_15.0.0_nord_ce4_lite_5g": "8f329873eb4f706b8e28967998e1e6f79f22d00f|6.1.118",
