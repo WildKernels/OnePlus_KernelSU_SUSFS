@@ -128,6 +128,7 @@ runs:
         os_version="$OP_OS_VERSION"
         hmbird="$OP_HMBIRD"
         susfs="$OP_SUSFS"
+        opt="$OP_OPT"
         bbg="$OP_BBG"
         bbr="$OP_BBR"
         bbr3="$OP_BBR3"
@@ -211,6 +212,12 @@ runs:
           errors+=("Input 'susfs' cannot be empty")
         elif [[ "$susfs" != "true" && "$susfs" != "false" ]]; then
           errors+=("Input 'susfs' contains invalid characters. Allowed: 'true' or 'false'. Got: '$susfs'")
+        fi
+        
+        if [[ -z "$opt" ]]; then
+          errors+=("Input 'opt' cannot be empty")
+        elif [[ "$opt" != "true" && "$opt" != "false" ]]; then
+          errors+=("Input 'opt' contains invalid characters. Allowed: 'true' or 'false'. Got: '$opt'")
         fi
         
         if [[ -z "$bbg" ]]; then
@@ -1294,6 +1301,7 @@ runs:
         else
           echo "Kernel >= $MIN_VERSION, skipping ptrace patch"
         fi
+        
         if [ "$OP_HMBIRD" = true ]; then
           echo "Patching hmbird!"
           HMBIRD_MODEL=$(echo "$OP_MODEL" | sed 's/-[0-9]\+\.[0-9]\+\.[0-9]\+$//')
@@ -1314,6 +1322,19 @@ runs:
           echo "Hmbird not enabled, skipping fengchi patch"
         fi
         
+        echo "✅ Other patches applied"
+        echo "::endgroup::"
+
+
+    - name: Apply Optimisation Patches
+      if: ${{ env.OP_OPT == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Apply Optimisation patches"
+        cd "$COMMON_KERNEL_FOLDER"
+        KERNEL_VERSION="${{ env.KERNEL_VER }}"
+        MIN_VERSION="5.16"
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/optimized_mem_operations.patch"
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/file_struct_8bytes_align.patch"
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/reduce_cache_pressure.patch"
@@ -1341,7 +1362,6 @@ runs:
           cat "$KERNEL_PATCHES_FOLDER/common/clear_page_16bytes_align.patch" | sed -e 's/SYM_FUNC_START_PI(clear_page)/SYM_FUNC_START_PI(__pi_clear_page)/' | patch -p1 -F3 --forward
         fi
         
-        
         echo "Patching add_limitation_scaling_min_freq.patch"
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/add_limitation_scaling_min_freq.patch"
         echo "Patching re_write_limitation_scaling_min_freq.patch"
@@ -1367,7 +1387,7 @@ runs:
         echo "Patching use_unlikely_wrap_cpufreq.patch"
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/use_unlikely_wrap_cpufreq.patch"
         
-        echo "✅ Other patches applied"
+        echo "✅ Optimisation Patches applied"
         echo "::endgroup::"
 
     - name: Apply NTSync Patch
@@ -2105,6 +2125,7 @@ runs:
           echo "Clean Build: ${{ inputs.clean }}"
           echo ""
           echo "=== OnePlus Features ==="
+          echo "Kernel Optimisations: ${{ env.OP_OPT }}"
           echo "BBR: ${{ env.OP_BBR }}"
           echo "BBRv3: ${{ env.OP_BBR3 }}"
           echo "BBG: ${{ env.OP_BBG }}"
@@ -2171,6 +2192,7 @@ runs:
           echo ""
           echo "| Feature | Status |"
           echo "|---------|--------|"
+          echo "| **Kernel Optimisations** | ${{ env.OP_OPT }} |"
           echo "| **BBR** | ${{ env.OP_BBR }} |"
           echo "| **BBRv3** | ${{ env.OP_BBR3 }} |"
           echo "| **BBG** | ${{ env.OP_BBG }} |"
