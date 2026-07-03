@@ -144,6 +144,7 @@ runs:
         bindgen="$OP_BINDGEN"
         ds="$OP_DS"
         ntsync="$OP_NTSYNC"
+        blacklist_modules="$OP_BLACKLIST_MODULES"
         optimize='${{ inputs.optimize_level }}'
         
         errors=()
@@ -281,6 +282,8 @@ runs:
         # OP_ZYC_COMPILER currently has no checks!
         
         # OP_BINDGEN currently has no checks!
+        
+        # OP_BLACKLIST_MODULES currently has no checks!
         
         if [[ -z "$ds" ]]; then
           errors+=("Input 'ds' cannot be empty")
@@ -1681,6 +1684,71 @@ runs:
         set -euo pipefail
         echo "Disabling GPUEB for MTK kernel 5.10"
         sed -i '/obj-y.*gpueb/d' "$COMMON_KERNEL_FOLDER/drivers/gpu/mediatek/Makefile"
+
+    - name: Disable Vendor / Kernel Modules
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "Disabling Vendor / Kernel Modules"
+        cd "$COMMON_KERNEL_FOLDER"
+
+        # Define modules that MUST NEVER be blacklisted
+        RISKY_MODULES=("coresight" "rust_binder" "msm_kgsl" "camera")
+        
+        declare -a modules=()
+        IFS=',' read -ra ADDR <<< "$OP_BLACKLIST_MODULES"
+        for mod in "${ADDR[@]}"; do
+          [[ -n "$mod" ]] && modules+=("$mod")
+        done
+        
+        if [ "$OP_BBR" = "true" ] || [ "$OP_BBR3" = "true" ]; then
+          if [[ ! " ${modules[*]} " =~ " oplus_network_tuning " ]]; then
+            modules+=("oplus_network_tuning")
+          fi
+          if [[ ! " ${modules[*]} " =~ " oplus_networks_tuning " ]]; then
+            modules+=("oplus_networks_tuning")
+          fi
+        fi
+        
+        # Safety Validation Loop (Filter out risky modules)
+        declare -a validated_modules=()
+        for mod in "${modules[@]}"; do
+          is_risky=false
+          
+          # Check if current module matches any risky module
+          for risky in "${RISKY_MODULES[@]}"; do
+            if [ "$mod" = "$risky" ]; then
+              is_risky=true
+              echo "⚠️ WARNING: Blocked attempt to blacklist protected module: $mod"
+              break
+            fi
+          done
+          
+          # Only keep the module if it's safe
+          if [ "$is_risky" = false ]; then
+            validated_modules+=("$mod")
+          fi
+        done
+        
+        if [ ${#validated_modules[@]} -gt 0 ]; then
+          RAW_JOINED=$(IFS=,; echo "${validated_modules[*]}")
+          RESULT_LIST="\"${RAW_JOINED}\""
+        else
+          RESULT_LIST='""'
+        fi
+
+        echo "Disabling following kernel modules: ${RESULT_LIST}"
+        
+        echo "CONFIG_DEBLOAT_VENDOR_MODULES=${RESULT_LIST}" >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
+
+        KERNEL_VERSION="${{ env.KERNEL_VER }}"
+        MIN_VERSION="5.16"
+        if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
+          curl -Ls https://raw.githubusercontent.com/fatalcoder524/kernel_patches_additional/refs/heads/main/experimental/0001-Support-conditional-vendor-modules-blacklisting-5.15-and-below.patch | patch -p1
+        else
+          curl -Ls https://raw.githubusercontent.com/fatalcoder524/kernel_patches_additional/refs/heads/main/experimental/0001-Support-conditional-vendor-modules-blacklisting-6.1-and-above.patch | patch -p1
+        fi
+        
 
     - name: Build Kernel
       id: build_kernel_step
