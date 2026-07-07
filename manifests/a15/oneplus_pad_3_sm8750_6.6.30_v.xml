@@ -3,7 +3,7 @@
   <remote fetch="https://git.codelinaro.org/clo/la" name="clo-la"/>
   <remote fetch="https://github.com/OnePlusOSS" name="origin"/>
   <remote fetch="https://github.com/WildKernels" name="wild"/>
-  <project remote="wild" name="AnyKernel3" path="AnyKernel3" revision="d1ebdc2002c557ceff9939afc3098eb88916f464"/>
+  <project remote="wild" name="AnyKernel3" path="AnyKernel3" revision="0b46673ae91aee8d60bd6ee257b4d56d3f6a0114"/>
   <default remote="clo-la" revision="dummy_revision" sync-c="true" sync-tags="false"/>
   <project remote="origin" name="android_kernel_common_oneplus_sm8750" path="kernel_platform/common" revision="35366be96d7e73d1d0d7093e1cf2fafd58f9c7d4">
     <linkfile dest="kernel_platform/.source_date_epoch_dir" src="."/>

@@ -4,7 +4,7 @@
   <default remote="clo-la" revision="dummy_revision" sync-c="true" sync-tags="false"/>
   <remote fetch="https://github.com/OnePlusOSS" name="origin"/>
   <remote fetch="https://github.com/WildKernels" name="wild"/>
-  <project remote="wild" name="AnyKernel3" path="AnyKernel3" revision="d1ebdc2002c557ceff9939afc3098eb88916f464"/>
+  <project remote="wild" name="AnyKernel3" path="AnyKernel3" revision="0b46673ae91aee8d60bd6ee257b4d56d3f6a0114"/>
   <project remote="origin" name="android_kernel_common_oneplus_sm7550" path="kernel_platform/common" revision="d8187f64c9e60fee0969a678a67ac77114a926d9">
     <linkfile dest=".source_date_epoch_dir" src="."/>
   </project>

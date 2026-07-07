@@ -4,7 +4,7 @@
   <default remote="clo" revision="kernel.build.lnx.1.0" sync-j="8"/>
   <remote fetch="https://github.com/OnePlusOSS" name="origin"/>
   <remote fetch="https://github.com/WildKernels" name="wild"/>
-  <project remote="wild" name="AnyKernel3" path="AnyKernel3" revision="d1ebdc2002c557ceff9939afc3098eb88916f464"/>
+  <project remote="wild" name="AnyKernel3" path="AnyKernel3" revision="0b46673ae91aee8d60bd6ee257b4d56d3f6a0114"/>
   <project remote="origin" name="android_kernel_5.10_oneplus_mt6895" path="kernel-5.10" revision="oneplus/mt6895_v_15.0.0_oneplus_10r">
     <linkfile dest="kernel_platform/common" src="."/>
   </project>
