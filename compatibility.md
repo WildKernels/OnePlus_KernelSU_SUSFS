@@ -8,7 +8,6 @@
   </tr>
 </table>
 
- - Currently All the kernels are built from Android 15 Manifest.
  - Do not use the zips after Major Android OTA (a15 -> a16) unless its verified in <a href="https://t.me/WildKernels">WildKernels</a> Telegram group or other sources like XDA.
 
 ## 2. Non-OnePlus Devices
