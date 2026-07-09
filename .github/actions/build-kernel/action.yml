@@ -737,6 +737,17 @@ runs:
         else
           echo "⚠️ No existing LTO cache - linker will generate new artifacts"
         fi
+        
+        # Blacklist Risky files from ccache
+        sed -i '1i // CI_RUN_ID: ${{ github.run_id }}' "$COMMON_KERNEL_FOLDER/kernel/configs.c"
+        sed -i '1i // ccache:disable' "$COMMON_KERNEL_FOLDER/kernel/configs.c"
+
+        if head -n 1 "$COMMON_KERNEL_FOLDER/kernel/configs.c" | grep -q "// ccache:disable"; then
+            echo "Success: ccache is disabled for this file!"
+        else
+            echo "Error: Modification failed or line is missing."
+        fi
+
         echo "::endgroup::"
 
     - name: Fetch SusFS and Other Dependencies
@@ -1709,7 +1720,6 @@ runs:
       shell: bash
       env:
         PYTHONWARNINGS: "ignore:invalid escape sequence"
-        CCACHE_EXTRAFILES: "$COMMON_KERNEL_FOLDER/out/kernel/config_data.gz"
       run: |
         set -euo pipefail
         echo "::group::Build kernel with ccache optimization"
@@ -1777,6 +1787,8 @@ runs:
         
         OUT=out
         mkdir -p "$OUT"
+
+        export CCACHE_EXTRAFILES="$COMMON_KERNEL_FOLDER/$OUT/.config:$COMMON_KERNEL_FOLDER/$OUT/kernel/config_data:$COMMON_KERNEL_FOLDER/$OUT/kernel/config_data.gz"
         
         echo "============================================"
         echo "🔍 Compiler & ccache Verification"
