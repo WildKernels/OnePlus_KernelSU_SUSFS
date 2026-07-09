@@ -16,17 +16,17 @@ inputs:
     description: 'KSU branch or commit hash (empty = auto-detect by ksu_type)'
     required: false
     type: string
-    default: ""
+    default: "d1754d8cc12f05e18406171cbd1bc32cc2930d1b"
   susfs_commit_hash_or_branch:
     description: 'SUSFS branch or commit hash (empty = auto-detect by kernel version)'
     required: false
     type: string
-    default: ""
+    default: "72bdce7ce2de8189efb227c6cefbc578a9efd479"
   build_timestamp:
     description: 'Custom kernel build timestamp shown in uname -a (e.g. "Tue Feb 10 10:01:02 UTC 2026"). Leave empty to use the current build time.'
     required: false
     type: string
-    default: ''
+    default: 'Fri Dec 5 02:15:49 UTC 2025'
   optimize_level:
     description: 'Compiler optimization level (O2 or O3)'
     required: false
