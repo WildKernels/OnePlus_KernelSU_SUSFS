@@ -626,20 +626,17 @@ jobs:
           echo "[DEBUG] Ccache version : $(ccache --version | head -1)"
           echo "::endgroup::"
 
-      - name: ♻️ Configure ccache & LTO cache (bounded)
+      - name: ♻️ Configure ccache (bounded)
         run: |
           echo "::group::Configure ccache environment"
           set -euo pipefail
           if command -v ccache >/dev/null 2>&1; then
             CACHE_DIR="${{ github.workspace }}/.ccache"
-            LDCACHE_DIR="${{ github.workspace }}/.ld_cache"
             CCACHE_LOG="${{ github.workspace }}/ccache.log"
             mkdir -p "$CACHE_DIR"
-            mkdir -p "$LDCACHE_DIR"
             
             SETTINGS=(
               "CCACHE_DIR=$CACHE_DIR"
-              "LDCACHE_DIR=$LDCACHE_DIR"
               "CCACHE_MAXSIZE=12G"
               "CCACHE_COMPILERCHECK=content"
               "CCACHE_BASEDIR=${GITHUB_WORKSPACE}"
