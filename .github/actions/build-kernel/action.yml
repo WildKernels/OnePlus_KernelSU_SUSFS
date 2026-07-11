@@ -689,19 +689,6 @@ runs:
           ${{ inputs.ksu_type }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-
           ${{ inputs.ksu_type }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-
 
-    - name: Restore LTO LD cache
-      id: restore-lto-ld-cache
-      uses: ./action-source/.github/actions/cache/restore
-      if: ${{ (inputs.clean == false && env.OP_LTO != 'none') || (inputs.clean == 'false' && env.OP_LTO != 'none') }}
-      with:
-        cache_path: ${{ env.LDCACHE_DIR }}
-        cache_key: ${{ inputs.ksu_type }}-v3-LTO-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-${{ env.CLANG_VERSION_SHORT }}
-        cache_bucket: "lto-cache"
-        debug: ${{ inputs.debug }}
-        restore_keys: |
-          ${{ inputs.ksu_type }}-v3-LTO-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-
-          ${{ inputs.ksu_type }}-v3-LTO-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-
-
     - name: Check and Prepare Caches
       shell: bash
       run: |
@@ -713,7 +700,7 @@ runs:
         echo "Current ccache configuration:"
         ccache -p
         
-        if [ -d "$CCACHE_DIR" ] && find "$CCACHE_DIR" -type f -print -quit 2>/dev/null | grep -q .; then
+        if [ -d "$CCACHE_DIR" ] && find "$CCACHE_DIR" -maxdepth 2 -type f -print -quit 2>/dev/null | grep -q .; then
           echo "✅ Restored cache found"
           echo ""
           echo "Pre-build cache statistics:"
@@ -727,16 +714,18 @@ runs:
         fi
         
         ccache -z
+        rm -f "$CCACHE_DIR/ccache.log"
         
-        # Setup and check LTO Cache
-        if [ -d "$LDCACHE_DIR" ] && find "$LDCACHE_DIR" -type f -print -quit 2>/dev/null | grep -q .; then
-          echo "✅ Restored LTO LD cache found"
-          
-          echo "Updating LTO cache atime for cache eviction..."
-          find ${{ env.LDCACHE_DIR }} -type f -exec touch -t $(date -d "1 day ago" +%Y%m%d%H%M) {} +
+        # Blacklist Risky files from ccache
+        sed -i '1i // CI_RUN_ID: ${{ github.run_id }}' "$COMMON_KERNEL_FOLDER/kernel/configs.c"
+        sed -i '1i // ccache:disable' "$COMMON_KERNEL_FOLDER/kernel/configs.c"
+
+        if head -n 1 "$COMMON_KERNEL_FOLDER/kernel/configs.c" | grep -q "// ccache:disable"; then
+            echo "Success: ccache is disabled for this file!"
         else
-          echo "⚠️ No existing LTO cache - linker will generate new artifacts"
+            echo "Error: Modification failed or line is missing."
         fi
+
         echo "::endgroup::"
 
     - name: Fetch SusFS and Other Dependencies
@@ -1567,8 +1556,6 @@ runs:
         CONFIG_IP6_NF_NAT=y
         CONFIG_IP6_NF_TARGET_MASQUERADE=y
         EOF
-        
-        patch -p1 -F 3 < "$KERNEL_PATCHES_FOLDER/common/IPv6_NAT_FIX.patch"
 
     - name: Add Droidspaces support
       shell: bash
@@ -1610,7 +1597,10 @@ runs:
         CONFIG_NETFILTER_XT_TARGET_REJECT=y
         CONFIG_NETFILTER_XT_TARGET_LOG=y
         CONFIG_NETFILTER_XT_MATCH_RECENT=y
+        CONFIG_USER_NS=y
         EOF
+        
+        patch -p1 < "$KERNEL_PATCHES_FOLDER/common/droidspaces/0001-Guard-USER_NS-for-non-root-users.patch"
         
         if [ "${{ env.OP_RUST_BUILD }}" = "true" ]; then
           echo "Add IPC NS missing symbols for rust binder"
@@ -1682,12 +1672,32 @@ runs:
         echo "Disabling GPUEB for MTK kernel 5.10"
         sed -i '/obj-y.*gpueb/d' "$COMMON_KERNEL_FOLDER/drivers/gpu/mediatek/Makefile"
 
+    - name: Apply Fake config.gz patch
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "Apply Fake config.gz patch"
+        cd "$COMMON_KERNEL_FOLDER"
+        patch -p1 < "$KERNEL_PATCHES_FOLDER/common/fake_config.patch"
+        
+        OPTIONS=()
+        
+        if [ "$OP_BBR" = "true" ] || [ "$OP_BBR3" = "true" ]; then
+          OPTIONS+=("CONFIG_TCP_CONG_ADVANCED")
+        fi
+        
+        if [ "$OP_IP_SET" = "true" ]; then
+          OPTIONS+=("CONFIG_IP6_NF_NAT")
+        fi
+        
+        CONFIG_STRING="${OPTIONS[*]}"
+        echo "CONFIG_FAKE_DISABLE=${CONFIG_STRING}" >> $GITHUB_ENV
+
     - name: Build Kernel
       id: build_kernel_step
       shell: bash
       env:
         PYTHONWARNINGS: "ignore:invalid escape sequence"
-        CCACHE_EXTRAFILES: "$COMMON_KERNEL_FOLDER/out/kernel/config_data.gz"
       run: |
         set -euo pipefail
         echo "::group::Build kernel with ccache optimization"
@@ -1722,7 +1732,7 @@ runs:
         set -u
         
         echo '#!/bin/bash' > "$COMMON_KERNEL_FOLDER/ld-wrapper"
-        echo 'ld.lld "$@" --thinlto-cache-dir=$LDCACHE_DIR --thinlto-jobs=$(nproc --all)' >> "$COMMON_KERNEL_FOLDER/ld-wrapper"
+        echo 'ld.lld "$@" --thinlto-jobs=$(nproc --all)' >> "$COMMON_KERNEL_FOLDER/ld-wrapper"
         chmod +x "$COMMON_KERNEL_FOLDER/ld-wrapper"
         
         KERNEL_BUILD_DATE=$(date -u)
@@ -1755,7 +1765,7 @@ runs:
         
         OUT=out
         mkdir -p "$OUT"
-        
+
         echo "============================================"
         echo "🔍 Compiler & ccache Verification"
         echo "============================================"
@@ -1837,7 +1847,29 @@ runs:
         echo "  Features: readonly_direct, file_clone, inode_cache, depend"
         echo "============================================"
         
-        if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -type f 2>/dev/null | head -n1)" ]; then
+        ccache --set-config=extra_files_to_hash=""
+        GZ_FILE="$COMMON_KERNEL_FOLDER/$OUT/kernel/config_data.gz"
+
+        (
+          TRACKED_LIST=""
+
+          while true; do
+            NEW_LIST=""
+
+            [ -f "$GZ_FILE" ] && NEW_LIST="${NEW_LIST:+$NEW_LIST:}${GZ_FILE}"
+            
+            if [ "$NEW_LIST" != "$TRACKED_LIST" ]; then
+              TRACKED_LIST="$NEW_LIST"
+              ccache --set-config=extra_files_to_hash="$TRACKED_LIST"
+              echo "[ccache extra_files_to_hash tracking] -> $TRACKED_LIST"
+            fi
+            
+            sleep 0.5
+          done
+        ) &
+        TRACKER_PID=$!
+
+        if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -maxdepth 2 -type f -print -quit 2>/dev/null)" ]; then
           echo "🔥 Priming cache with header preprocessing..."
           make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -C "$COMMON_KERNEL_FOLDER" O="$OUT" headers_install prepare 2>&1 | head -n 20 || true
           echo ""
@@ -1847,8 +1879,8 @@ runs:
         set -o pipefail
         
         if [ "${{ inputs.debug }}" == "true" ]; then
-          make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" Image modules 2>&1 | tee build.log
-          make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$COMMON_KERNEL_FOLDER/out" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" INSTALL_MOD_PATH="$COMMON_KERNEL_FOLDER/out/install" modules_install 2>&1 | tee install.log
+          make V=1 LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" CONFIG_FAKE_DISABLE="$CONFIG_FAKE_DISABLE" Image modules 2>&1 | tee build.log
+          make V=1 LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$COMMON_KERNEL_FOLDER/out" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" CONFIG_FAKE_DISABLE="$CONFIG_FAKE_DISABLE" INSTALL_MOD_PATH="$COMMON_KERNEL_FOLDER/out/install" modules_install 2>&1 | tee install.log
           
           cp build.log "$DEBUG_ARTIFACTS_FOLDER/build.log"
           cp install.log "$DEBUG_ARTIFACTS_FOLDER/install.log"
@@ -1859,7 +1891,7 @@ runs:
           
           ls -la "$DEBUG_ARTIFACTS_FOLDER"
         else
-          make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" Image 2>&1 | tee build.log
+          make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" CONFIG_FAKE_DISABLE="$CONFIG_FAKE_DISABLE" Image 2>&1 | tee build.log
         fi
         
         BUILD_END=$(date +%s)
@@ -1868,6 +1900,8 @@ runs:
         echo "BUILD_START=$BUILD_START" >> "$GITHUB_ENV"
         echo "BUILD_END=$BUILD_END" >> "$GITHUB_ENV"
         echo "BUILD_TIME=$BUILD_TIME" >> "$GITHUB_ENV"
+
+        kill "$TRACKER_PID" 2>/dev/null || true
         
         IMG="$OUT/arch/arm64/boot/Image"
         if [ ! -f "$IMG" ]; then
@@ -1907,15 +1941,13 @@ runs:
         ccache -c
         
         echo "Perform ccache eviction!"
-        # 3h = 10800s using seconds to support older ccache
-        ccache --evict-older-than 10800s
-        
-        echo "Perform LTO cache eviction!"
-        if [ -d "$LDCACHE_DIR" ]; then
-          # Delete LTO cache files modified more than 180 minutes (3 hours) ago
-          find "$LDCACHE_DIR" -type f -amin +180 -delete
-          find "$LDCACHE_DIR" -type d -empty -delete
-        fi
+        # 0.5 days = 12 Hrs. Delete cache unused in 12 hrs. 12 hrs is considered for safety.
+        # Yes. ccache uses mtime as a store of time due to cross compatibility with different OS.
+        find "$CCACHE_DIR" -type f -mtime +0.5 -delete
+        # Remove empty layout subdirectories
+        find "$CCACHE_DIR" -type d -empty -delete
+
+        cp "${{ env.CCACHE_LOGFILE }}" "$CCACHE_DIR"
         
         if [ "${{ inputs.debug }}" == "true" ]; then
           if [ -f "${{ env.CCACHE_LOGFILE }}" ]; then
@@ -1962,7 +1994,7 @@ runs:
         echo "## 📊 ccache Statistics" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
-        ccache -s >> $GITHUB_STEP_SUMMARY
+        ccache -s --verbose >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Collect Build Stats / Validate Image
@@ -2267,18 +2299,6 @@ runs:
         cache_path: ${{ env.CCACHE_DIR }}
         cache_key: ${{ inputs.ksu_type }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-${{ env.CLANG_VERSION_SHORT }}
         cache_bucket: "ccache-cache"
-        debug: ${{ inputs.debug }}
-        github_token: ${{ inputs.github_token }}
-        working_dir: "./main-source"
-        compression_level: 6
-
-    - name: Save LTO LD cache
-      if: always() && ${{ env.OP_LTO != 'none' }} && steps.build_kernel_step.conclusion == 'success'
-      uses: ./action-source/.github/actions/cache/save
-      with:
-        cache_path: ${{ env.LDCACHE_DIR }}
-        cache_key: ${{ inputs.ksu_type }}-v3-LTO-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-${{ env.CLANG_VERSION_SHORT }}
-        cache_bucket: "lto-cache"
         debug: ${{ inputs.debug }}
         github_token: ${{ inputs.github_token }}
         working_dir: "./main-source"

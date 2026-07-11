@@ -626,20 +626,17 @@ jobs:
           echo "[DEBUG] Ccache version : $(ccache --version | head -1)"
           echo "::endgroup::"
 
-      - name: ♻️ Configure ccache & LTO cache (bounded)
+      - name: ♻️ Configure ccache (bounded)
         run: |
           echo "::group::Configure ccache environment"
           set -euo pipefail
           if command -v ccache >/dev/null 2>&1; then
             CACHE_DIR="${{ github.workspace }}/.ccache"
-            LDCACHE_DIR="${{ github.workspace }}/.ld_cache"
             CCACHE_LOG="${{ github.workspace }}/ccache.log"
             mkdir -p "$CACHE_DIR"
-            mkdir -p "$LDCACHE_DIR"
             
             SETTINGS=(
               "CCACHE_DIR=$CACHE_DIR"
-              "LDCACHE_DIR=$LDCACHE_DIR"
               "CCACHE_MAXSIZE=12G"
               "CCACHE_COMPILERCHECK=content"
               "CCACHE_BASEDIR=${GITHUB_WORKSPACE}"
@@ -652,6 +649,7 @@ jobs:
               "CCACHE_INODE_CACHE=true"
               "CCACHE_IS_KERNEL_COMPILING=true"
               "CCACHE_UMASK=002"
+              "CCACHE_LOGFILE=${CCACHE_LOG}"
               "CCACHE_SLOPPINESS=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale"
             )
             
@@ -659,11 +657,6 @@ jobs:
               export "$setting"
               echo "$setting" >> "$GITHUB_ENV"
             done
-            
-            if [ "${{ inputs.debug }}" == "true" ]; then
-              export "CCACHE_LOGFILE=$CCACHE_LOG"
-              echo "CCACHE_LOGFILE=$CCACHE_LOG" >> "$GITHUB_ENV"
-            fi
             
             if ccache --help 2>&1 | grep -q 'depend_mode'; then
               export CCACHE_DEPEND=true
