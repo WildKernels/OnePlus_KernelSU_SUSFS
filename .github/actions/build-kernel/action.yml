@@ -1998,7 +1998,7 @@ runs:
         echo "## 📊 ccache Statistics" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
-        ccache -s >> $GITHUB_STEP_SUMMARY
+        ccache -s --verbose >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Collect Build Stats / Validate Image
