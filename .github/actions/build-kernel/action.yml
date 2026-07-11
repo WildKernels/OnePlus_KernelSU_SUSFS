@@ -714,6 +714,7 @@ runs:
         fi
         
         ccache -z
+        rm -f "$CCACHE_DIR/ccache.log"
         
         # Blacklist Risky files from ccache
         sed -i '1i // CI_RUN_ID: ${{ github.run_id }}' "$COMMON_KERNEL_FOLDER/kernel/configs.c"
@@ -1920,6 +1921,8 @@ runs:
         echo "Perform ccache eviction!"
         # 3h = 10800s using seconds to support older ccache
         ccache --evict-older-than 10800s
+
+        cp "${{ env.CCACHE_LOGFILE }}" "$CCACHE_DIR"
         
         if [ "${{ inputs.debug }}" == "true" ]; then
           if [ -f "${{ env.CCACHE_LOGFILE }}" ]; then
