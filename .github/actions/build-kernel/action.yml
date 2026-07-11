@@ -700,7 +700,7 @@ runs:
         echo "Current ccache configuration:"
         ccache -p
         
-        if [ -d "$CCACHE_DIR" ] && find "$CCACHE_DIR" -type f -print -quit 2>/dev/null | grep -q .; then
+        if [ -d "$CCACHE_DIR" ] && find "$CCACHE_DIR" -maxdepth 2 -type f -print -quit 2>/dev/null | grep -q .; then
           echo "✅ Restored cache found"
           echo ""
           echo "Pre-build cache statistics:"
@@ -1849,7 +1849,7 @@ runs:
         echo "  Features: readonly_direct, file_clone, inode_cache, depend"
         echo "============================================"
         
-        if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -type f 2>/dev/null | head -n1)" ]; then
+        if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -maxdepth 2 -type f -print -quit 2>/dev/null)" ]; then
           echo "🔥 Priming cache with header preprocessing..."
           make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -C "$COMMON_KERNEL_FOLDER" O="$OUT" headers_install prepare 2>&1 | head -n 20 || true
           echo ""
