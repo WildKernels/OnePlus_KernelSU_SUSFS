@@ -1919,8 +1919,11 @@ runs:
         ccache -c
         
         echo "Perform ccache eviction!"
-        # 3h = 10800s using seconds to support older ccache
-        ccache --evict-older-than 10800s
+        # 0.5 days = 12 Hrs. Delete cache unused in 12 hrs. 12 hrs is considered for safety.
+        # Yes. ccache uses mtime as a store of time due to cross compatibility with different OS.
+        find "$CCACHE_DIR" -type f -mtime +0.5 -delete
+        # Remove empty layout subdirectories
+        find "$CCACHE_DIR" -type d -empty -delete
 
         cp "${{ env.CCACHE_LOGFILE }}" "$CCACHE_DIR"
         
