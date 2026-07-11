@@ -1766,8 +1766,6 @@ runs:
         OUT=out
         mkdir -p "$OUT"
 
-        export CCACHE_EXTRAFILES="$COMMON_KERNEL_FOLDER/$OUT/.config:$COMMON_KERNEL_FOLDER/$OUT/kernel/config_data:$COMMON_KERNEL_FOLDER/$OUT/kernel/config_data.gz"
-        
         echo "============================================"
         echo "🔍 Compiler & ccache Verification"
         echo "============================================"
@@ -1849,6 +1847,32 @@ runs:
         echo "  Features: readonly_direct, file_clone, inode_cache, depend"
         echo "============================================"
         
+        ccache --set-config=extra_files_to_hash=""
+        GZ_FILE="$COMMON_KERNEL_FOLDER/$OUT/kernel/config_data.gz"
+
+        (
+          TRACKED_LIST=""
+
+          while true; do
+            NEW_LIST=""
+
+            [ -f "$GZ_FILE" ] && NEW_LIST="${NEW_LIST:+$NEW_LIST:}${GZ_FILE}"
+            
+            if [ "$NEW_LIST" != "$TRACKED_LIST" ]; then
+              TRACKED_LIST="$NEW_LIST"
+              if [ -n "$TRACKED_LIST" ]; then
+                ccache --set-config=extra_files_to_hash="$TRACKED_LIST"
+              else
+                ccache --clear-config=extra_files_to_hash
+              fi
+              echo "[ccache extra_files_to_hash tracking] -> $TRACKED_LIST"
+            fi
+            
+            sleep 0.5
+          done
+        ) &
+        TRACKER_PID=$!
+
         if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -maxdepth 2 -type f -print -quit 2>/dev/null)" ]; then
           echo "🔥 Priming cache with header preprocessing..."
           make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -C "$COMMON_KERNEL_FOLDER" O="$OUT" headers_install prepare 2>&1 | head -n 20 || true
@@ -1880,6 +1904,8 @@ runs:
         echo "BUILD_START=$BUILD_START" >> "$GITHUB_ENV"
         echo "BUILD_END=$BUILD_END" >> "$GITHUB_ENV"
         echo "BUILD_TIME=$BUILD_TIME" >> "$GITHUB_ENV"
+
+        kill "$TRACKER_PID" 2>/dev/null || true
         
         IMG="$OUT/arch/arm64/boot/Image"
         if [ ! -f "$IMG" ]; then
