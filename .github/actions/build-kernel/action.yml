@@ -1860,7 +1860,11 @@ runs:
             
             if [ "$NEW_LIST" != "$TRACKED_LIST" ]; then
               TRACKED_LIST="$NEW_LIST"
-              ccache --set-config=extra_files_to_hash="$TRACKED_LIST"
+              if [ -n "$TRACKED_LIST" ]; then
+                ccache --set-config=extra_files_to_hash="$TRACKED_LIST"
+              else
+                ccache --clear-config=extra_files_to_hash
+              fi
               echo "[ccache extra_files_to_hash tracking] -> $TRACKED_LIST"
             fi
             
