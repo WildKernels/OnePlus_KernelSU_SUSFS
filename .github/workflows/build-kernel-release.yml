@@ -189,10 +189,15 @@ jobs:
           fi
           
           echo "$filtered" | jq '.' > matrix.json
+          echo "$ksu_options_normalized" > ksu_temp.json
           
           # For each device + each ksu option → one combined entry
-          merged_matrix=$(jq -n --argjson devices "$filtered" --argjson ksu_list "$ksu_options_normalized" '[ $devices[] as $dev | $ksu_list[] as $ksu | ($dev + {ksu_type: $ksu.type, ksu_hash: $ksu.hash}) ]')
-          
+          merged_matrix=$(jq -n \
+            --slurpfile devices matrix.json \
+            --slurpfile ksu_list ksu_temp.json \
+            '[ $devices[0][] as $dev | $ksu_list[0][] as $ksu | ($dev + {ksu_type: $ksu.type, ksu_hash: $ksu.hash}) ]')
+
+          rm ksu_temp.json
           final_count=$(echo "$merged_matrix" | jq 'length')
           
           echo "✅ Found $final_count device(s) to build"
@@ -406,9 +411,15 @@ jobs:
               "android16-6.12": $a16
             }')
           
+          echo "$susfs_hashes_json" > susfs_lookup_temp.json
           merged_matrix=$(echo "$merged_matrix" | jq \
-            --argjson hashes "$susfs_hashes_json" \
-            '[.[] | . + {susfs_resolved_hash: ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown")}]')
+            --slurpfile hashes_array susfs_lookup_temp.json \
+            '
+              ($hashes_array[0]) as $hashes |
+              [.[] | . + {susfs_resolved_hash: ($hashes["\(.android_version)-\(.kernel_version)"] // "unknown")}]
+            ')
+          
+          rm susfs_lookup_temp.json
           
           merged_matrix=$(echo "$merged_matrix" | jq '
             sort_by(
@@ -416,10 +427,13 @@ jobs:
               .model
             )
           ')
+
+          echo "$merged_matrix" > final_matrix_temp.json
           
           # Recalculate wrapped with updated matrix and write output
-          wrapped=$(jq -n --argjson items "$merged_matrix" '{ include: $items }')
-          echo "matrix=$(jq -c . <<< "$wrapped")" >> "$GITHUB_OUTPUT"
+          wrapped=$(jq --slurp '{ include: .[] }' final_matrix_temp.json)
+          echo "matrix=$(echo "$wrapped" | jq -c .)" >> "$GITHUB_OUTPUT"
+          rm final_matrix_temp.json
           
           echo "::endgroup::"
 
