@@ -1321,6 +1321,7 @@ runs:
           chmod +x ./kernel/module/module_overlay/convert_overlay.sh
         fi
 
+        copied_modules=""
         if [ "$overlay_patched" -eq 1 ]; then
           SOC="${OP_BRANCH#*/}"
 
@@ -1385,9 +1386,19 @@ runs:
             file="${selected_file[$module_name]}"
             priority="${selected_priority[$module_name]}"
             echo "Copying module '$module_name' priority=$priority: $file"
-            cp -v -- "$file" "$COMMON_KERNEL_FOLDER/kernel/module/module_overlay/modules/${module_name}.ko"
+
+            dest_path="$COMMON_KERNEL_FOLDER/kernel/module/module_overlay/modules/${module_name}.ko"
+            cp -v -- "$file" "$dest_path"
+
+            if [ -z "$copied_modules" ]; then
+              copied_modules="$dest_path"
+            else
+              copied_modules="$copied_modules:$dest_path"
+            fi
           done
         fi
+
+        ccache --set-config=extra_files_to_hash="$copied_modules"
         
         echo "✅ Other patches applied"
         echo "::endgroup::"
@@ -1924,42 +1935,6 @@ runs:
         echo "  Compression: zstd level 3"
         echo "  Features: readonly_direct, file_clone, inode_cache, depend"
         echo "============================================"
-        
-        ccache --set-config=extra_files_to_hash=""
-        CONFIG_FILE="$CCACHE_DIR/ccache.conf"
-        GZ_FILE="$COMMON_KERNEL_FOLDER/$OUT/kernel/config_data.gz"
-        DATA_FILE="$COMMON_KERNEL_FOLDER/$OUT/kernel/config_data"
-
-        (
-          TRACKED_LIST=""
-
-          while true; do
-            NEW_LIST=""
-
-            [ -f "$GZ_FILE" ] && NEW_LIST="${NEW_LIST:+$NEW_LIST:}${GZ_FILE}"
-            
-            if [ "$NEW_LIST" != "$TRACKED_LIST" ]; then
-              TRACKED_LIST="$NEW_LIST"
-              
-              if [ -f "$CONFIG_FILE" ]; then
-                grep -v "extra_files_to_hash" "$CONFIG_FILE" > /tmp/ccache.conf.tmp
-              else
-                > /tmp/ccache.conf.tmp
-              fi
-
-              if [ -n "$TRACKED_LIST" ]; then
-                echo "extra_files_to_hash = $TRACKED_LIST" >> /tmp/ccache.conf.tmp
-              fi
-
-              mv /tmp/ccache.conf.tmp "$CONFIG_FILE"
-              
-              echo "[ccache extra_files_to_hash tracking] -> ${TRACKED_LIST:-EMPTY}"
-            fi
-            
-            sleep 0.5
-          done
-        ) &
-        TRACKER_PID=$!
 
         if [ ! -d "$CCACHE_DIR" ] || [ -z "$(find "$CCACHE_DIR" -maxdepth 2 -type f -print -quit 2>/dev/null)" ]; then
           echo "🔥 Priming cache with header preprocessing..."
@@ -1992,8 +1967,6 @@ runs:
         echo "BUILD_START=$BUILD_START" >> "$GITHUB_ENV"
         echo "BUILD_END=$BUILD_END" >> "$GITHUB_ENV"
         echo "BUILD_TIME=$BUILD_TIME" >> "$GITHUB_ENV"
-
-        kill "$TRACKER_PID" 2>/dev/null || true
         
         IMG="$OUT/arch/arm64/boot/Image"
         if [ ! -f "$IMG" ]; then
