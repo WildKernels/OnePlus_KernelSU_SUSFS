@@ -24,5 +24,6 @@
   "ip_set": true,
   "unicode": true,
   "ntsync": true,
+  "blacklist_modules": "kernelsu,oplus_security_guard,oplus_qr_scan,oplus_score,oplus_vip_task,oplus_dns_cache,oplus_network_linkpower_module,oplus_data_module,oplus_secure_harden,oplus_security_keventupload,oplus_secure_guard_new,oplus_secure_guard,coresight_tpda,coresight_tgu,coresight_trace_noc,coresight_cti,coresight_qmi,coresight_dummy,coresight_remote_etm,coresight_tpdm,coresight_uetm,coresight_stm,coresight_tmc_sec,f_fs_ipc_log,qti_battery_debug,rdbg,stm_heartbeat,stm_p_ost,stm_core,stm_ftrace,stm_console,spmi_pmic_arb_debug",
   "uname": "OP-WILD"
 }
