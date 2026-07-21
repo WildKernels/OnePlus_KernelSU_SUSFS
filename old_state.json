@@ -1,4 +1,7 @@
 {
+  "android_kernel_oneplus_mt6835": {
+    "oneplus/mt6835_b_16.0_n6": "697017da6bd6f9d47ac22cd1cdca83a76bf7ac39|5.15.180"
+  },
   "android_kernel_5.10_oneplus_mt6983": {
     "oneplus/mt6983_v_15.0.0_oneplus_pad": "37a6ea3f0b1a93bd8580de8d9c7ef4240824f90e|5.10.226",
     "oneplus/mt6983_v_15.0.0_nord_3": "743bf02b8e0bf8eac6c6351160b73f326d349a32|5.10.226",
