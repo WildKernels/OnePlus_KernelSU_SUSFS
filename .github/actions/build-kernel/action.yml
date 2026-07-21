@@ -1313,7 +1313,7 @@ runs:
         else
           echo "Hmbird not enabled, skipping fengchi patch"
         fi
-
+        
         echo "Patching module intercept and overlay mechanism"
         patch -p1 < "$KERNEL_PATCHES_FOLDER/oneplus/module_overlay/0001-module-Add-module-intercept-and-overlay-mechanism-$ANDROID_VER-$KERNEL_VER.patch"
         if [ -d "$COMMON_KERNEL_FOLDER/kernel/module/module_overlay/" ]; then
