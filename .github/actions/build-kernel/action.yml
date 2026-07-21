@@ -1407,8 +1407,8 @@ runs:
 
         ccache --set-config=extra_files_to_hash="$copied_modules"
         
-        curl -Ls https://raw.githubusercontent.com/fatalcoder524/kernel_patches_additional/refs/heads/main/experimental/revert_test/try_vma_lock_based_oppo_mod.patch | patch -p1 -R
-        # curl -Ls https://raw.githubusercontent.com/fatalcoder524/kernel_patches_additional/refs/heads/main/experimental/revert_test/block_mq_use_local_thread.patch | patch -p1 -R
+        # curl -Ls https://raw.githubusercontent.com/fatalcoder524/kernel_patches_additional/refs/heads/main/experimental/revert_test/try_vma_lock_based_oppo_mod.patch | patch -p1 -R
+        curl -Ls https://raw.githubusercontent.com/fatalcoder524/kernel_patches_additional/refs/heads/main/experimental/revert_test/block_mq_use_local_thread.patch | patch -p1 -R
         # curl -Ls https://raw.githubusercontent.com/fatalcoder524/kernel_patches_additional/refs/heads/main/experimental/revert_test/f2fs_ignore_compressed.patch | patch -p1 -R
         # curl -Ls https://raw.githubusercontent.com/fatalcoder524/kernel_patches_additional/refs/heads/main/experimental/revert_test/pipe_buffer_fix.patch | patch -p1 -R
 
