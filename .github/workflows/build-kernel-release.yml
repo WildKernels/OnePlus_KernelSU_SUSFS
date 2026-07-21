@@ -17,6 +17,7 @@ on:
         required: true
         type: choice
         options:
+          - OP-ACE-5-A16
           - A14+15+16
           - A15+16
           - A14+15
@@ -137,6 +138,9 @@ jobs:
           jq_filter="."
           
           case "$input" in
+            OP-ACE-5-A16)
+              jq_filter='map(select(.model == "OP-ACE-5" and .os_version == "A16"))'
+              ;;
             A14+15+16)
               ;;
             A15+16)

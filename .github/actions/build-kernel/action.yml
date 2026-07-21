@@ -854,6 +854,14 @@ runs:
         }
         
         retry_clone "https://github.com/WildKernels/kernel_patches.git" "main" "1"
+        # KSUN 33214 predates the init.c layout expected by the current patches.
+        if [ "${{ inputs.ksu_type }}" = "KSUN" ] && [ "${{ inputs.ksu_branch_or_hash }}" = "3b18216f71df189ab3d1b1ce0bdb21be1268e771" ]; then
+          curl --fail --show-error --location --proto '=https' \
+            "https://raw.githubusercontent.com/WildKernels/kernel_patches/3922ea6989426de03c5f786f266ff005cb68ea19/next/susfs_fix_patches/v2.2.0/fix_init.c.patch" \
+            -o "kernel_patches/next/susfs_fix_patches/v2.2.0/fix_init.c.patch"
+          echo "Applied KSUN 33214 init compatibility override"
+        fi
+
         
         if [ "${{ env.OP_SUSFS }}" = true ]; then
           echo "Using SUSFS branch/commit: $SUSFS_BRANCH"
@@ -1094,6 +1102,77 @@ runs:
             if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
               cd "$KSUN_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
+              if [ "${{ inputs.ksu_branch_or_hash }}" = "3b18216f71df189ab3d1b1ce0bdb21be1268e771" ] && [ -f ./kernel/Kconfig.rej ]; then
+                python3 - ./kernel/Kconfig <<'PY'
+        from pathlib import Path
+        import sys
+
+        source = Path(sys.argv[1])
+        text = source.read_text()
+        if 'config KSU_SUSFS\n' not in text:
+            marker = '\nendmenu\n'
+            if text.count(marker) != 1:
+                raise SystemExit('expected a single KernelSU endmenu marker')
+            config = '''menu "KernelSU - SUSFS"
+        config KSU_SUSFS
+        \tbool "KernelSU addon - SUSFS"
+        \tdepends on KSU
+        \tdepends on THREAD_INFO_IN_TASK
+        \tdefault y
+        \thelp
+        \t  Patch and Enable SUSFS to kernel with KernelSU.
+
+        config KSU_SUSFS_SUS_PATH
+        \tbool "Enable to hide suspicious path"
+        \tdepends on KSU_SUSFS
+        \tdefault y
+
+        config KSU_SUSFS_SUS_MOUNT
+        \tbool "Enable to hide suspicious mounts"
+        \tdepends on KSU_SUSFS
+        \tdefault y
+
+        config KSU_SUSFS_SUS_KSTAT
+        \tbool "Enable to spoof suspicious kstat"
+        \tdepends on KSU_SUSFS
+        \tdefault y
+
+        config KSU_SUSFS_SPOOF_UNAME
+        \tbool "Enable to spoof uname"
+        \tdepends on KSU_SUSFS
+        \tdefault y
+
+        config KSU_SUSFS_ENABLE_LOG
+        \tbool "Enable logging susfs log to kernel"
+        \tdepends on KSU_SUSFS
+        \tdefault y
+
+        config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+        \tbool "Enable to automatically hide ksu and susfs symbols from /proc/kallsyms"
+        \tdepends on KSU_SUSFS
+        \tdefault y
+
+        config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+        \tbool "Enable to spoof /proc/bootconfig (gki) or /proc/cmdline (non-gki)"
+        \tdepends on KSU_SUSFS
+        \tdefault y
+
+        config KSU_SUSFS_OPEN_REDIRECT
+        \tbool "Enable to redirect a path to be opened with another path"
+        \tdepends on KSU_SUSFS
+        \tdefault y
+
+        config KSU_SUSFS_SUS_MAP
+        \tbool "Enable to hide some mmapped real file from different proc maps interfaces"
+        \tdepends on KSU_SUSFS
+        \tdefault y
+
+        endmenu
+        '''
+            source.write_text(text.replace(marker, '\n' + config + '\nendmenu\n'), newline='\n')
+        PY
+                rm ./kernel/Kconfig.rej
+              fi
               for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
                 echo "Patching file: $file with fix_$file.patch"
                 patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
@@ -1113,6 +1192,43 @@ runs:
             ;;
         esac
         
+        # KSUN 33214 predates the is_first_zygote static key expected by the
+        # current SusFS sucompat fix.
+        if [ "${{ inputs.ksu_type }}" = "KSUN" ] && [ "${{ inputs.ksu_branch_or_hash }}" = "3b18216f71df189ab3d1b1ce0bdb21be1268e771" ]; then
+          python3 - "$KSUN_FOLDER/kernel/feature/sucompat.c" <<'PY'
+        from pathlib import Path
+        import sys
+
+        source = Path(sys.argv[1])
+        text = source.read_text()
+        new_handler = '''extern struct static_key_true is_first_zygote;
+
+        int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
+                    void *envp, int *flags)
+        {
+            if (static_branch_unlikely(&is_first_zygote))
+                (void)ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags);
+
+            return ksu_handle_execveat_sucompat(fd, filename_ptr, argv, envp,
+                                flags);
+        }
+        '''
+        old_handler = '''int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
+                    void *envp, int *flags)
+        {
+            if (ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags))
+                return 0;
+
+            return ksu_handle_execveat_sucompat(fd, filename_ptr, argv, envp,
+                                flags);
+        }
+        '''
+        if text.count(new_handler) != 1:
+            raise SystemExit('expected KSUN 33214 sucompat handler not found')
+        source.write_text(text.replace(new_handler, old_handler), newline='\n')
+        PY
+          echo "Applied KSUN 33214 sucompat compatibility override"
+        fi
         cd "$COMMON_KERNEL_FOLDER"
         if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
           if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
@@ -2426,7 +2542,7 @@ runs:
         fetch-depth: 1
 
     - name: Save ccache cache
-      if: always() && steps.build_kernel_step.conclusion == 'success'
+      if: always() && steps.build_kernel_step.conclusion == 'success' && (inputs.clean == false || inputs.clean == 'false')
       uses: ./action-source/.github/actions/cache/save
       with:
         cache_path: ${{ env.CCACHE_DIR }}
