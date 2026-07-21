@@ -2426,7 +2426,7 @@ runs:
         fetch-depth: 1
 
     - name: Save ccache cache
-      if: always() && steps.build_kernel_step.conclusion == 'success'
+      if: always() && steps.build_kernel_step.conclusion == 'success' && (inputs.clean == false || inputs.clean == 'false')
       uses: ./action-source/.github/actions/cache/save
       with:
         cache_path: ${{ env.CCACHE_DIR }}
