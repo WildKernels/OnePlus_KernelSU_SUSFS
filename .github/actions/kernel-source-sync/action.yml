@@ -54,7 +54,7 @@ runs:
             "clang/host/linux-x86": "clang",
             "prebuilts/rust": "rust",
             "prebuilts/clang-tools": "clang-tools",
-            "prebuilts/build-tools": "build-tools",
+            "kernel/prebuilts/build-tools": "build-tools",
             "AnyKernel3": "AnyKernel3"
         }
         DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
