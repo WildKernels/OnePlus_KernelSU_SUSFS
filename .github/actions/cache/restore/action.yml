@@ -150,7 +150,7 @@ runs:
             }
             
             if [ "$IS_SPLIT" = "true" ]; then
-              PARTS=$(ls "$FINAL_ARCHIVE.part"* | sort)
+              PARTS=$(ls "$FINAL_ARCHIVE.part"* | sort | tr '\n' ' ')
               if [ "$COMPRESSED" = "true" ]; then
                 extract_cache "cat $PARTS | tar -I 'zstd -d -T0' -xvf - -C '$EXTRACT_DIR'"
               else
