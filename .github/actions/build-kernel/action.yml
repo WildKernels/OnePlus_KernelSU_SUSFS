@@ -1118,6 +1118,9 @@ runs:
           if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
             sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
           fi
+          if ! grep -qxF 'extern void __fold_filemap_fixup_entry(struct vma_iterator *iter, unsigned long *end);' ./include/linux/page_size_compat.h; then
+            patch -p1 < "$KERNEL_PATCHES_FOLDER/common/backports/fold_fixup_entries.patch"
+          fi
         fi
         
         # Fake kernel patch to fix failures
