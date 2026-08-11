@@ -1,5 +1,5 @@
 # 📱 OnePlusOSS Kernel Tracker
-> **Last Update:** Tue Aug 11 01:19:32 UTC 2026 (UTC)
+> **Last Update:** Tue Aug 11 12:54:01 UTC 2026 (UTC)
 Daily automated report for OnePlus Kernel branches.
 ### 📓 Kernel Manifests Report
 <details><summary><b>kernel_manifest</b></summary>
@@ -185,6 +185,42 @@ Daily automated report for OnePlus Kernel branches.
 
 
 ### 🛠 Kernel Trees Report
+<details><summary><b>android_kernel_oneplus_mt6989</b></summary>
+
+#### Branch: `oneplus/mt6989_v_15.0.2_ace5_race` ✅
+* **Kernel Version:** `6.1.115`
+* **Commit SHA:** `b1ea2c8`
+* **Message:** Synchronize code for OnePlus PLF110_15.0.2.501(CN01)
+---
+#### Branch: `oneplus/mt6989_b_16.0.0_ace5_race` 🔄 Updated
+* **Kernel Version:** `6.1.157`
+* **Commit SHA:** `822beed`
+* **Message:** Synchronize code for OnePlus PLF110_16.0.9.402(CN01)
+---
+</details>
+<details><summary><b>android_kernel_oneplus_mt6897</b></summary>
+
+#### Branch: `oneplus/mt6897_v_15.0.2_nord_ce5` ✅
+* **Kernel Version:** `6.1.115`
+* **Commit SHA:** `f3b53bb`
+* **Message:** Synchronize code for OnePlus CPH2717_15.0.2.601(EX01)
+---
+#### Branch: `oneplus/mt6897_v_15.0.0_oneplus_pad` ✅
+* **Kernel Version:** `6.1.128`
+* **Commit SHA:** `bdf1628`
+* **Message:** Synchronize code for OnePlus OPD2407_15.0.0.1351(CN01)
+---
+#### Branch: `oneplus/mt6897_b_16.0.0_oneplus_pad` ✅
+* **Kernel Version:** `6.1.134`
+* **Commit SHA:** `c90a943`
+* **Message:** Synchronize code for OnePlus OPD2407_16.0.5.700(CN01)
+---
+#### Branch: `oneplus/mt6897_b_16.0.0_nord_ce5` 🔄 Updated
+* **Kernel Version:** `6.1.157`
+* **Commit SHA:** `24a10d1`
+* **Message:** Synchronize code for OnePlus CPH2717_16.0.5.1002(EX01) CPH2719_16.0.5.1002(EX01)
+---
+</details>
 <details><summary><b>android_kernel_oneplus_mt6878</b></summary>
 
 #### Branch: `oneplus/mt6878_b_16.0.0_pad_go_2` ✅
@@ -1166,42 +1202,6 @@ Daily automated report for OnePlus Kernel branches.
 * **Kernel Version:** `6.12.23`
 * **Commit SHA:** `3e2d8be`
 * **Message:** Synchronize code for OnePlus OPD2480_16.0.3.501(EX01) OPD2481_16.0.3.501(EX01)
----
-</details>
-<details><summary><b>android_kernel_oneplus_mt6989</b></summary>
-
-#### Branch: `oneplus/mt6989_v_15.0.2_ace5_race` ✅
-* **Kernel Version:** `6.1.115`
-* **Commit SHA:** `b1ea2c8`
-* **Message:** Synchronize code for OnePlus PLF110_15.0.2.501(CN01)
----
-#### Branch: `oneplus/mt6989_b_16.0.0_ace5_race` ✅
-* **Kernel Version:** `6.1.134`
-* **Commit SHA:** `770ca1e`
-* **Message:** Synchronize code for OnePlus PLF110_16.0.5.701(CN01)
----
-</details>
-<details><summary><b>android_kernel_oneplus_mt6897</b></summary>
-
-#### Branch: `oneplus/mt6897_v_15.0.2_nord_ce5` ✅
-* **Kernel Version:** `6.1.115`
-* **Commit SHA:** `f3b53bb`
-* **Message:** Synchronize code for OnePlus CPH2717_15.0.2.601(EX01)
----
-#### Branch: `oneplus/mt6897_v_15.0.0_oneplus_pad` ✅
-* **Kernel Version:** `6.1.128`
-* **Commit SHA:** `bdf1628`
-* **Message:** Synchronize code for OnePlus OPD2407_15.0.0.1351(CN01)
----
-#### Branch: `oneplus/mt6897_b_16.0.0_oneplus_pad` ✅
-* **Kernel Version:** `6.1.134`
-* **Commit SHA:** `c90a943`
-* **Message:** Synchronize code for OnePlus OPD2407_16.0.5.700(CN01)
----
-#### Branch: `oneplus/mt6897_b_16.0.0_nord_ce5` ✅
-* **Kernel Version:** `6.1.134`
-* **Commit SHA:** `e17c1ca`
-* **Message:** Synchronize code for OnePlus CPH2717_16.0.1.300(EX01)
 ---
 </details>
 <details><summary><b>android_kernel_common_oneplus_sm7550</b></summary>
