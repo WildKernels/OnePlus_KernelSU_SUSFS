@@ -1,6 +1,5 @@
 {
   "android_kernel_oneplus_mt6878": {
-    "oneplus/mt6897_b_16.0.0_nord_ce5": "24a10d195a1ccb825dd4b6c616d186fcb3451240|6.1.157",
     "oneplus/mt6878_b_16.0.0_pad_go_2": "cb7a5cb8760ce7d9f4439083d6d6d956078dc1e8|6.1.134",
     "oneplus/mt6878_b_16.0_turbo_6x": "cb8419d1d6a6e801c0d519abcbfd621ff41472c0|6.1.134",
     "oneplus/mt6878_b_16.0_nord_ce6_lite": "c1dff55d0d00005631dff8ca014e613f82e7473c|6.1.134"
