@@ -336,6 +336,7 @@ runs:
         git config --global feature.manyFiles true
         git config --global core.fsmonitor true
         git config --global pack.sparse true
+        git config --global http.sslVerify false
 
     - name: Sync Kernel Source
       id: sync-kernel-source
