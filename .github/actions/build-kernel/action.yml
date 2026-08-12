@@ -1450,7 +1450,9 @@ runs:
         fi
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/minimise_wakeup_time.patch"
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/int_sqrt.patch"
-        patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/force_tcp_nodelay.patch"
+        if [ "$OP_BBR" = "false" ] && [ "$OP_BBR3" = "false" ]; then
+          patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/force_tcp_nodelay.patch"
+        fi
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/reduce_gc_thread_sleep_time.patch"
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/add_timeout_wakelocks_globally.patch"
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/f2fs_reduce_congestion.patch"
