@@ -1,4 +1,47 @@
 {
+  "android_kernel_oneplus_sm8650": {
+    "oneplus/sm8650_v_15.0.0_pad2": "b7a7641b0e6c7d06e4f24b8d4e2f606f162baf3a|6.1.118",
+    "oneplus/sm8650_v_15.0.0_pad_pro": "31bfc3f1e17652f9ce0de3240cd5a520f523162e|6.1.118",
+    "oneplus/sm8650_v_15.0.0_oneplus_13r": "6c590bd5de0bdc356e406fa80f94663b3955d992|6.1.118",
+    "oneplus/sm8650_v_15.0.0_oneplus12": "e39bf7032e38c547d588372a11a5dd55eb714860|6.1.118",
+    "oneplus/sm8650_v_15.0.0_oneplus_ace5": "66305c56af1fcd7299c906c3257e585be93d93ed|6.1.118",
+    "oneplus/sm8650_v_15.0.0_ace_3_pro": "954db9a778f839f44d05ee280da82cb3adf0e2dc|6.1.118",
+    "oneplus/sm8650_u_14.1.0_onepluspad2": "46b92671fa0275b51d6c9f522f4f5d4337edae4b|6.1.75",
+    "oneplus/sm8650_u_14.1.0_onepluspad_pro": "ed43cc6b86075b77dc475419060259560f44f16f|6.1.75",
+    "oneplus/sm8650_u_14.1.0_oneplus_ace3pro": "1087afb8c8942cc1abbad4522e7bf73c32897f18|6.1.75",
+    "oneplus/sm8650_u_14.0.0_oneplus12": "8c63b58fa7c25ecbf9356f589c134f9649edf6ef|6.1.57",
+    "oneplus/sm8650_b_16.0.0_pad2": "e1f46f10a7037f88e53094011a987c457c8ab918|6.1.141",
+    "oneplus/sm8650_b_16.0.0_pad_pro": "5ae55a3a975b160f547ee790105335d4596ab2f6|6.1.118",
+    "oneplus/sm8650_b_16.0.0_oneplus_13r": "4abc56a1d81f396d699a94e4f628afacde3dd35f|6.1.141",
+    "oneplus/sm8650_b_16.0.0_oneplus12": "d46965e4116f27ccef043daea83223f2a94396fd|6.1.141",
+    "oneplus/sm8650_b_16.0.0_ace_5": "d763ed47deec55451366c1187f813f2f309d88a7|6.1.141",
+    "oneplus/sm8650_b_16.0.0_ace_3_pro": "5e045379355ef8fe46fb42d7a7678a944619d703|6.1.141"
+  },
+  "android_kernel_common_oneplus_sm8650": {
+    "oneplus/sm8650_v_15.0.0_pad2": "9535f43296700d9a0f246dbfa9039276c21ad0e2|6.1.118",
+    "oneplus/sm8650_v_15.0.0_pad_pro": "998afecb853c905f5d9ce8bf60a76d48f6df5b3a|6.1.118",
+    "oneplus/sm8650_v_15.0.0_oneplus_13r": "7b9a23054ab0ada2886ed34a2137b9d0312891ff|6.1.118",
+    "oneplus/sm8650_v_15.0.0_oneplus12": "d4ebeebda66f400ef47524375c42ac61b27e66ba|6.1.118",
+    "oneplus/sm8650_v_15.0.0_oneplus_ace5": "201726d509f73ed533a566ae38b7fdcc9f7768de|6.1.118",
+    "oneplus/sm8650_v_15.0.0_ace_3_pro": "a5d0fb2e21abd2349e173227d5a959c9c3ef7531|6.1.118",
+    "oneplus/sm8650_u_14.1.0_onepluspad_pro": "3f71dac5e9d2def789f518a2c6f4f02b9e1db8a6|6.1.75",
+    "oneplus/sm8650_u_14.1.0_oneplus_ace3pro": "5a0c0a9e7b06f4b019ed44c08b152f68e61c2c90|6.1.75",
+    "oneplus/sm8650_u_14.0.0_oneplus12": "e02429a7e0f337d517be2c01e12d1cf153df4542|6.1.57",
+    "oneplus/sm8650_b_16.0.0_pad2": "21f65c0c05154443309681b61de90f21c58aad4d|6.1.141",
+    "oneplus/sm8650_b_16.0.0_pad_pro": "488a758d7e24ea5764436f2a1c0d1281350e4505|6.1.118",
+    "oneplus/sm8650_b_16.0.0_oneplus_13r": "22c1764374aae3d74fb3ea93ebcd52c7d11fb1b7|6.1.141",
+    "oneplus/sm8650_b_16.0.0_oneplus12": "d86625c3830b59553b4db6b1b383fddd9655cabf|6.1.141",
+    "oneplus/sm8650_b_16.0.0_ace_5": "34d0b26abc5f76a488eca6c77ac992f3d8fb68f9|6.1.141",
+    "oneplus/sm8650_b_16.0.0_ace_3_pro": "ec062d02a5cf7ca54774688e5e8c2173384821e9|6.1.141"
+  },
+  "android_kernel_common_oneplus_sm7635": {
+    "oneplus/sm7635_b_16.0.0_turbo_6v": "e2601ea9608f2b1302a662f43ebc3e3df95a705f|6.1.141",
+    "oneplus/sm7635_b_16.0.0_nord_ce6": "76155f89775bea50155f6493001994f752c00554|6.1.141"
+  },
+  "android_kernel_oneplus_sm7635": {
+    "oneplus/sm7635_b_16.0.0_turbo_6v": "6b75f3fb59268a566efd8c3c12b1eff04df3081d|6.1.141",
+    "oneplus/sm7635_b_16.0.0_nord_ce6": "841633c027916164ffbf36146edca30eaa0338db|6.1.141"
+  },
   "android_kernel_oneplus_mt6835": {
     "oneplus/mt6835_b_16.0_n6": "697017da6bd6f9d47ac22cd1cdca83a76bf7ac39|5.15.180",
     "oneplus/mt6835_b_16.0_n6x": "e366170b4bffb0e99566740dbf6f57a9ac1a9943|5.15.197"
@@ -117,47 +160,6 @@
     "oneplus/mt6983_b_16.0.0_oneplus_pad": "41784ad1ff1913b0239a68bd3dee76d785ca0c34|5.10.236",
     "oneplus/mt6983_b_16.0.0_nord_3": "f5b6dd4fc9c3eedb2db321b60c906af6aeea0c0f|5.10.236",
     "oneplus/mt6983_b_16.0.0_ace_2v": "8f47a137616e17b8292ea6c8e1d3dbd40c3c783f|5.10.236"
-  },
-  "android_kernel_common_oneplus_sm8650": {
-    "oneplus/sm8650_v_15.0.0_pad2": "9535f43296700d9a0f246dbfa9039276c21ad0e2|6.1.118",
-    "oneplus/sm8650_v_15.0.0_pad_pro": "998afecb853c905f5d9ce8bf60a76d48f6df5b3a|6.1.118",
-    "oneplus/sm8650_v_15.0.0_oneplus_13r": "7b9a23054ab0ada2886ed34a2137b9d0312891ff|6.1.118",
-    "oneplus/sm8650_v_15.0.0_oneplus12": "d4ebeebda66f400ef47524375c42ac61b27e66ba|6.1.118",
-    "oneplus/sm8650_v_15.0.0_oneplus_ace5": "201726d509f73ed533a566ae38b7fdcc9f7768de|6.1.118",
-    "oneplus/sm8650_v_15.0.0_ace_3_pro": "a5d0fb2e21abd2349e173227d5a959c9c3ef7531|6.1.118",
-    "oneplus/sm8650_u_14.1.0_onepluspad_pro": "3f71dac5e9d2def789f518a2c6f4f02b9e1db8a6|6.1.75",
-    "oneplus/sm8650_u_14.1.0_oneplus_ace3pro": "5a0c0a9e7b06f4b019ed44c08b152f68e61c2c90|6.1.75",
-    "oneplus/sm8650_u_14.0.0_oneplus12": "e02429a7e0f337d517be2c01e12d1cf153df4542|6.1.57",
-    "oneplus/sm8650_b_16.0.0_pad2": "fe279280d704596b6668dd6c1e79e9939de9c723|6.1.118",
-    "oneplus/sm8650_b_16.0.0_pad_pro": "488a758d7e24ea5764436f2a1c0d1281350e4505|6.1.118",
-    "oneplus/sm8650_b_16.0.0_oneplus_13r": "22c1764374aae3d74fb3ea93ebcd52c7d11fb1b7|6.1.141",
-    "oneplus/sm8650_b_16.0.0_oneplus12": "d86625c3830b59553b4db6b1b383fddd9655cabf|6.1.141",
-    "oneplus/sm8650_b_16.0.0_ace_5": "4f94f15548662afbbb3cd7ee2695d8de1f41be92|6.1.141",
-    "oneplus/sm8650_b_16.0.0_ace_3_pro": "ec062d02a5cf7ca54774688e5e8c2173384821e9|6.1.141"
-  },
-  "android_kernel_oneplus_sm8650": {
-    "oneplus/sm8650_v_15.0.0_pad2": "b7a7641b0e6c7d06e4f24b8d4e2f606f162baf3a|6.1.118",
-    "oneplus/sm8650_v_15.0.0_pad_pro": "31bfc3f1e17652f9ce0de3240cd5a520f523162e|6.1.118",
-    "oneplus/sm8650_v_15.0.0_oneplus_13r": "6c590bd5de0bdc356e406fa80f94663b3955d992|6.1.118",
-    "oneplus/sm8650_v_15.0.0_oneplus12": "e39bf7032e38c547d588372a11a5dd55eb714860|6.1.118",
-    "oneplus/sm8650_v_15.0.0_oneplus_ace5": "66305c56af1fcd7299c906c3257e585be93d93ed|6.1.118",
-    "oneplus/sm8650_v_15.0.0_ace_3_pro": "954db9a778f839f44d05ee280da82cb3adf0e2dc|6.1.118",
-    "oneplus/sm8650_u_14.1.0_onepluspad2": "46b92671fa0275b51d6c9f522f4f5d4337edae4b|6.1.75",
-    "oneplus/sm8650_u_14.1.0_onepluspad_pro": "ed43cc6b86075b77dc475419060259560f44f16f|6.1.75",
-    "oneplus/sm8650_u_14.1.0_oneplus_ace3pro": "1087afb8c8942cc1abbad4522e7bf73c32897f18|6.1.75",
-    "oneplus/sm8650_u_14.0.0_oneplus12": "8c63b58fa7c25ecbf9356f589c134f9649edf6ef|6.1.57",
-    "oneplus/sm8650_b_16.0.0_pad2": "4727692c95f76c4a69114b51744c15576d2624ae|6.1.118",
-    "oneplus/sm8650_b_16.0.0_pad_pro": "5ae55a3a975b160f547ee790105335d4596ab2f6|6.1.118",
-    "oneplus/sm8650_b_16.0.0_oneplus_13r": "4abc56a1d81f396d699a94e4f628afacde3dd35f|6.1.141",
-    "oneplus/sm8650_b_16.0.0_oneplus12": "d46965e4116f27ccef043daea83223f2a94396fd|6.1.141",
-    "oneplus/sm8650_b_16.0.0_ace_5": "80a27c9a1135d9776f175f8bc4aa8026685475f1|6.1.141",
-    "oneplus/sm8650_b_16.0.0_ace_3_pro": "5e045379355ef8fe46fb42d7a7678a944619d703|6.1.141"
-  },
-  "android_kernel_common_oneplus_sm7635": {
-    "oneplus/sm7635_b_16.0.0_turbo_6v": "e2601ea9608f2b1302a662f43ebc3e3df95a705f|6.1.141"
-  },
-  "android_kernel_oneplus_sm7635": {
-    "oneplus/sm7635_b_16.0.0_turbo_6v": "6b75f3fb59268a566efd8c3c12b1eff04df3081d|6.1.141"
   },
   "android_kernel_common_oneplus_sm6375": {
     "oneplus/sm6375_v_15.0.0_nord_ce4_lite_5g": "2d49d129e289330f03415804ed2159a39a24f89a|6.1.75",
