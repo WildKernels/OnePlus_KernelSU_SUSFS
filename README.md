@@ -1,5 +1,5 @@
 # 📱 OnePlusOSS Kernel Tracker
-> **Last Update:** Tue Aug 18 00:58:04 UTC 2026 (UTC)
+> **Last Update:** Tue Aug 18 12:36:35 UTC 2026 (UTC)
 Daily automated report for OnePlus Kernel branches.
 ### 📓 Kernel Manifests Report
 <details><summary><b>kernel_manifest</b></summary>
@@ -24,12 +24,13 @@ Daily automated report for OnePlus Kernel branches.
 | oneplus_nord_ce4_v.xml | ✅ |
 
 ---
-#### Branch: `oneplus/sm7635` ✅
-* **Latest Commit:** `3f8df4b`
+#### Branch: `oneplus/sm7635` 🔄 Updated
+* **Latest Commit:** `4f1c561`
 
 | File Name | Status |
 | :--- | :--- |
 | README.md | ✅ |
+| oneplus_nord_ce6.xml | 🆕 New |
 | oneplus_turbo_6v.xml | ✅ |
 
 ---
