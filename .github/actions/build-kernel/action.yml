@@ -1901,6 +1901,7 @@ runs:
         export PAHOLE="$KERNEL_PLATFORM_FOLDER/prebuilts/kernel-build-tools/linux-x86/bin/pahole"
         export LD=ld.lld HOSTLD=ld.lld AR=llvm-ar NM=llvm-nm 
         export OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
+        export KBUILD_GENDWARFKSYMS_STABLE=1
         
         set +u
         source "$KERNEL_PLATFORM_FOLDER/build/kernel/_setup_env.sh" 2>/dev/null || true
