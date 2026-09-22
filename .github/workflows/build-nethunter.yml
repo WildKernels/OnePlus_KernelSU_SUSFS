@@ -224,6 +224,16 @@ jobs:
           path: source-snapshot
           retention-days: 90
 
+      - name: Upload kernel build outputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kernel-build-${{ matrix.model }}
+          path: |
+            ${{ env.CONFIG_FOLDER }}/kernel_platform/common/out/.config
+            ${{ env.CONFIG_FOLDER }}/kernel_platform/common/out/Module.symvers
+            ${{ env.CONFIG_FOLDER }}/kernel_platform/common/out/arch/arm64/boot/Image
+          retention-days: 7
+
   nethunter-takeover:
     name: NetHunter Takeover ${{ matrix.model }}
     needs: [resolve, build]
@@ -236,8 +246,26 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Build takeover modules
-        continue-on-error: true
+      - name: Install takeover build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            file zip unzip jq curl git kmod binutils-aarch64-linux-gnu
+
+      - name: Download kernel build outputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: kernel-build-${{ matrix.model }}
+          path: kernel-outputs
+
+      - name: Verify kernel build outputs
+        run: |
+          set -euo pipefail
+          test -f kernel-outputs/.config || { echo 'Missing kernel .config' >&2; exit 1; }
+          test -f kernel-outputs/Module.symvers || { echo 'Missing Module.symvers; module build cannot check symbol CRCs' >&2; exit 1; }
+
+      - name: Build takeover components
+        continue-on-error: false
         uses: ./.github/actions/build-nethunter-takeover
         with:
           target: ${{ matrix.model }}
@@ -251,4 +279,4 @@ jobs:
             dist/nethunter-takeover-*.zip
             dist/provenance-*.json
           retention-days: 90
-          if-no-files-found: warn
+          if-no-files-found: error
