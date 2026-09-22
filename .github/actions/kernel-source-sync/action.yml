@@ -54,7 +54,8 @@ runs:
             "clang/host/linux-x86": "clang",
             "prebuilts/rust": "rust",
             "prebuilts/clang-tools": "clang-tools",
-            "kernel/prebuilts/build-tools": "build-tools"
+            "kernel/prebuilts/build-tools": "build-tools",
+            "AnyKernel3": "AnyKernel3"
         }
         DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
         aria_quiet_flags = "--quiet --summary-interval=0" if not DEBUG else ""
