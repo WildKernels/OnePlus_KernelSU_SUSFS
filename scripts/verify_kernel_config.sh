@@ -15,6 +15,8 @@ required=(
   CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
   CONFIG_KSU_SUSFS_SUS_MAP=y
   CONFIG_NOMOUNT=y
+  CONFIG_VPNHIDE=y
+  CONFIG_VPNHIDE_FS_HIDING=y
   CONFIG_BBG=y
   CONFIG_LTO_CLANG=y
   CONFIG_LTO_CLANG_THIN=y
@@ -49,8 +51,13 @@ done
 
 [[ -f "$source_tree/fs/nomount/Kconfig" ]] || { echo 'NoMount Kconfig missing' >&2; exit 1; }
 [[ -f "$source_tree/fs/nomount/Makefile" ]] || { echo 'NoMount Makefile missing' >&2; exit 1; }
+[[ -f "$source_tree/security/vpnhide/Kconfig" ]] || { echo 'VPNHide Kconfig missing' >&2; exit 1; }
+[[ -f "$source_tree/security/vpnhide/Makefile" ]] || { echo 'VPNHide Makefile missing' >&2; exit 1; }
+[[ -f "$source_tree/include/linux/vpnhide.h" ]] || { echo 'VPNHide public header missing' >&2; exit 1; }
 grep -q 'source "fs/nomount/Kconfig"' "$source_tree/fs/Kconfig" || { echo 'NoMount Kconfig not wired' >&2; exit 1; }
 grep -q 'obj-$(CONFIG_NOMOUNT) += nomount/' "$source_tree/fs/Makefile" || { echo 'NoMount Makefile not wired' >&2; exit 1; }
+grep -q 'source "security/vpnhide/Kconfig"' "$source_tree/security/Kconfig" || { echo 'VPNHide Kconfig not wired' >&2; exit 1; }
+grep -q 'obj-$(CONFIG_VPNHIDE) += vpnhide/' "$source_tree/security/Makefile" || { echo 'VPNHide Makefile not wired' >&2; exit 1; }
 grep -q 'susfs_is_avc_log_spoofing_enabled' "$source_tree/security/selinux/avc.c" || { echo 'SUSFS AVC integration missing' >&2; exit 1; }
 grep -q 'Check if the decomposition result is empty' "$source_tree/fs/unicode/utf8-norm.c" || { echo 'Unicode bypass patch missing' >&2; exit 1; }
 

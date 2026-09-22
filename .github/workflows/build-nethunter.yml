@@ -196,7 +196,7 @@ jobs:
           set -euo pipefail
           mkdir -p source-snapshot
           echo '${{ needs.resolve.outputs.sources }}' > source-snapshot/resolved-sources.json
-          jq -e '.wild_sha and .susfs_sha and .resukisu_sha and .nomount_sha' source-snapshot/resolved-sources.json >/dev/null
+          jq -e '.wild_sha and .susfs_sha and .resukisu_sha and .nomount_sha and .vpnhide_sha' source-snapshot/resolved-sources.json >/dev/null
 
       - name: Build kernel with ReSukiSU, SUSFS, and NoMount
         uses: ./.github/actions/build-kernel
@@ -210,6 +210,8 @@ jobs:
           bbg_commit: ${{ fromJSON(needs.resolve.outputs.sources).bbg_sha }}
           kernel_patches_repo: ${{ fromJSON(needs.resolve.outputs.sources).kernel_patches_repo }}
           kernel_patches_commit: ${{ fromJSON(needs.resolve.outputs.sources).kernel_patches_sha }}
+          vpnhide_repo: ${{ fromJSON(needs.resolve.outputs.sources).vpnhide_repo }}
+          vpnhide_commit: ${{ fromJSON(needs.resolve.outputs.sources).vpnhide_sha }}
           optimize_level: ${{ inputs.optimize_level }}
           clean: ${{ inputs.clean_build }}
           debug: ${{ inputs.debug }}
@@ -219,7 +221,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: provenance-${{ matrix.model }}
-          path: source-snapshot/resolved-sources.json
+          path: source-snapshot
           retention-days: 90
 
   nethunter-takeover:
