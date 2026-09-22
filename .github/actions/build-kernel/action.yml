@@ -2006,7 +2006,7 @@ runs:
 
         echo "============================================"
         echo "Kernel Module Configuration:"
-        grep -E '^CONFIG_MODULES=|^CONFIG_MODULE_UNLOAD=|^CONFIG_MODULE_FORCE_UNLOAD=' "$OUT/.config" || true
+        grep -E '^CONFIG_MODULES=|^CONFIG_MODULE_UNLOAD=|^CONFIG_MODULE_FORCE_UNLOAD=|^CONFIG_MODVERSIONS=|^CONFIG_MODULE_SIG=|^CONFIG_MODULE_SIG_FORCE=' "$OUT/.config" || true
         echo "============================================"
         
         KCFLAGS="$KCFLAGS -Wno-error -pipe ${KCFLAGS_EXTRA}"
@@ -2048,9 +2048,21 @@ runs:
           cp build.log "$DEBUG_ARTIFACTS_FOLDER/build.log"
           cp install.log "$DEBUG_ARTIFACTS_FOLDER/install.log"
           rsync -av --no-links --exclude='build' "$COMMON_KERNEL_FOLDER/out/install/lib/modules"/*/ "$DEBUG_ARTIFACTS_FOLDER"
-          cp "$COMMON_KERNEL_FOLDER/out/vmlinux" "$DEBUG_ARTIFACTS_FOLDER/vmlinux"
-          cp "$COMMON_KERNEL_FOLDER/out/Module.symvers" "$DEBUG_ARTIFACTS_FOLDER/Module.symvers"
-          cp "$COMMON_KERNEL_FOLDER/out/System.map" "$DEBUG_ARTIFACTS_FOLDER/System.map"
+
+          # Files required/useful for matching external .ko builds
+          cp "$OUT/.config" "$DEBUG_ARTIFACTS_FOLDER/kernel.config"
+          cp "$OUT/Module.symvers" "$DEBUG_ARTIFACTS_FOLDER/Module.symvers"
+          cp "$OUT/System.map" "$DEBUG_ARTIFACTS_FOLDER/System.map"
+          cp "$OUT/vmlinux" "$DEBUG_ARTIFACTS_FOLDER/vmlinux"
+
+          if [ -f "$OUT/include/config/kernel.release" ]; then
+            cp "$OUT/include/config/kernel.release" "$DEBUG_ARTIFACTS_FOLDER/kernel.release"
+          fi
+
+          clang --version > "$DEBUG_ARTIFACTS_FOLDER/clang-version.txt"
+          git -C "$COMMON_KERNEL_FOLDER" rev-parse HEAD > "$DEBUG_ARTIFACTS_FOLDER/common-kernel-commit.txt"
+
+          grep -E '^CONFIG_MODULES=|^CONFIG_MODULE_UNLOAD=|^CONFIG_MODULE_FORCE_UNLOAD=|^CONFIG_MODVERSIONS=|^CONFIG_MODULE_SIG=|^CONFIG_MODULE_SIG_FORCE='             "$OUT/.config" > "$DEBUG_ARTIFACTS_FOLDER/module-config.txt" || true
           
           ls -la "$DEBUG_ARTIFACTS_FOLDER"
         else
