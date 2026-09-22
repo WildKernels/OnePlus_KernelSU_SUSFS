@@ -33,7 +33,7 @@ on:
         description: 'Enter KernelSU build json'
         required: true
         type: string
-        default: '[{"type":"ksun","hash":"dev"}]'
+        default: '[{"type":"ksun","hash":"234f6e040fcbca18b16d2398e1aa225712ec99ad"}]'
       optimize_level:
         description: "Compiler optimization level"
         required: true
@@ -281,7 +281,7 @@ jobs:
             ["android13-5.15"]="gki-android13-5.15"
             ["android14-6.1"]="gki-android14-6.1"
             ["android15-6.6"]="gki-android15-6.6"
-            ["android16-6.12"]="gki-android16-6.12"
+            ["android16-6.12"]="f37930f374ef88de990d6abea0c67d0ea28c1edc"
           )
           
           declare -A user_inputs=(
