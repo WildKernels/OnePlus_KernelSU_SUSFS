@@ -43,6 +43,17 @@ fi
 [ "$(nh_get_state wifi)" = "RECOVERY_REQUIRED" ] || { echo "FAIL: acquire overwrote recovery state"; exit 1; }
 [ -f "$NH_STATE_DIR/wifi.journal/error" ] || { echo "FAIL: acquire removed recovery journal"; exit 1; }
 nh_finish_session wifi
+
+# Test: mutual exclusion — another radio's active session blocks begin_session
+mkdir -p "$NH_LOCK_DIR/bt.lock"
+if nh_begin_session wifi >/dev/null 2>&1; then
+  echo "FAIL: begin_session allowed while bt session active"
+  exit 1
+fi
+[ "$(nh_get_state wifi)" = "IDLE" ] || { echo "FAIL: wifi state polluted by blocked begin"; exit 1; }
+rmdir "$NH_LOCK_DIR/bt.lock"
+nh_begin_session wifi || { echo "FAIL: begin_session blocked after other radio released"; exit 1; }
+nh_finish_session wifi
 [ "$(nh_get_state wifi)" = "IDLE" ] || { echo "FAIL: expected IDLE after finish"; exit 1; }
 [ ! -e "$NH_STATE_DIR/wifi.journal" ] || { echo "FAIL: journal not removed after finish"; exit 1; }
 [ ! -e "$NH_LOCK_DIR/wifi.lock" ] || { echo "FAIL: lock not removed after finish"; exit 1; }

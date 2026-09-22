@@ -57,6 +57,17 @@ nh_journal_dir() {
   printf '%s/%s.journal\n' "$NH_STATE_DIR" "$1"
 }
 
+# v1 radios are exclusive: Wi-Fi and Bluetooth cannot be taken over at the
+# same time (and NFC/USB/GNSS inherit the same rule until proven otherwise).
+nh_other_session_active() {
+  local radio="$1" other
+  for other in wifi bt nfc usb gnss; do
+    [ "$other" = "$radio" ] && continue
+    [ -e "$NH_LOCK_DIR/$other.lock" ] && return 0
+  done
+  return 1
+}
+
 nh_begin_session() {
   local radio="$1"
   nh_valid_radio "$radio" || return 1
@@ -67,6 +78,10 @@ nh_begin_session() {
     echo "ERROR: ${radio} recovery journal requires manual recovery" >&2
     return 1
   }
+  if nh_other_session_active "$radio"; then
+    echo "ERROR: another radio is in an active session; release it first" >&2
+    return 1
+  fi
   nh_acquire_lock "$radio" || return 1
   if ! mkdir "$journal" 2>/dev/null; then
     nh_release_lock "$radio"
