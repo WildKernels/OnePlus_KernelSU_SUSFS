@@ -1963,6 +1963,11 @@ runs:
         
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" gki_defconfig
         
+        # Enable kernel module loading/unloading
+        scripts/config --file "$OUT/.config" -e MODULES
+        scripts/config --file "$OUT/.config" -e MODULE_UNLOAD
+        scripts/config --file "$OUT/.config" -e MODULE_FORCE_UNLOAD
+        
         LOCAL_LOCALVERSION="${CUSTOM_LOCALVERSION:--OP-WILD}"
         if [ -n "${LOCAL_LOCALVERSION:-}" ]; then
           scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${LOCAL_LOCALVERSION}"
@@ -1998,6 +2003,11 @@ runs:
         
         
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" olddefconfig
+
+        echo "============================================"
+        echo "Kernel Module Configuration:"
+        grep -E '^CONFIG_MODULES=|^CONFIG_MODULE_UNLOAD=|^CONFIG_MODULE_FORCE_UNLOAD=' "$OUT/.config" || true
+        echo "============================================"
         
         KCFLAGS="$KCFLAGS -Wno-error -pipe ${KCFLAGS_EXTRA}"
         KCPPFLAGS="$KCPPFLAGS -DCONFIG_OPTIMIZE_INLINING"
