@@ -42,6 +42,11 @@ inputs:
     required: false
     type: boolean
     default: false
+  module_unload:
+    description: 'Enable kernel module unload support'
+    required: false
+    type: boolean
+    default: false
   github_token:
     description: 'GitHub Token'
     required: true
@@ -1963,10 +1968,15 @@ runs:
         
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" gki_defconfig
         
-        # Enable kernel module loading/unloading
-        scripts/config --file "$OUT/.config" -e MODULES
-        scripts/config --file "$OUT/.config" -e MODULE_UNLOAD
-        scripts/config --file "$OUT/.config" -e MODULE_FORCE_UNLOAD
+        # Enable kernel module unloading only when explicitly requested
+        if [ "${{ inputs.module_unload }}" = "true" ]; then
+          echo "Enabling kernel module unload support"
+          scripts/config --file "$OUT/.config" -e MODULES
+          scripts/config --file "$OUT/.config" -e MODULE_UNLOAD
+          scripts/config --file "$OUT/.config" -e MODULE_FORCE_UNLOAD
+        else
+          echo "Kernel module unload option not selected; leaving defconfig unchanged"
+        fi
         
         LOCAL_LOCALVERSION="${CUSTOM_LOCALVERSION:--OP-WILD}"
         if [ -n "${LOCAL_LOCALVERSION:-}" ]; then
