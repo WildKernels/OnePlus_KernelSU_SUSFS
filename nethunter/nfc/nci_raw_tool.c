@@ -6,10 +6,17 @@
 #include <sys/ioctl.h>
 #include <errno.h>
 #include <time.h>
+#include <signal.h>
 
 #define NQ_NCI_DEV "/dev/nq-nci"
 
 static int nci_fd = -1;
+static volatile int capturing = 1;
+
+static void sighandler(int sig) {
+    (void)sig;
+    capturing = 0;
+}
 
 static int nci_open(void) {
     nci_fd = open(NQ_NCI_DEV, O_RDWR);
@@ -85,13 +92,17 @@ static int cmd_init(void) {
 }
 
 static int cmd_capture(int duration_sec) {
+    signal(SIGINT, sighandler);
+    signal(SIGTERM, sighandler);
+
     unsigned char buf[1024];
     size_t len;
     time_t start = time(NULL);
-    while (time(NULL) - start < duration_sec) {
+    while (capturing && (duration_sec <= 0 || time(NULL) - start < duration_sec)) {
         if (nci_read(buf, sizeof(buf), &len) == 0 && len > 0) {
             printf("[%ld] ", (long)(time(NULL) - start));
             print_hex(buf, len);
+            fflush(stdout);
         }
     }
     return 0;
@@ -119,11 +130,13 @@ static int cmd_send(const char *hex) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <init|capture <sec>|send <hex>|close>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <init|capture <sec>|send <hex>|probe>\n", argv[0]);
         return 1;
     }
 
-    if (strcmp(argv[1], "close") == 0) {
+    if (strcmp(argv[1], "probe") == 0) {
+        if (nci_open() < 0) return 1;
+        printf("OK: %s opened\n", NQ_NCI_DEV);
         nci_close();
         return 0;
     }
