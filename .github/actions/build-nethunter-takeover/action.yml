@@ -1,4 +1,4 @@
-name: Build NetHunter Takeover Modules
+name: Build NetHunter Takeover Components
 inputs:
   target:
     required: true
@@ -10,25 +10,17 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Build patched Wi-Fi module
-      continue-on-error: true
-      shell: bash
-      run: bash scripts/nethunter/build_patched_wifi.sh ${{ inputs.target }}
-
-    - name: Build bt_vhci module
-      continue-on-error: true
+    - name: Build hci_vhci module
       shell: bash
       run: bash scripts/nethunter/build_btvhci.sh ${{ inputs.target }}
 
     - name: Build bluebinder
-      continue-on-error: true
       shell: bash
       run: bash scripts/nethunter/build_bluebinder.sh
 
-    - name: Build nci_raw_tool
-      continue-on-error: true
+    - name: Build nci_raw_tool for aarch64 Android
       shell: bash
-      run: cd nethunter/nfc && make && cd ../..
+      run: bash scripts/nethunter/build_nci_raw_tool.sh
 
     - name: Pack takeover ZIP
       id: pack
@@ -40,11 +32,27 @@ runs:
     - name: Generate provenance entry
       shell: bash
       run: |
-        cat > dist/provenance-${{ inputs.target }}.json <<EOF
-        {
-          "target": "${{ inputs.target }}",
-          "wifi_patch_commits": ["25875eb", "be87f12"],
-          "bluebinder_commit": "c3e1b155",
-          "module_sha256": "$(sha256sum dist/nethunter-takeover-${{ inputs.target }}-${{ inputs.version }}.zip | cut -d' ' -f1)"
-        }
-        EOF
+        ko_hash=$(sha256sum /tmp/nh-build/${{ inputs.target }}/hci_vhci.ko 2>/dev/null | cut -d' ' -f1 || echo not_built)
+        bb_hash=$(sha256sum /tmp/nh-build/bluebinder/bluebinder 2>/dev/null | cut -d' ' -f1 || echo not_built)
+        nci_hash=$(sha256sum nethunter/nfc/nci_raw_tool 2>/dev/null | cut -d' ' -f1 || echo not_built)
+        jq -n \
+          --arg target "${{ inputs.target }}" \
+          --arg version "${{ inputs.version }}" \
+          --arg bt_vhci_commit "$(cat scripts/nethunter/btvhci_source_commit 2>/dev/null || echo pinned-kernel)" \
+          --arg bluebinder_commit "c3e1b155e308f6df9c9a02dbd909a44e7319ab7d" \
+          --arg zip_sha256 "$(sha256sum dist/nethunter-takeover-${{ inputs.target }}-${{ inputs.version }}.zip | cut -d' ' -f1)" \
+          --arg hci_vhci_sha256 "$ko_hash" \
+          --arg bluebinder_sha256 "$bb_hash" \
+          --arg nci_raw_tool_sha256 "$nci_hash" \
+          '{
+            target: $target,
+            version: $version,
+            wifi_injection: "not_ported_yet",
+            wifi_patch_commits: [],
+            components: {
+              hci_vhci: {commit: $bt_vhci_commit, sha256: $hci_vhci_sha256},
+              bluebinder: {commit: $bluebinder_commit, sha256: $bluebinder_sha256},
+              nci_raw_tool: {sha256: $nci_raw_tool_sha256}
+            },
+            zip_sha256: $zip_sha256
+          }' > dist/provenance-${{ inputs.target }}.json
