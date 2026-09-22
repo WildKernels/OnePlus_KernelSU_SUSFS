@@ -42,6 +42,11 @@ inputs:
     required: false
     type: boolean
     default: false
+  module_unload:
+    description: 'Enable kernel module unload support'
+    required: false
+    type: boolean
+    default: false
   github_token:
     description: 'GitHub Token'
     required: true
@@ -801,9 +806,35 @@ runs:
           fi
           
           while [ $attempt -le $max_attempts ]; do
-              echo " Attempt $attempt/$max_attempts: High-speed fetch for $repo_name ($branch)"
+              echo " Attempt $attempt/$max_attempts: Fetching $repo_name ($branch)"
               
-              if aria2c -x16 -s16 -j16 -k1M --retry-wait=2 --max-tries=5 -d "/dev/shm" -o "$archive_name" --allow-overwrite=true "${aria2_headers[@]}" $aria_log_flags "$download_url"; then
+              local download_success=false
+              
+              # GitLab may return HTTP 403 to highly parallel archive downloads from
+              # shared GitHub Actions runner IPs. Use a normal single-connection
+              # curl request there, while keeping aria2c for GitHub downloads.
+              if [[ "$url" == *"gitlab.com"* ]]; then
+                  echo "📥 Using curl for GitLab archive download..."
+                  if curl \
+                      --fail \
+                      --location \
+                      --retry 5 \
+                      --retry-delay 3 \
+                      --retry-all-errors \
+                      --connect-timeout 30 \
+                      -A "Mozilla/5.0" \
+                      -o "$shm_path" \
+                      "$download_url"; then
+                      download_success=true
+                  fi
+              else
+                  echo "📥 Using aria2c for archive download..."
+                  if aria2c -x16 -s16 -j16 -k1M --retry-wait=2 --max-tries=5 -d "/dev/shm" -o "$archive_name" --allow-overwrite=true "${aria2_headers[@]}" $aria_log_flags "$download_url"; then
+                      download_success=true
+                  fi
+              fi
+              
+              if [ "$download_success" = true ]; then
                   mkdir -p "$repo_name"
                   if tar -I "pigz -p $nproc -b 256" -x --record-size=1M -f "$shm_path" -C "$repo_name" --strip-components=1 --no-same-owner; then
                       echo "✅ Success: $repo_name synced"
@@ -819,6 +850,36 @@ runs:
           done
           
           echo "::error::All attempts failed for $url"
+          return 1
+        }
+        
+        retry_fetch_git_ref() {
+          local url="$1"
+          local ref="$2"
+          local repo_name
+          repo_name="$(basename "$url" .git)"
+          local max_attempts=3
+          local attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "🔄 Attempt $attempt/$max_attempts: Git fallback for $repo_name ($ref)"
+            rm -rf "$repo_name" 2>/dev/null
+            
+            if git init "$repo_name" >/dev/null &&
+               git -C "$repo_name" remote add origin "$url" &&
+               git -C "$repo_name" fetch --depth=1 origin "$ref" &&
+               git -C "$repo_name" checkout --detach FETCH_HEAD >/dev/null; then
+              echo "✅ Git fallback succeeded"
+              return 0
+            fi
+            
+            echo "❌ Git fallback attempt $attempt failed, cleaning up..."
+            rm -rf "$repo_name" 2>/dev/null
+            sleep $((attempt * 5))
+            attempt=$((attempt + 1))
+          done
+          
+          echo "::error::Git fallback failed for $url ($ref)"
           return 1
         }
         
@@ -858,9 +919,13 @@ runs:
         
         if [ "${{ env.OP_SUSFS }}" = true ]; then
           echo "Using SUSFS branch/commit: $SUSFS_BRANCH"
-          if ! retry_fetch_archive "https://gitlab.com/simonpunk/susfs4ksu.git" "$SUSFS_BRANCH"; then
-            echo "::error::Failed to fetch SUSFS archive after multiple attempts"
-            exit 1
+          SUSFS_URL="https://gitlab.com/simonpunk/susfs4ksu.git"
+          if ! retry_fetch_archive "$SUSFS_URL" "$SUSFS_BRANCH"; then
+            echo "⚠️ SUSFS archive download failed; trying Git fallback..."
+            if ! retry_fetch_git_ref "$SUSFS_URL" "$SUSFS_BRANCH"; then
+              echo "::error::Failed to fetch SUSFS using both archive and Git methods"
+              exit 1
+            fi
           fi
           echo "SUSFS_COMMIT_SHA=$SUSFS_BRANCH" >> $GITHUB_ENV
         fi
@@ -1963,6 +2028,16 @@ runs:
         
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" gki_defconfig
         
+        # Enable kernel module unloading only when explicitly requested
+        if [ "${{ inputs.module_unload }}" = "true" ]; then
+          echo "Enabling kernel module unload support"
+          scripts/config --file "$OUT/.config" -e MODULES
+          scripts/config --file "$OUT/.config" -e MODULE_UNLOAD
+          scripts/config --file "$OUT/.config" -e MODULE_FORCE_UNLOAD
+        else
+          echo "Kernel module unload option not selected; leaving defconfig unchanged"
+        fi
+        
         LOCAL_LOCALVERSION="${CUSTOM_LOCALVERSION:--OP-WILD}"
         if [ -n "${LOCAL_LOCALVERSION:-}" ]; then
           scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${LOCAL_LOCALVERSION}"
@@ -1998,6 +2073,11 @@ runs:
         
         
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" olddefconfig
+
+        echo "============================================"
+        echo "Kernel Module Configuration:"
+        grep -E '^CONFIG_MODULES=|^CONFIG_MODULE_UNLOAD=|^CONFIG_MODULE_FORCE_UNLOAD=|^CONFIG_MODVERSIONS=|^CONFIG_MODULE_SIG=|^CONFIG_MODULE_SIG_FORCE=' "$OUT/.config" || true
+        echo "============================================"
         
         KCFLAGS="$KCFLAGS -Wno-error -pipe ${KCFLAGS_EXTRA}"
         KCPPFLAGS="$KCPPFLAGS -DCONFIG_OPTIMIZE_INLINING"
@@ -2038,9 +2118,21 @@ runs:
           cp build.log "$DEBUG_ARTIFACTS_FOLDER/build.log"
           cp install.log "$DEBUG_ARTIFACTS_FOLDER/install.log"
           rsync -av --no-links --exclude='build' "$COMMON_KERNEL_FOLDER/out/install/lib/modules"/*/ "$DEBUG_ARTIFACTS_FOLDER"
-          cp "$COMMON_KERNEL_FOLDER/out/vmlinux" "$DEBUG_ARTIFACTS_FOLDER/vmlinux"
-          cp "$COMMON_KERNEL_FOLDER/out/Module.symvers" "$DEBUG_ARTIFACTS_FOLDER/Module.symvers"
-          cp "$COMMON_KERNEL_FOLDER/out/System.map" "$DEBUG_ARTIFACTS_FOLDER/System.map"
+
+          # Files required/useful for matching external .ko builds
+          cp "$OUT/.config" "$DEBUG_ARTIFACTS_FOLDER/kernel.config"
+          cp "$OUT/Module.symvers" "$DEBUG_ARTIFACTS_FOLDER/Module.symvers"
+          cp "$OUT/System.map" "$DEBUG_ARTIFACTS_FOLDER/System.map"
+          cp "$OUT/vmlinux" "$DEBUG_ARTIFACTS_FOLDER/vmlinux"
+
+          if [ -f "$OUT/include/config/kernel.release" ]; then
+            cp "$OUT/include/config/kernel.release" "$DEBUG_ARTIFACTS_FOLDER/kernel.release"
+          fi
+
+          clang --version > "$DEBUG_ARTIFACTS_FOLDER/clang-version.txt"
+          git -C "$COMMON_KERNEL_FOLDER" rev-parse HEAD > "$DEBUG_ARTIFACTS_FOLDER/common-kernel-commit.txt"
+
+          grep -E '^CONFIG_MODULES=|^CONFIG_MODULE_UNLOAD=|^CONFIG_MODULE_FORCE_UNLOAD=|^CONFIG_MODVERSIONS=|^CONFIG_MODULE_SIG=|^CONFIG_MODULE_SIG_FORCE='             "$OUT/.config" > "$DEBUG_ARTIFACTS_FOLDER/module-config.txt" || true
           
           ls -la "$DEBUG_ARTIFACTS_FOLDER"
         else

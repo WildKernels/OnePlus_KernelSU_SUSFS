@@ -49,6 +49,11 @@ on:
         required: false
         type: boolean
         default: false
+      module_unload:
+        description: 'Enable kernel module unload (CONFIG_MODULE_UNLOAD + CONFIG_MODULE_FORCE_UNLOAD)'
+        required: false
+        type: boolean
+        default: false
       mirror_toolchains:
         description: 'Do you want to sync toolchains before build? [99% runs not required]'
         required: false
@@ -276,7 +281,7 @@ jobs:
             ["android13-5.15"]="gki-android13-5.15"
             ["android14-6.1"]="gki-android14-6.1"
             ["android15-6.6"]="gki-android15-6.6"
-            ["android16-6.12"]="gki-android16-6.12"
+            ["android16-6.12"]="f37930f374ef88de990d6abea0c67d0ea28c1edc"
           )
           
           declare -A user_inputs=(
@@ -702,6 +707,7 @@ jobs:
           build_timestamp: ${{ inputs.build_timestamp }}
           clean: ${{ inputs.clean_build }}
           debug: ${{ inputs.debug }}
+          module_unload: ${{ inputs.module_unload }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📊 Build statistics
