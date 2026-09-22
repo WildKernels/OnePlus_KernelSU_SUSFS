@@ -16,17 +16,56 @@ nh_set_state wifi TAKEOVER
 state=$(nh_get_state wifi)
 [ "$state" = "TAKEOVER" ] || { echo "FAIL: expected TAKEOVER, got $state"; exit 1; }
 
-# Test: acquire_lock creates lockfile
+# Test: acquire_lock creates a persistent lock directory
 nh_acquire_lock wifi || { echo "FAIL: acquire_lock failed"; exit 1; }
-[ -f "$NH_LOCK_DIR/wifi.lock" ] || { echo "FAIL: lockfile not created"; exit 1; }
+[ -d "$NH_LOCK_DIR/wifi.lock" ] || { echo "FAIL: lock directory not created"; exit 1; }
 
-# Test: release_lock removes lockfile and resets state
+# Test: release_lock removes lock directory and resets state
 nh_release_lock wifi
-[ ! -f "$NH_LOCK_DIR/wifi.lock" ] || { echo "FAIL: lockfile not removed"; exit 1; }
+[ ! -e "$NH_LOCK_DIR/wifi.lock" ] || { echo "FAIL: lock directory not removed"; exit 1; }
 state=$(nh_get_state wifi)
 [ "$state" = "IDLE" ] || { echo "FAIL: expected IDLE after release, got $state"; exit 1; }
 
-echo "ALL TESTS PASSED"
+# Test: session journal persists snapshots until successful release
+nh_begin_session wifi || { echo "FAIL: begin_session failed"; exit 1; }
+[ "$(nh_get_state wifi)" = "PREPARE" ] || { echo "FAIL: expected PREPARE"; exit 1; }
+nh_snapshot_put wifi wifi_enabled 1
+[ "$(nh_snapshot_get wifi wifi_enabled)" = "1" ] || { echo "FAIL: snapshot not saved"; exit 1; }
+nh_mark_takeover wifi
+[ "$(nh_get_state wifi)" = "TAKEOVER" ] || { echo "FAIL: expected TAKEOVER"; exit 1; }
+nh_mark_recovery_required wifi "stock module reload failed"
+[ "$(nh_get_state wifi)" = "RECOVERY_REQUIRED" ] || { echo "FAIL: recovery state not retained"; exit 1; }
+[ -f "$NH_STATE_DIR/wifi.journal/error" ] || { echo "FAIL: recovery reason missing"; exit 1; }
+if nh_begin_session wifi >/dev/null 2>&1; then
+  echo "FAIL: acquire started over a recovery journal"
+  exit 1
+fi
+[ "$(nh_get_state wifi)" = "RECOVERY_REQUIRED" ] || { echo "FAIL: acquire overwrote recovery state"; exit 1; }
+[ -f "$NH_STATE_DIR/wifi.journal/error" ] || { echo "FAIL: acquire removed recovery journal"; exit 1; }
+nh_finish_session wifi
+[ "$(nh_get_state wifi)" = "IDLE" ] || { echo "FAIL: expected IDLE after finish"; exit 1; }
+[ ! -e "$NH_STATE_DIR/wifi.journal" ] || { echo "FAIL: journal not removed after finish"; exit 1; }
+[ ! -e "$NH_LOCK_DIR/wifi.lock" ] || { echo "FAIL: lock not removed after finish"; exit 1; }
+
+# Test: radio names cannot escape the state directory
+outside="$TMPDIR/outside"
+mkdir "$outside"
+if nh_begin_session '../outside' >/dev/null 2>&1; then
+  echo "FAIL: traversal radio name started a session"
+  exit 1
+fi
+[ -d "$outside" ] || { echo "FAIL: traversal radio name modified outside directory"; exit 1; }
+
+# Test: invalid snapshot keys cannot escape the session journal
+nh_begin_session wifi || { echo "FAIL: begin_session for invalid key test failed"; exit 1; }
+if nh_snapshot_put wifi '../outside' value >/dev/null 2>&1; then
+  echo "FAIL: traversal snapshot key was accepted"
+  exit 1
+fi
+[ ! -e "$outside/value" ] || { echo "FAIL: traversal snapshot key wrote outside journal"; exit 1; }
+nh_finish_session wifi
+
+echo "STATE TESTS PASSED"
 
 # --- Fingerprint tests ---
 
