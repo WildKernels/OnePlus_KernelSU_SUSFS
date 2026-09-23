@@ -79,7 +79,7 @@ nh_verify_stock_bt() {
   expected_enabled=$(nh_snapshot_get bt bt_enabled) || return 1
   hal_expected=$(nh_snapshot_get bt hal_state) || return 1
   rfkill_expected=$(nh_snapshot_get bt rfkill_state) || return 1
-  if grep -q '^hci_vhci ' /proc/modules 2>/dev/null; then return 1; fi
+  if grep -q '^hci_vhci ' "${NH_MODULES_FILE:-/proc/modules}" 2>/dev/null; then return 1; fi
   hal_actual=$(nh_bt_hal_state)
   [ "$hal_actual" = "$hal_expected" ] || return 1
   [ "$(nh_bt_rfkill_state)" = "$rfkill_expected" ] || return 1

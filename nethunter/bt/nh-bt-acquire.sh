@@ -13,6 +13,7 @@ NH_LOCK_DIR="${NH_LOCK_DIR:-$NH_STATE_DIR}"
 VHCI_KO="$NH_PACKAGE_ROOT/vendor_dlkm_override/hci_vhci.ko"
 VHCI_NODE="${NH_VHCI_NODE:-/dev/vhci}"
 BLUEBINDER="$NH_PACKAGE_ROOT/system/bin/bluebinder"
+BLUEBINDER_LIBS="$NH_PACKAGE_ROOT/system/lib64"
 MODULE_PROP="$NH_PACKAGE_ROOT/module.prop"
 
 log() { nh_log "$RADIO" "$*"; }
@@ -71,6 +72,7 @@ else
   exit 1
 fi
 [ -x "$BLUEBINDER" ] || { echo "ABORT: bluebinder not found at $BLUEBINDER" >&2; exit 1; }
+[ -d "$BLUEBINDER_LIBS" ] || { echo "ABORT: bluebinder runtime libraries missing at $BLUEBINDER_LIBS" >&2; exit 1; }
 
 nh_begin_session "$RADIO" || { echo "ABORT: cannot begin session" >&2; exit 1; }
 log "Acquiring Bluetooth"
@@ -95,12 +97,17 @@ insmod "$VHCI_KO" || rollback "insmod hci_vhci failed"
 vhci_loaded=1
 [ -e "$VHCI_NODE" ] || rollback "/dev/vhci did not appear"
 
-"$BLUEBINDER" --hci 0 </dev/null >/dev/null 2>&1 &
+LD_LIBRARY_PATH="$BLUEBINDER_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+  "$BLUEBINDER" --hci 0 </dev/null >/dev/null 2>&1 &
 echo $! > "$NH_STATE_DIR/bluebinder.pid"
 bluebinder_started=1
 
 i=1
 while [ "$i" -le 10 ]; do
+  bluebinder_pid=$(cat "$NH_STATE_DIR/bluebinder.pid" 2>/dev/null || true)
+  if [[ ! "$bluebinder_pid" =~ ^[0-9]+$ ]] || ! kill -0 "$bluebinder_pid" 2>/dev/null; then
+    rollback "bluebinder exited before hci0 appeared"
+  fi
   hciconfig hci0 >/dev/null 2>&1 && break
   sleep 1
   i=$((i + 1))

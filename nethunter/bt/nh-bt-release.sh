@@ -44,7 +44,19 @@ if [ -f "$NH_STATE_DIR/bluebinder.pid" ]; then
 fi
 
 hciconfig hci0 down 2>/dev/null || true
-rmmod hci_vhci 2>/dev/null || true
+if grep -q '^hci_vhci ' "${NH_MODULES_FILE:-/proc/modules}" 2>/dev/null; then
+  if ! rmmod hci_vhci 2>/dev/null; then
+    nh_mark_recovery_required "$RADIO" "hci_vhci unload failed during release"
+    echo "ERROR: hci_vhci unload failed; recovery journal retained" >&2
+    exit 1
+  fi
+elif [ -e "${NH_VHCI_NODE:-/dev/vhci}" ]; then
+  if ! rmmod hci_vhci 2>/dev/null; then
+    nh_mark_recovery_required "$RADIO" "hci_vhci unload failed during release"
+    echo "ERROR: hci_vhci unload failed; recovery journal retained" >&2
+    exit 1
+  fi
+fi
 
 rfkill_state=$(nh_snapshot_get "$RADIO" rfkill_state 2>/dev/null || echo unknown)
 case "$rfkill_state" in

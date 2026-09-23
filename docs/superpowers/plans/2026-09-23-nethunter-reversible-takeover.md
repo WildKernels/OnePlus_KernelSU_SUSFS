@@ -416,7 +416,7 @@ ruby -e 'require "yaml"; YAML.load_file(".github/workflows/build-nethunter.yml")
 
 **Interfaces:**
 - Consumes: Task 2 session/recovery API and Task 3 `hci_vhci.ko` artifact.
-- Produces: raw HCI session with journaled bluebinder PID and exact pre-session Bluetooth state restoration.
+- Produces: raw HCI session with journaled bluebinder PID, target Bluebinder shared libraries in `system/lib64`, and exact pre-session Bluetooth state restoration.
 
 - [ ] **Step 1: Add failing bluebinder artifact tests.**
 
@@ -436,7 +436,8 @@ Reject a bluebinder binary when:
 3. Require the AArch64 Android toolchain.
 4. Require prebuilt target libraries and headers.
 5. Build with an explicit sysroot.
-6. Verify architecture, dynamic dependencies, and SHA-256.
+6. Bundle target `.so` files from the dependency prefix into output `lib64/`.
+7. Verify executable/library architecture, NEEDED entries, no host RPATH/RUNPATH, and SHA-256.
 
 - [ ] **Step 3: Verify `/dev/vhci` during acquire.**
 
@@ -834,6 +835,7 @@ usb/
 gnss/
 vendor_dlkm_override/
 system/bin/
+system/lib64/
 provenance.json
 ```
 
@@ -855,6 +857,7 @@ The packer must require the exact required set:
 
 - Wi-Fi capability: patched Wi-Fi module.
 - Bluetooth capability: `hci_vhci.ko` and bluebinder.
+- Bluetooth capability: bundled AArch64 runtime libraries in `system/lib64`, with bluebinder launched under that package library path.
 - NFC raw capability: AArch64 `nci_raw_tool`.
 - NFC exclusive capability: patched `nxp_nci.ko` or an exact-device ownership proof recorded in provenance.
 - USB capability: USB scripts.
@@ -871,6 +874,7 @@ The packer must populate every field from Task 1 and emit `provenance.json` cont
 - Config hash.
 - Module SHA-256, vermagic, dependencies, and signature state.
 - Bluebinder commit and SHA-256.
+- Bluebinder bundled shared-library names and SHA-256 values.
 - NCI tool SHA-256.
 - Wi-Fi patch commit list and spike verdict.
 - Capability labels.
