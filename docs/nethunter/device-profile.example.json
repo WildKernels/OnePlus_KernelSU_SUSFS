@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "created_at": "example-only",
+  "device": {
+    "model": "EXAMPLE_MODEL",
+    "codename": "EXAMPLE_DEVICE",
+    "build_fingerprint": "example/build/fingerprint",
+    "vendor_build_fingerprint": "",
+    "incremental": "",
+    "slot_suffix": ""
+  },
+  "kernel": {
+    "release": "example-kernel-release",
+    "version": "",
+    "selinux": "unknown",
+    "architecture": "aarch64"
+  },
+  "nethunter": {"rootfs": "unknown"},
+  "modules": {
+    "wifi": {
+      "path": "/vendor_dlkm/lib/modules/qca_cld3_kiwi_v2.ko",
+      "sha256": "",
+      "modinfo": "",
+      "loaded": "",
+      "con_mode": "",
+      "interfaces": "",
+      "phys": "",
+      "availability": "unknown"
+    },
+    "bluetooth": {
+      "vhci_name": "hci_vhci.ko",
+      "device_node": "",
+      "rfkill": "",
+      "manager": "",
+      "services": "",
+      "availability": "unknown"
+    },
+    "nfc": {
+      "path": "/vendor_dlkm/lib/modules/nxp-nci.ko",
+      "driver": "",
+      "node": "",
+      "state": "",
+      "properties": "",
+      "hal_service": "",
+      "availability": "unknown"
+    }
+  },
+  "usb": {
+    "config": "",
+    "roles": "",
+    "gadgets": "",
+    "udcs": "",
+    "functions": "",
+    "availability": "unknown"
+  },
+  "gnss": {
+    "service": "",
+    "location_dump": "",
+    "availability": "unknown"
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wildkernel.dev/schemas/nethunter-device-profile-v2.json",
+  "title": "NetHunter device profile",
+  "type": "object",
+  "required": ["schema_version", "created_at", "device", "kernel", "nethunter", "modules", "usb", "gnss"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "created_at": {"type": "string", "minLength": 1},
+    "device": {
+      "type": "object",
+      "required": ["model", "codename", "build_fingerprint", "vendor_build_fingerprint", "incremental", "slot_suffix"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "codename": {"type": "string", "minLength": 1},
+        "build_fingerprint": {"type": "string", "minLength": 1},
+        "vendor_build_fingerprint": {"type": "string"},
+        "incremental": {"type": "string"},
+        "slot_suffix": {"type": "string"}
+      }
+    },
+    "kernel": {
+      "type": "object",
+      "required": ["release", "version", "selinux", "architecture"],
+      "properties": {
+        "release": {"type": "string", "minLength": 1},
+        "version": {"type": "string"},
+        "selinux": {"type": "string"},
+        "architecture": {"const": "aarch64"}
+      }
+    },
+    "nethunter": {
+      "type": "object",
+      "required": ["rootfs"],
+      "properties": {"rootfs": {"type": "string"}}
+    },
+    "modules": {
+      "type": "object",
+      "required": ["wifi", "bluetooth", "nfc"],
+      "properties": {
+        "wifi": {
+          "type": "object",
+          "required": ["path", "sha256", "modinfo", "loaded", "con_mode", "interfaces", "phys", "availability"],
+          "properties": {
+            "path": {"const": "/vendor_dlkm/lib/modules/qca_cld3_kiwi_v2.ko"},
+            "sha256": {"type": "string"},
+            "modinfo": {"type": "string"},
+            "loaded": {"type": "string"},
+            "con_mode": {"type": "string"},
+            "interfaces": {"type": "string"},
+            "phys": {"type": "string"},
+            "availability": {"$ref": "#/$defs/availability"}
+          }
+        },
+        "bluetooth": {
+          "type": "object",
+          "required": ["vhci_name", "device_node", "rfkill", "manager", "services", "availability"],
+          "properties": {
+            "vhci_name": {"const": "hci_vhci.ko"},
+            "device_node": {"type": "string"},
+            "rfkill": {"type": "string"},
+            "manager": {"type": "string"},
+            "services": {"type": "string"},
+            "availability": {"$ref": "#/$defs/availability"}
+          }
+        },
+        "nfc": {
+          "type": "object",
+          "required": ["path", "driver", "node", "state", "properties", "hal_service", "availability"],
+          "properties": {
+            "path": {"const": "/vendor_dlkm/lib/modules/nxp-nci.ko"},
+            "driver": {"type": "string"},
+            "node": {"type": "string"},
+            "state": {"type": "string"},
+            "properties": {"type": "string"},
+            "hal_service": {"type": "string"},
+            "availability": {"$ref": "#/$defs/availability"}
+          }
+        }
+      }
+    },
+    "usb": {
+      "type": "object",
+      "required": ["config", "roles", "gadgets", "udcs", "functions", "availability"],
+      "properties": {
+        "config": {"type": "string"},
+        "roles": {"type": "string"},
+        "gadgets": {"type": "string"},
+        "udcs": {"type": "string"},
+        "functions": {"type": "string"},
+        "availability": {"$ref": "#/$defs/availability"}
+      }
+    },
+    "gnss": {
+      "type": "object",
+      "required": ["service", "location_dump", "availability"],
+      "properties": {
+        "service": {"type": "string"},
+        "location_dump": {"type": "string"},
+        "availability": {"$ref": "#/$defs/availability"}
+      }
+    }
+  },
+  "$defs": {
+    "availability": {"enum": ["available", "unavailable", "unknown"]}
+  }
+}
