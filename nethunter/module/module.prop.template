@@ -13,6 +13,7 @@ config_sha256=@@CONFIG_SHA256@@
 sha256_wifi=@@SHA_QCA@@
 sha256_btvhci=@@SHA_BTVHCI@@
 sha256_nxp_nci=@@SHA_NXP_NCI@@
+sha256_nci_raw_tool=@@SHA_NCI_RAW_TOOL@@
 capability_wifi=@@CAPABILITY_WIFI@@
 capability_bt=@@CAPABILITY_BT@@
 capability_nfc=@@CAPABILITY_NFC@@

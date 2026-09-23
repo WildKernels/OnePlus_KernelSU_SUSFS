@@ -12,6 +12,13 @@ nh_valid_radio() {
   esac
 }
 
+nh_valid_state() {
+  case "$1" in
+    IDLE|QUIESCE|PREPARE|TAKEOVER|RESTORE|RECOVERY_REQUIRED|BOOT_RECOVERED) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 nh_get_state() {
   local radio="$1"
   nh_valid_radio "$radio" || { echo "IDLE"; return 0; }
@@ -27,6 +34,10 @@ nh_set_state() {
   local radio="$1"
   local state="$2"
   nh_valid_radio "$radio" || return 1
+  nh_valid_state "$state" || {
+    echo "ERROR: invalid state: $state" >&2
+    return 1
+  }
   mkdir -p "$NH_STATE_DIR"
   echo "$state" > "$NH_STATE_DIR/${radio}.state"
 }

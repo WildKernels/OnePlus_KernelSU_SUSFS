@@ -17,15 +17,18 @@ fail() { fail=$((fail + 1)); echo "  FAIL: $1"; }
 android="$tmpdir"
 nh_data="$android/data/adb/nethunter"
 mod_dir="$android/data/adb/modules/nethunter_takeover"
-mkdir -p "$nh_data" "$mod_dir/vendor_dlkm_override" "$mod_dir/system/bin"
+mkdir -p "$nh_data" "$mod_dir/vendor_dlkm_override" "$mod_dir/system/bin" "$mod_dir/framework"
+cp "$root"/nethunter/framework/*.sh "$mod_dir/framework/"
 
 printf 'VHCIKO' > "$mod_dir/vendor_dlkm_override/hci_vhci.ko"
 ko_sha=$(sha256sum "$mod_dir/vendor_dlkm_override/hci_vhci.ko" | cut -d' ' -f1)
 
 cat > "$mod_dir/module.prop" <<EOF
-target=ONEPLUS PKG110
-kernel_vermagic=6.1.174-g638ecc425319 SMP preempt mod_unload modversions aarch64
-scmversion=g976cb1e13abc
+target=OP-ACE-5
+device=pineapple
+model=ONEPLUS PKG110
+build_fingerprint=oneplus/PKG110/PKG110:16/TEST/release-keys
+kernel_release=6.1.174-g638ecc425319
 sha256_wifi=unused
 sha256_btvhci=$ko_sha
 EOF
@@ -47,11 +50,11 @@ mkdir -p "$state_dir"
 mk() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "$mockbin/$1"; chmod +x "$mockbin/$1"; }
 
 mk svc       'echo "svc $*" >> "$CALLS"; [[ "$2" == bluetooth ]] && printf "%s" "${3:-}" > "$STATE/bt_svc"; exit 0'
-mk rfkill    'echo "rfkill $*" >> "$CALLS"; [[ "$1" == block ]] && echo blocked > "$STATE/rfkill"; [[ "$1" == unblock ]] && echo unblocked > "$STATE/rfkill"; exit 0'
-mk insmod    'echo "insmod $*" >> "$CALLS"; [[ "$1" == *vendor_dlkm_override/* ]] && exit 0; echo "insmod: unexpected $1" >&2; exit 1'
-mk rmmod     'echo "rmmod $*" >> "$CALLS"; rm -f "$STATE/hci0"; exit 0'
+mk rfkill    'echo "rfkill $*" >> "$CALLS"; if [[ "$1" == list ]]; then case "$(cat "$STATE/rfkill" 2>/dev/null)" in blocked) echo "Soft blocked: yes";; unblocked) echo "Soft blocked: no";; esac; elif [[ "$1" == block ]]; then echo blocked > "$STATE/rfkill"; elif [[ "$1" == unblock ]]; then echo unblocked > "$STATE/rfkill"; fi; exit 0'
+mk insmod    'echo "insmod $*" >> "$CALLS"; [[ "$1" == *vendor_dlkm_override/* ]] && { touch "$NH_VHCI_NODE"; exit 0; }; echo "insmod: unexpected $1" >&2; exit 1'
+mk rmmod     'echo "rmmod $*" >> "$CALLS"; rm -f "$STATE/hci0" "$NH_VHCI_NODE"; exit 0'
 mk hciconfig 'echo "hciconfig $*" >> "$CALLS"; if [[ "$*" == hci0\ up* ]]; then echo up > "$STATE/hci_up"; exit 0; fi; if [[ "$*" == hci0\ down* ]]; then rm -f "$STATE/hci_up"; exit 0; fi; if [[ -f "$STATE/hci0" ]]; then exit 0; else exit 1; fi'
-mk getprop   'case "$*" in *ro.product.model*) echo "ONEPLUS PKG110";; *) echo stopped;; esac'
+mk getprop   'case "$*" in *ro.product.model*) echo "ONEPLUS PKG110";; *ro.product.device*) echo pineapple;; *ro.build.fingerprint*) echo oneplus/PKG110/PKG110:16/TEST/release-keys;; *init.svc.bluetooth*) cat "$STATE/hal" 2>/dev/null || echo unknown;; *) echo stopped;; esac'
 mk dumpsys   'if [[ -f "$STATE/bt_on" ]]; then echo "state: ON"; else echo "state: OFF"; fi'
 mk uname     'echo "6.1.174-g638ecc425319"'
 mk sleep     ':'
@@ -61,7 +64,7 @@ run_env() {
       CALLS="$tmpdir/calls.log" STATE="$state_dir" \
       BLUEBINDER_PID_FILE="$state_dir/bb.pid" \
       NH_STATE_DIR="$nh_data" NH_LOCK_DIR="$nh_data" \
-      NH_MODULE_DIR="$mod_dir" \
+      NH_PACKAGE_ROOT="$mod_dir" NH_VHCI_NODE="$state_dir/vhci" \
       "$@"
 }
 
@@ -69,6 +72,8 @@ acquire="$root/nethunter/bt/nh-bt-acquire.sh"
 release="$root/nethunter/bt/nh-bt-release.sh"
 : > "$tmpdir/calls.log"
 rm -f "$state_dir/hci0"
+echo unblocked > "$state_dir/rfkill"
+echo stopped > "$state_dir/hal"
 
 # ---- Happy path ----
 # hci0 appears: bluebinder mock writes hci0 marker via pid file watcher is
@@ -101,6 +106,24 @@ grep -q "rmmod hci_vhci" "$tmpdir/calls.log" && pass "hci_vhci unloaded" || fail
 grep -q "rfkill unblock" "$tmpdir/calls.log" && pass "rfkill unblocked" || fail "rfkill not unblocked"
 [[ ! -e "$nh_data/bt.journal" ]] && pass "journal cleared" || fail "journal kept"
 [[ "$(cat "$nh_data/bt.state" 2>/dev/null)" == "IDLE" ]] && pass "state IDLE" || fail "state not IDLE"
+
+# ---- Unknown HAL/rfkill state blocks before Android changes ----
+: > "$tmpdir/calls.log"
+echo unknown > "$state_dir/hal"
+echo unknown > "$state_dir/rfkill"
+if run_env bash "$acquire" >"$tmpdir/acquire-unknown.out" 2>&1; then
+  fail "acquire accepted unknown Bluetooth pre-state"
+else
+  pass "acquire rejects unknown Bluetooth pre-state"
+fi
+if grep -q 'svc bluetooth disable' "$tmpdir/calls.log"; then
+  fail "Bluetooth service changed with unknown pre-state"
+else
+  pass "unknown-state rejection made no Bluetooth changes"
+fi
+[[ "$(cat "$nh_data/bt.state" 2>/dev/null)" == "IDLE" ]] && pass "unknown-state rejection cleaned session" || fail "unknown-state left session active"
+echo stopped > "$state_dir/hal"
+echo unblocked > "$state_dir/rfkill"
 
 # ---- Failure path: hci0 never appears → rollback, no RECOVERY_REQUIRED ----
 : > "$tmpdir/calls.log"

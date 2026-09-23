@@ -2,33 +2,41 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-source "$SCRIPT_DIR/../framework/nh-state.sh"
+NH_PACKAGE_ROOT="${NH_PACKAGE_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
+source "$NH_PACKAGE_ROOT/framework/nh-state.sh"
+source "$NH_PACKAGE_ROOT/framework/nh-runtime.sh"
 
-RADIO="bt"
+RADIO=bt
 NH_STATE_DIR="${NH_STATE_DIR:-/data/adb/nethunter}"
-LOG="$NH_STATE_DIR/bt.log"
+NH_LOCK_DIR="${NH_LOCK_DIR:-$NH_STATE_DIR}"
 
-log() { echo "[$(date +%H:%M:%S)] $*" >> "$LOG"; }
+log() { nh_log "$RADIO" "$*"; }
 
 state=$(nh_get_state "$RADIO")
-if [ "$state" = "IDLE" ]; then
+if [ "$state" = IDLE ] || [ "$state" = BOOT_RECOVERED ]; then
   echo "Bluetooth already in stock state."
   exit 0
 fi
-if [ "$state" != "TAKEOVER" ]; then
-  echo "Bluetooth is in $state; manual recovery required (journal kept)." >&2
+if [ "$state" != TAKEOVER ] && { [ "$state" != RECOVERY_REQUIRED ] || [ "${NH_RECOVERY_MODE:-0}" != 1 ]; }; then
+  echo "Bluetooth is in $state; use nh-recover (journal kept)." >&2
   exit 1
 fi
 
 log "Releasing Bluetooth"
+nh_set_state "$RADIO" RESTORE
 
-# Stop bluebinder first so nothing feeds the VHCI during teardown
 if [ -f "$NH_STATE_DIR/bluebinder.pid" ]; then
-  BPID="$(cat "$NH_STATE_DIR/bluebinder.pid")"
+  BPID=$(cat "$NH_STATE_DIR/bluebinder.pid")
+  case "$BPID" in
+    ''|*[!0-9]*)
+      nh_mark_recovery_required "$RADIO" "invalid bluebinder PID file"
+      echo "ERROR: invalid bluebinder PID file; journal retained" >&2
+      exit 1
+      ;;
+  esac
   kill "$BPID" 2>/dev/null || true
   sleep 1
   if kill -0 "$BPID" 2>/dev/null; then
-    log "WARN: bluebinder ($BPID) still alive, sending SIGKILL"
     kill -9 "$BPID" 2>/dev/null || true
     sleep 1
   fi
@@ -38,29 +46,26 @@ fi
 hciconfig hci0 down 2>/dev/null || true
 rmmod hci_vhci 2>/dev/null || true
 
-# Restore Bluetooth to its pre-takeover state, not blindly enabled
+rfkill_state=$(nh_snapshot_get "$RADIO" rfkill_state 2>/dev/null || echo unknown)
+case "$rfkill_state" in
+  blocked) rfkill block bluetooth 2>/dev/null || true ;;
+  unblocked) rfkill unblock bluetooth 2>/dev/null || true ;;
+  *) nh_mark_recovery_required "$RADIO" "saved rfkill state is unknown"; exit 1 ;;
+esac
+
 bt_enabled=$(nh_snapshot_get "$RADIO" bt_enabled 2>/dev/null || echo 1)
-rfkill unblock bluetooth 2>/dev/null || true
-if [ "$bt_enabled" = "1" ]; then
+if [ "$bt_enabled" = 1 ]; then
   svc bluetooth enable 2>/dev/null || true
+else
+  svc bluetooth disable 2>/dev/null || true
 fi
 
-# Verify Android actually got Bluetooth back before clearing the journal
 sleep 2
-if [ "$bt_enabled" = "1" ]; then
-  if ! dumpsys bluetooth_manager 2>/dev/null | grep -q -e 'state: ON' -e 'Bluetooth is enabled'; then
-    log "RECOVERY_REQUIRED: Android Bluetooth not operational after restore"
-    nh_mark_recovery_required "$RADIO" "Android Bluetooth not operational after restore"
-    echo "ERROR: Bluetooth did not come back; manual recovery required" >&2
-    exit 1
-  fi
-else
-  if dumpsys bluetooth_manager 2>/dev/null | grep -q -e 'state: ON' -e 'Bluetooth is enabled'; then
-    log "RECOVERY_REQUIRED: Bluetooth unexpectedly ON after restore (was off)"
-    nh_mark_recovery_required "$RADIO" "Bluetooth unexpectedly on after restore"
-    echo "ERROR: Bluetooth restored to wrong state; manual recovery required" >&2
-    exit 1
-  fi
+if ! nh_recover_verify "$RADIO" >/dev/null 2>&1; then
+  log "RECOVERY_REQUIRED: stock Bluetooth verification failed"
+  nh_mark_recovery_required "$RADIO" "stock Bluetooth verification failed on release"
+  echo "ERROR: Bluetooth restore could not be verified; journal retained" >&2
+  exit 1
 fi
 
 nh_finish_session "$RADIO"

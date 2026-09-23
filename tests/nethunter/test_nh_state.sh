@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source nethunter/framework/nh-state.sh
+source nethunter/framework/nh-runtime.sh
 
 TMPDIR=$(mktemp -d)
 export NH_STATE_DIR="$TMPDIR"
@@ -35,6 +36,7 @@ nh_mark_takeover wifi
 [ "$(nh_get_state wifi)" = "TAKEOVER" ] || { echo "FAIL: expected TAKEOVER"; exit 1; }
 nh_mark_recovery_required wifi "stock module reload failed"
 [ "$(nh_get_state wifi)" = "RECOVERY_REQUIRED" ] || { echo "FAIL: recovery state not retained"; exit 1; }
+[[ "$(nh_recover_status wifi)" == RECOVERY_REQUIRED ]] || { echo "FAIL: recovery status missing"; exit 1; }
 [ -f "$NH_STATE_DIR/wifi.journal/error" ] || { echo "FAIL: recovery reason missing"; exit 1; }
 if nh_begin_session wifi >/dev/null 2>&1; then
   echo "FAIL: acquire started over a recovery journal"
@@ -76,6 +78,14 @@ fi
 [ ! -e "$outside/value" ] || { echo "FAIL: traversal snapshot key wrote outside journal"; exit 1; }
 nh_finish_session wifi
 
+# State values are closed to known lifecycle labels.
+nh_set_state wifi BOOT_RECOVERED
+[ "$(nh_get_state wifi)" = "BOOT_RECOVERED" ] || { echo "FAIL: BOOT_RECOVERED state was not stored"; exit 1; }
+if nh_set_state wifi '../../outside' 2>/dev/null; then
+  echo "FAIL: invalid state value was accepted"
+  exit 1
+fi
+
 echo "STATE TESTS PASSED"
 
 # --- Fingerprint tests ---
@@ -85,8 +95,10 @@ source nethunter/framework/nh-fingerprint.sh
 TMP_PROP="$TMPDIR/module.prop"
 cat > "$TMP_PROP" <<EOF
 target=OP-ACE-5
-kernel_vermagic=6.1.174-g638ecc425319
-scmversion=g976cb1e13abc
+device=pineapple
+model=ONEPLUS PKG110
+build_fingerprint=oneplus/PKG110/PKG110:16/TEST/release-keys
+kernel_release=6.1.174-g638ecc425319
 sha256_wifi=abc123
 sha256_btvhci=def456
 EOF
@@ -97,23 +109,43 @@ FAKE_SHA=$(sha256sum "$FAKE_KO" | cut -d' ' -f1)
 
 sed -i "s/^sha256_wifi=.*/sha256_wifi=$FAKE_SHA/" "$TMP_PROP"
 
-nh_get_target_model() { echo "OP-ACE-5"; }
-nh_get_running_vermagic() { echo "6.1.174-g638ecc425319"; }
-nh_get_running_scmversion() { echo "g976cb1e13abc"; }
+nh_get_target_model() { echo "ONEPLUS PKG110"; }
+nh_get_target_device() { echo "pineapple"; }
+nh_get_build_fingerprint() { echo "oneplus/PKG110/PKG110:16/TEST/release-keys"; }
+nh_get_running_kernel_release() { echo "6.1.174-g638ecc425319"; }
 
-result=$(nh_check_fingerprint "$TMP_PROP" "wifi" "$FAKE_KO")
+result=$(nh_check_fingerprint "$TMP_PROP" "wifi" "$FAKE_KO" || true)
 [ "$result" = "OK" ] || { echo "FAIL: expected OK, got $result"; exit 1; }
 
-# Test: mismatch target
+# Test: mismatch model
 nh_get_target_model() { echo "WRONG-MODEL"; }
 result=$(nh_check_fingerprint "$TMP_PROP" "wifi" "$FAKE_KO" || true)
-[ "$result" = "MISMATCH_TARGET" ] || { echo "FAIL: expected MISMATCH_TARGET, got $result"; exit 1; }
+[ "$result" = "MISMATCH_MODEL" ] || { echo "FAIL: expected MISMATCH_MODEL, got $result"; exit 1; }
 
-# Test: mismatch vermagic
-nh_get_target_model() { echo "OP-ACE-5"; }
-nh_get_running_vermagic() { echo "wrong-vermagic"; }
+# Test: mismatch device codename
+nh_get_target_model() { echo "ONEPLUS PKG110"; }
+nh_get_target_device() { echo "wrong-device"; }
 result=$(nh_check_fingerprint "$TMP_PROP" "wifi" "$FAKE_KO" || true)
-[ "$result" = "MISMATCH_VERMAGIC" ] || { echo "FAIL: expected MISMATCH_VERMAGIC, got $result"; exit 1; }
+[ "$result" = "MISMATCH_DEVICE" ] || { echo "FAIL: expected MISMATCH_DEVICE, got $result"; exit 1; }
+
+# Test: mismatch build fingerprint
+nh_get_target_device() { echo "pineapple"; }
+nh_get_build_fingerprint() { echo "wrong/fingerprint"; }
+result=$(nh_check_fingerprint "$TMP_PROP" "wifi" "$FAKE_KO" || true)
+[ "$result" = "MISMATCH_BUILD_FINGERPRINT" ] || { echo "FAIL: expected MISMATCH_BUILD_FINGERPRINT, got $result"; exit 1; }
+
+# Test: mismatch kernel release
+nh_get_build_fingerprint() { echo "oneplus/PKG110/PKG110:16/TEST/release-keys"; }
+nh_get_running_kernel_release() { echo "wrong-release"; }
+result=$(nh_check_fingerprint "$TMP_PROP" "wifi" "$FAKE_KO" || true)
+[ "$result" = "MISMATCH_KERNEL_RELEASE" ] || { echo "FAIL: expected MISMATCH_KERNEL_RELEASE, got $result"; exit 1; }
+
+# Test: component hash mismatch
+nh_get_running_kernel_release() { echo "6.1.174-g638ecc425319"; }
+BAD_KO="$TMPDIR/bad.ko"
+echo -n 'tampered' > "$BAD_KO"
+result=$(nh_check_fingerprint "$TMP_PROP" wifi "$BAD_KO" || true)
+[ "$result" = "MISMATCH_SHA256" ] || { echo "FAIL: expected MISMATCH_SHA256, got $result"; exit 1; }
 
 rm -rf "$TMPDIR"
 echo "FINGERPRINT TESTS PASSED"

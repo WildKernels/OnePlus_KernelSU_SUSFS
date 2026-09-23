@@ -17,7 +17,8 @@ fail() { fail=$((fail + 1)); echo "  FAIL: $1"; }
 android="$tmpdir"
 nh_data="$android/data/adb/nethunter"
 mod_dir="$android/data/adb/modules/nethunter_takeover"
-mkdir -p "$nh_data" "$mod_dir/vendor_dlkm_override"
+mkdir -p "$nh_data" "$mod_dir/vendor_dlkm_override" "$mod_dir/framework"
+cp "$root"/nethunter/framework/*.sh "$mod_dir/framework/"
 
 printf 'STOCKKO' > "$android/vendor_ko"
 stock_sha=$(sha256sum "$android/vendor_ko" | cut -d' ' -f1)
@@ -25,9 +26,11 @@ printf 'PATCHEDKO' > "$mod_dir/vendor_dlkm_override/qca_cld3_kiwi_v2.ko"
 patched_sha=$(sha256sum "$mod_dir/vendor_dlkm_override/qca_cld3_kiwi_v2.ko" | cut -d' ' -f1)
 
 cat > "$mod_dir/module.prop" <<EOF
-target=ONEPLUS PKG110
-kernel_vermagic=6.1.174-g638ecc425319 SMP preempt mod_unload modversions aarch64
-scmversion=g976cb1e13abc
+target=OP-ACE-5
+device=pineapple
+model=ONEPLUS PKG110
+build_fingerprint=oneplus/PKG110/PKG110:16/TEST/release-keys
+kernel_release=6.1.174-g638ecc425319
 sha256_wifi=$patched_sha
 sha256_btvhci=unused
 EOF
@@ -36,17 +39,18 @@ mockbin="$tmpdir/bin"
 mkdir -p "$mockbin"
 state_dir="$tmpdir/state"
 mkdir -p "$state_dir"
+echo 7 > "$state_dir/con_mode"
 
 mk() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "$mockbin/$1"; chmod +x "$mockbin/$1"; }
 
-mk svc     'echo "svc $*" >> "$CALLS"; [[ "$2" == wifi ]] && printf "%s" "${3:-}" > "$STATE/wifi_enabled"; exit 0'
+mk svc     'echo "svc $*" >> "$CALLS"; if [[ "$2" == wifi ]]; then printf "%s" "${3:-}" > "$STATE/wifi_enabled"; [[ "$3" == enable ]] && touch "$STATE/wifi_on" || rm -f "$STATE/wifi_on"; fi; exit 0'
 mk stop    'echo "stop $*" >> "$CALLS"; [[ "$2" == vendor.wifi_hal_legacy ]] && echo stopped > "$STATE/hal"; exit 0'
 mk start   'echo "start $*" >> "$CALLS"; [[ "$2" == vendor.wifi_hal_legacy ]] && echo running > "$STATE/hal"; exit 0'
-mk insmod  'echo "insmod $*" >> "$CALLS"; [[ "$1" == "$NH_VENDOR_KO" ]] && exit 0; [[ "$1" == *vendor_dlkm_override/* ]] && exit 0; echo "insmod: unexpected $1" >&2; exit 1'
+mk insmod  'echo "insmod $*" >> "$CALLS"; if [[ "$1" == "$NH_VENDOR_KO" || "$1" == *vendor_dlkm_override/* ]]; then echo 0 > "$STATE/con_mode"; exit 0; fi; echo "insmod: unexpected $1" >&2; exit 1'
 mk rmmod   'echo "rmmod $*" >> "$CALLS"; exit 0'
 mk iw      'echo "iw $*" >> "$CALLS"; if [[ "$*" == *add*mon0*monitor* ]]; then touch "$STATE/mon0"; fi; if [[ "$*" == mon0\ del* || "$*" == *mon0*del* ]]; then rm -f "$STATE/mon0"; fi; if [[ "$*" == mon0\ info* || "$*" == dev\ mon0* ]]; then [[ -f "$STATE/mon0" ]] || exit 1; fi; exit 0'
-mk getprop 'case "$*" in *ro.product.model*) echo "ONEPLUS PKG110";; *init.svc.vendor.wifi_hal_legacy*) cat "$STATE/hal" 2>/dev/null || echo unknown;; *) echo x;; esac'
-mk dumpsys 'echo "Wi-Fi is operational"'
+mk getprop 'case "$*" in *ro.product.model*) echo "ONEPLUS PKG110";; *ro.product.device*) echo pineapple;; *ro.build.fingerprint*) echo oneplus/PKG110/PKG110:16/TEST/release-keys;; *init.svc.vendor.wifi_hal_legacy*) cat "$STATE/hal" 2>/dev/null || echo unknown;; *) echo x;; esac'
+mk dumpsys '[[ -f "$STATE/wifi_on" ]] && echo "Wi-Fi is operational" || echo "Wi-Fi is disabled"'
 mk uname   'echo "6.1.174-g638ecc425319"'
 mk sleep   ':'
 mk svcno   'true'
@@ -56,8 +60,9 @@ run_env() {
   env PATH="$mockbin:$PATH" \
       CALLS="$tmpdir/calls.log" STATE="$state_dir" \
       NH_VENDOR_KO="$android/vendor_ko" \
+      NH_WIFI_CON_MODE_PATH="$state_dir/con_mode" \
       NH_STATE_DIR="$nh_data" NH_LOCK_DIR="$nh_data" \
-      NH_MODULE_DIR="$mod_dir" \
+      NH_PACKAGE_ROOT="$mod_dir" \
       "$@"
 }
 
@@ -65,6 +70,7 @@ acquire="$root/nethunter/wifi/nh-wifi-acquire.sh"
 release="$root/nethunter/wifi/nh-wifi-release.sh"
 : > "$tmpdir/calls.log"
 echo stopped > "$state_dir/hal"
+touch "$state_dir/wifi_on"
 rm -f "$state_dir/mon0"
 
 # ---- Happy path ----
@@ -94,6 +100,41 @@ grep -q "insmod $android/vendor_ko" "$tmpdir/calls.log" \
   && pass "stock module reloaded from vendor path" || fail "stock module not reloaded"
 [[ ! -e "$nh_data/wifi.journal" ]] && pass "journal cleared" || fail "journal kept after success"
 [[ "$(cat "$nh_data/wifi.state" 2>/dev/null)" == "IDLE" ]] && pass "state IDLE" || fail "state not IDLE"
+[[ "$(cat "$state_dir/con_mode")" == 7 ]] && pass "con_mode restored from snapshot" || fail "con_mode not restored"
+
+# ---- Disabled Wi-Fi stays disabled after release ----
+: > "$tmpdir/calls.log"
+rm -f "$state_dir/wifi_on"
+if run_env bash "$acquire" >"$tmpdir/acquire-off.out" 2>&1; then
+  pass "acquire succeeds with Wi-Fi initially disabled"
+else
+  fail "acquire-off failed: $(tail -3 "$tmpdir/acquire-off.out")"
+fi
+[[ "$(cat "$nh_data/wifi.journal/wifi_enabled" 2>/dev/null)" == 0 ]] && pass "journal recorded Wi-Fi disabled" || fail "disabled Wi-Fi snapshot wrong"
+: > "$tmpdir/calls.log"
+if run_env bash "$release" >"$tmpdir/release-off.out" 2>&1; then
+  pass "release restores disabled Wi-Fi state"
+else
+  fail "release-off failed: $(tail -3 "$tmpdir/release-off.out")"
+fi
+grep -q 'svc wifi enable' "$tmpdir/calls.log" && fail "release enabled Wi-Fi against snapshot" || pass "release did not enable Wi-Fi"
+[[ ! -e "$state_dir/wifi_on" ]] && pass "Wi-Fi remains disabled" || fail "Wi-Fi became enabled"
+
+# ---- Unknown HAL state blocks before Android changes ----
+: > "$tmpdir/calls.log"
+echo unknown > "$state_dir/hal"
+if run_env bash "$acquire" >"$tmpdir/acquire-unknown.out" 2>&1; then
+  fail "acquire accepted unknown Wi-Fi HAL state"
+else
+  pass "acquire rejects unknown Wi-Fi HAL state"
+fi
+if grep -q 'svc wifi disable' "$tmpdir/calls.log"; then
+  fail "Wi-Fi service changed with unknown pre-state"
+else
+  pass "unknown HAL rejection made no Wi-Fi changes"
+fi
+[[ "$(cat "$nh_data/wifi.state" 2>/dev/null)" == "IDLE" ]] && pass "unknown HAL rejection cleaned session" || fail "unknown HAL left state active"
+echo stopped > "$state_dir/hal"
 
 # ---- Failure path: patched insmod fails → rollback, no RECOVERY_REQUIRED ----
 : > "$tmpdir/calls.log"

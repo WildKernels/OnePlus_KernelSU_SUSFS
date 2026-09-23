@@ -17,7 +17,8 @@ fail() { fail=$((fail + 1)); echo "  FAIL: $1"; }
 android="$tmpdir"
 nh_data="$android/data/adb/nethunter"
 mod_dir="$android/data/adb/modules/nethunter_takeover"
-mkdir -p "$nh_data" "$mod_dir/system/bin"
+mkdir -p "$nh_data" "$mod_dir/system/bin" "$mod_dir/framework"
+cp "$root"/nethunter/framework/*.sh "$mod_dir/framework/"
 
 # Real compiled nci_raw_tool (host build) for probe/init smoke tests.
 # The tool opens /dev/nq-nci — mock that too via a fake device the mock
@@ -31,11 +32,27 @@ case "$1" in
 esac
 EOF
 chmod +x "$mod_dir/system/bin/nci_raw_tool"
+tool_sha=$(sha256sum "$mod_dir/system/bin/nci_raw_tool" | cut -d' ' -f1)
+cat > "$mod_dir/module.prop" <<EOF
+target=OP-ACE-5
+device=pineapple
+model=ONEPLUS PKG110
+build_fingerprint=oneplus/PKG110/PKG110:16/TEST/release-keys
+kernel_release=6.1.174-g638ecc425319
+sha256_nci_raw_tool=$tool_sha
+EOF
 
 mockbin="$tmpdir/bin"
 mkdir -p "$mockbin"
 state_dir="$tmpdir/state"
 mkdir -p "$state_dir"
+echo running > "$state_dir/hal"
+
+update_tool_hash() {
+  local hash
+  hash=$(sha256sum "$mod_dir/system/bin/nci_raw_tool" | cut -d' ' -f1)
+  sed -i "s/^sha256_nci_raw_tool=.*/sha256_nci_raw_tool=$hash/" "$mod_dir/module.prop"
+}
 
 mk() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "$mockbin/$1"; chmod +x "$mockbin/$1"; }
 
@@ -43,15 +60,16 @@ mk cmd      'echo "cmd $*" >> "$CALLS"; [[ "$2" == nfc ]] && printf "%s" "${3:-}
 mk svc      'echo "svc $*" >> "$CALLS"; [[ "$2" == nfc ]] && printf "%s" "${3:-}" > "$STATE/nfc_svc"; exit 0'
 mk stop     'echo "stop $*" >> "$CALLS"; [[ "$2" == vendor.nfc_hal_service ]] && echo stopped > "$STATE/hal"; exit 0'
 mk start    'echo "start $*" >> "$CALLS"; [[ "$2" == vendor.nfc_hal_service ]] && echo running > "$STATE/hal"; exit 0'
-mk getprop  'echo stopped'
+mk getprop  'case "$*" in *ro.product.model*) echo "ONEPLUS PKG110";; *ro.product.device*) echo pineapple;; *ro.build.fingerprint*) echo oneplus/PKG110/PKG110:16/TEST/release-keys;; *init.svc.vendor.nfc_hal_service*) cat "$STATE/hal" 2>/dev/null || echo unknown;; *) echo stopped;; esac'
 mk dumpsys  'if [[ -f "$STATE/nfc_on" ]]; then echo "mState=on"; else echo "mState=off"; fi'
+mk uname    'echo "6.1.174-g638ecc425319"'
 mk sleep    ':'
 
 run_env() {
   env PATH="$mockbin:$PATH" \
       CALLS="$tmpdir/calls.log" STATE="$state_dir" \
       NH_STATE_DIR="$nh_data" NH_LOCK_DIR="$nh_data" \
-      NH_MODULE_DIR="$mod_dir" \
+      NH_PACKAGE_ROOT="$mod_dir" \
       "$@"
 }
 
@@ -104,6 +122,22 @@ fi
 grep -q "svc nfc enable" "$tmpdir/calls.log" && pass "nfc re-enabled per snapshot" || fail "nfc not re-enabled"
 [[ "$(cat "$nh_data/nfc.state" 2>/dev/null)" == "IDLE" ]] && pass "state IDLE after on-restore" || fail "state not IDLE"
 
+# ---- Unknown HAL state blocks before Android changes ----
+: > "$tmpdir/calls.log"
+echo unknown > "$state_dir/hal"
+if run_env bash "$acquire" >"$tmpdir/acquire-unknown.out" 2>&1; then
+  fail "acquire accepted unknown NFC HAL state"
+else
+  pass "acquire rejects unknown NFC HAL state"
+fi
+if grep -q -E 'cmd nfc|svc nfc|stop vendor.nfc_hal_service' "$tmpdir/calls.log"; then
+  fail "NFC services changed with unknown pre-state"
+else
+  pass "unknown-state rejection made no NFC changes"
+fi
+[[ "$(cat "$nh_data/nfc.state" 2>/dev/null)" == "IDLE" ]] && pass "unknown-state rejection cleaned session" || fail "unknown-state left session active"
+echo running > "$state_dir/hal"
+
 # ---- Failure path: nci_raw_tool init fails → rollback, journal cleaned ----
 : > "$tmpdir/calls.log"
 cat > "$mod_dir/system/bin/nci_raw_tool" <<'EOF'
@@ -115,6 +149,7 @@ case "$1" in
 esac
 EOF
 chmod +x "$mod_dir/system/bin/nci_raw_tool"
+update_tool_hash
 if run_env bash "$acquire" >"$tmpdir/acquire3.out" 2>&1; then
   fail "acquire succeeded despite init failure"
 else
@@ -130,6 +165,7 @@ cat > "$mod_dir/system/bin/nci_raw_tool" <<'EOF'
 case "$1" in probe) exit 0 ;; init) exit 0 ;; *) exit 1 ;; esac
 EOF
 chmod +x "$mod_dir/system/bin/nci_raw_tool"
+update_tool_hash
 mkdir -p "$nh_data/wifi.lock"
 if run_env bash "$acquire" >"$tmpdir/acquire4.out" 2>&1; then
   fail "acquire allowed while wifi session active"
