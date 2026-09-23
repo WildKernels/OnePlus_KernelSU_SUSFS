@@ -53,6 +53,10 @@ inputs:
     description: 'Enable dumping debug related artifacts'
     required: false
     default: false
+  nethunter_modules:
+    description: 'Build NetHunter Bluetooth VHCI module and full Module.symvers'
+    required: false
+    default: false
   github_token:
     description: 'GitHub Token'
     required: true
@@ -363,6 +367,7 @@ runs:
         echo "SUSFS_FOLDER=$SUSFS_DIR" >> "$GITHUB_ENV"
         echo "VPNHIDE_FOLDER=$VPNHIDE_DIR" >> "$GITHUB_ENV"
         echo "KSU_FOLDER=$KSU_DIR" >> "$GITHUB_ENV"
+        echo "NH_BUILD_MODULES=${{ inputs.nethunter_modules }}" >> "$GITHUB_ENV"
         echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> "$GITHUB_ENV"
         echo "CCACHE_LOGFILE=$GITHUB_WORKSPACE/ccache.log" >> "$GITHUB_ENV"
         echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
@@ -1833,6 +1838,11 @@ runs:
         echo "============================================"
         
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" gki_defconfig
+
+        if [[ "$NH_BUILD_MODULES" == "true" ]]; then
+          scripts/config --file "$OUT/.config" -e MODULES -e MODVERSIONS -m BT -m BT_HCIVHCI
+          echo "NetHunter module build enabled: CONFIG_BT=m CONFIG_BT_HCIVHCI=m"
+        fi
         
         LOCAL_LOCALVERSION="${CUSTOM_LOCALVERSION:--OP-WILD}"
         if [ -n "${LOCAL_LOCALVERSION:-}" ]; then
@@ -1869,6 +1879,11 @@ runs:
         
         
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" O="$OUT" olddefconfig
+        if [[ "$NH_BUILD_MODULES" == "true" ]]; then
+          grep -qx 'CONFIG_MODVERSIONS=y' "$OUT/.config" || { echo 'ERROR: CONFIG_MODVERSIONS=y required for NetHunter modules' >&2; exit 1; }
+          grep -qx 'CONFIG_BT=m' "$OUT/.config" || { echo 'ERROR: CONFIG_BT=m required for NetHunter VHCI' >&2; exit 1; }
+          grep -qx 'CONFIG_BT_HCIVHCI=m' "$OUT/.config" || { echo 'ERROR: CONFIG_BT_HCIVHCI=m required for NetHunter VHCI' >&2; exit 1; }
+        fi
         bash "$GITHUB_WORKSPACE/scripts/verify_kernel_config.sh" "$OUT/.config" "$COMMON_KERNEL_FOLDER"
         cp "$OUT/.config" "$ARTIFACTS_FOLDER/${OP_MODEL}_${OP_OS_VERSION}_${KERNEL_FULL_VER}.config"
         
@@ -1917,7 +1932,12 @@ runs:
           
           ls -la "$DEBUG_ARTIFACTS_FOLDER"
         else
-          make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" Image 2>&1 | tee build.log
+          BUILD_TARGETS=(Image)
+          if [[ "$NH_BUILD_MODULES" == "true" ]]; then BUILD_TARGETS+=(modules); fi
+          make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" "${BUILD_TARGETS[@]}" 2>&1 | tee build.log
+          if [[ "$NH_BUILD_MODULES" == "true" ]]; then
+            make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" INSTALL_MOD_PATH="$OUT/nh-install" modules_install 2>&1 | tee -a build.log
+          fi
         fi
         
         BUILD_END=$(date +%s)

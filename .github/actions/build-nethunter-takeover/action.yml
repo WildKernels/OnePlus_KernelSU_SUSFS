@@ -1,58 +1,32 @@
-name: Build NetHunter Takeover Components
+name: Build NetHunter Target Modules
+description: Build stock Wi-Fi baseline and VHCI module from active kernel workspace
 inputs:
   target:
+    description: Exact target name from the device matrix
     required: true
-  version:
+  kernel_src:
+    description: Root directory populated by kernel-source-sync, including manifest.xml
+    required: true
+  common_out:
+    description: Full common kernel output directory used by Image modules build
+    required: true
+  output_dir:
+    description: Directory for module and build-evidence outputs
     required: true
 outputs:
-  zip_path:
-    value: ${{ steps.pack.outputs.zip_path }}
-runs:
+  output_dir:
+    description: Directory containing baseline module artifacts and evidence
+    value: ${{ inputs.output_dir }}
   using: composite
   steps:
-    - name: Build hci_vhci module
+    - name: Validate source and build stock target modules
       shell: bash
-      run: bash scripts/nethunter/build_btvhci.sh ${{ inputs.target }}
-
-    - name: Build bluebinder
-      shell: bash
-      run: bash scripts/nethunter/build_bluebinder.sh
-
-    - name: Build nci_raw_tool for aarch64 Android
-      shell: bash
-      run: bash scripts/nethunter/build_nci_raw_tool.sh
-
-    - name: Pack takeover ZIP
-      id: pack
-      shell: bash
+      env:
+        NH_TARGET: ${{ inputs.target }}
+        NH_KERNEL_SRC: ${{ inputs.kernel_src }}
+        NH_COMMON_OUT: ${{ inputs.common_out }}
+        NH_OUTPUT_DIR: ${{ inputs.output_dir }}
       run: |
-        bash scripts/nethunter/pack_takeover_zip.sh ${{ inputs.target }} ${{ inputs.version }}
-        echo "zip_path=dist/nethunter-takeover-${{ inputs.target }}-${{ inputs.version }}.zip" >> $GITHUB_OUTPUT
-
-    - name: Generate provenance entry
-      shell: bash
-      run: |
-        ko_hash=$(sha256sum /tmp/nh-build/${{ inputs.target }}/hci_vhci.ko 2>/dev/null | cut -d' ' -f1 || echo not_built)
-        bb_hash=$(sha256sum /tmp/nh-build/bluebinder/bluebinder 2>/dev/null | cut -d' ' -f1 || echo not_built)
-        nci_hash=$(sha256sum nethunter/nfc/nci_raw_tool 2>/dev/null | cut -d' ' -f1 || echo not_built)
-        jq -n \
-          --arg target "${{ inputs.target }}" \
-          --arg version "${{ inputs.version }}" \
-          --arg bt_vhci_commit "$(cat scripts/nethunter/btvhci_source_commit 2>/dev/null || echo pinned-kernel)" \
-          --arg bluebinder_commit "c3e1b155e308f6df9c9a02dbd909a44e7319ab7d" \
-          --arg zip_sha256 "$(sha256sum dist/nethunter-takeover-${{ inputs.target }}-${{ inputs.version }}.zip | cut -d' ' -f1)" \
-          --arg hci_vhci_sha256 "$ko_hash" \
-          --arg bluebinder_sha256 "$bb_hash" \
-          --arg nci_raw_tool_sha256 "$nci_hash" \
-          '{
-            target: $target,
-            version: $version,
-            wifi_injection: "not_ported_yet",
-            wifi_patch_commits: [],
-            components: {
-              hci_vhci: {commit: $bt_vhci_commit, sha256: $hci_vhci_sha256},
-              bluebinder: {commit: $bluebinder_commit, sha256: $bluebinder_sha256},
-              nci_raw_tool: {sha256: $nci_raw_tool_sha256}
-            },
-            zip_sha256: $zip_sha256
-          }' > dist/provenance-${{ inputs.target }}.json
+        set -euo pipefail
+        bash scripts/nethunter/build_target_modules.sh \
+          "$NH_TARGET" "$NH_KERNEL_SRC" "$NH_COMMON_OUT" "$NH_OUTPUT_DIR"

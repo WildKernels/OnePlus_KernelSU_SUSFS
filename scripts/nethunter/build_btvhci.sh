@@ -1,58 +1,51 @@
-#!/bin/bash
-# Build hci_vhci.ko (CONFIG_BT_HCIVHCI=m) against the built kernel tree.
-# The kernel builds drivers/bluetooth/hci_vhci.o — module name is hci_vhci.
-# Usage: build_btvhci.sh <OP-ACE-5|OP-ACE-5-6.1.118>
+#!/usr/bin/env bash
+# Export hci_vhci.ko built by the same full kernel build as the Image.
 set -euo pipefail
 
-TARGET="${1:?Usage: $0 <OP-ACE-5|OP-ACE-5-6.1.118>}"
-case "$TARGET" in
-  OP-ACE-5|OP-ACE-5-6.1.118) ;;
-  *) echo "ERROR: Unknown target: $TARGET" >&2; exit 1 ;;
-esac
-
-SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-KERNEL_SRC="${KERNEL_SRC:?Set KERNEL_SRC to the synced OnePlus kernel workspace root}"
-COMMON_SRC="$KERNEL_SRC/kernel_platform/common"
-OUT="${NH_OUT:-/tmp/nh-build/$TARGET}"
-mkdir -p "$OUT"
-
-# Common kernel must have a full build output (Module.symvers needed for CRCs)
-[ -f "$COMMON_SRC/out/Module.symvers" ] || {
-  echo "ERROR: $COMMON_SRC/out/Module.symvers not found" >&2
-  echo "A full common kernel build is required before building modules" >&2
-  exit 1
+[[ $# -eq 4 ]] || {
+  echo "Usage: $0 <OP-ACE-5|OP-ACE-5-6.1.118> <kernel_source_root> <common_out> <output_dir>" >&2
+  exit 2
 }
 
-CLANG_DIR="$KERNEL_SRC/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin"
-export PATH="$CLANG_DIR:$PATH"
-export ARCH=arm64
-export LLVM=1 LLVM_IAS=1
-export CC="$CLANG_DIR/clang"
-export LD=ld.lld
+target="$1"
+kernel_src=$(realpath -m "$2")
+common_out=$(realpath -m "$3")
+output_dir=$(realpath -m "$4")
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
-echo "=== NetHunter hci_vhci module build ==="
-echo "Target: $TARGET"
-echo "Common: $COMMON_SRC"
-echo "Output: $OUT/hci_vhci.ko"
+bash "$script_dir/build_target_modules.sh" --validate-only \
+  "$target" "$kernel_src" "$common_out" "$output_dir"
 
-# Enable module in a copy of the built config, then build external module
-cp "$COMMON_SRC/out/.config" "$COMMON_SRC/out/.config.nethunter-backup"
-trap 'mv "$COMMON_SRC/out/.config.nethunter-backup" "$COMMON_SRC/out/.config" 2>/dev/null || true' EXIT
+grep -qx 'CONFIG_BT=m' "$common_out/.config" || { echo "ERROR: CONFIG_BT=m required" >&2; exit 1; }
+grep -qx 'CONFIG_BT_HCIVHCI=m' "$common_out/.config" || { echo "ERROR: CONFIG_BT_HCIVHCI=m required" >&2; exit 1; }
+grep -qx 'CONFIG_MODVERSIONS=y' "$common_out/.config" || { echo "ERROR: CONFIG_MODVERSIONS=y required" >&2; exit 1; }
 
-"$COMMON_SRC/scripts/config" --file "$COMMON_SRC/out/.config" -e BT -e BT_HCIVHCI -d BT_HCIVHCI_MODULE_DISABLED 2>/dev/null || \
-  "$COMMON_SRC/scripts/config" --file "$COMMON_SRC/out/.config" -e BT -e BT_HCIVHCI
+ko=""
+for install_root in "$common_out/nh-install/lib/modules" "$common_out/install/lib/modules"; do
+  if [[ -d "$install_root" ]]; then
+    ko=$(find "$install_root" -type f -path '*/kernel/drivers/bluetooth/hci_vhci.ko' -print -quit)
+    [[ -n "$ko" ]] && break
+  fi
+done
+[[ -n "$ko" ]] || ko="$common_out/drivers/bluetooth/hci_vhci.ko"
+[[ -s "$ko" ]] || { echo "ERROR: hci_vhci.ko missing; build kernel with target modules enabled" >&2; exit 1; }
+file "$ko" | grep -q 'ELF 64-bit.*ARM aarch64' || { echo "ERROR: hci_vhci.ko is not AArch64" >&2; exit 1; }
+command -v modinfo >/dev/null 2>&1 || { echo "ERROR: modinfo required" >&2; exit 1; }
+[[ "$(modinfo -F name "$ko")" == hci_vhci ]] || { echo "ERROR: unexpected VHCI module name" >&2; exit 1; }
 
-make -C "$COMMON_SRC" O=out olddefconfig
-make -C "$COMMON_SRC" O=out M=drivers/bluetooth modules
+mkdir -p "$output_dir"
+cp "$ko" "$output_dir/hci_vhci.ko"
+jq -n \
+  --arg target "$target" \
+  --arg config_sha256 "$(sha256sum "$common_out/.config" | cut -d' ' -f1)" \
+  --arg module_symvers_sha256 "$(sha256sum "$common_out/Module.symvers" | cut -d' ' -f1)" \
+  --arg name "$(modinfo -F name "$output_dir/hci_vhci.ko")" \
+  --arg vermagic "$(modinfo -F vermagic "$output_dir/hci_vhci.ko")" \
+  --arg signer "$(modinfo -F signer "$output_dir/hci_vhci.ko" 2>/dev/null || true)" \
+  --arg sig_id "$(modinfo -F sig_id "$output_dir/hci_vhci.ko" 2>/dev/null || true)" \
+  --arg depends "$(modinfo -F depends "$output_dir/hci_vhci.ko")" \
+  --arg sha256 "$(sha256sum "$output_dir/hci_vhci.ko" | cut -d' ' -f1)" \
+  '{target:$target,name:$name,config_sha256:$config_sha256,module_symvers_sha256:$module_symvers_sha256,vermagic:$vermagic,signer:$signer,sig_id:$sig_id,depends:$depends,sha256:$sha256}' \
+  > "$output_dir/hci-vhci-evidence.json"
 
-KO="$COMMON_SRC/out/drivers/bluetooth/hci_vhci.ko"
-[ -f "$KO" ] || { echo "ERROR: hci_vhci.ko not built at $KO" >&2; exit 1; }
-
-cp "$KO" "$OUT/hci_vhci.ko"
-
-echo ""
-echo "Build complete: $OUT/hci_vhci.ko"
-modinfo -F name "$OUT/hci_vhci.ko"
-modinfo -F vermagic "$OUT/hci_vhci.ko"
-modinfo -F depends "$OUT/hci_vhci.ko" || true
-sha256sum "$OUT/hci_vhci.ko"
+echo "Exported hci_vhci.ko: $output_dir/hci_vhci.ko"
