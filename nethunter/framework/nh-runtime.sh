@@ -24,6 +24,15 @@ nh_require_state() {
   }
 }
 
+nh_process_matches() {
+  local pid="$1" expected="$2" command
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  [ -r "/proc/$pid/cmdline" ] || return 1
+  command=$(tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || return 1
+  case "$command" in *"$expected"*) return 0 ;; esac
+  return 1
+}
+
 nh_is_enabled() {
   local radio="$1"
   case "$radio" in
@@ -53,6 +62,16 @@ nh_bt_hal_state() {
   printf '%s\n' "${state:-unknown}"
 }
 
+nh_module_loaded() {
+  local module="$1" modules_file="${NH_MODULES_FILE:-/proc/modules}"
+  case "$module" in
+    hci_vhci) grep -Eq '^(hci_vhci|hci-vhci) ' "$modules_file" 2>/dev/null ;;
+    nxp_nci) grep -Eq '^(nxp_nci|nxp-nci) ' "$modules_file" 2>/dev/null ;;
+    qca_cld3_kiwi_v2) grep -q '^qca_cld3_kiwi_v2 ' "$modules_file" 2>/dev/null ;;
+    *) return 1 ;;
+  esac
+}
+
 nh_verify_stock_wifi() {
   local expected_enabled stock_hash actual_hash hal_expected hal_actual stock_ko mode_expected mode_actual
   expected_enabled=$(nh_snapshot_get wifi wifi_enabled) || return 1
@@ -79,7 +98,7 @@ nh_verify_stock_bt() {
   expected_enabled=$(nh_snapshot_get bt bt_enabled) || return 1
   hal_expected=$(nh_snapshot_get bt hal_state) || return 1
   rfkill_expected=$(nh_snapshot_get bt rfkill_state) || return 1
-  if grep -q '^hci_vhci ' "${NH_MODULES_FILE:-/proc/modules}" 2>/dev/null; then return 1; fi
+  if nh_module_loaded hci_vhci; then return 1; fi
   hal_actual=$(nh_bt_hal_state)
   [ "$hal_actual" = "$hal_expected" ] || return 1
   [ "$(nh_bt_rfkill_state)" = "$rfkill_expected" ] || return 1
@@ -91,11 +110,18 @@ nh_verify_stock_bt() {
 }
 
 nh_verify_stock_nfc() {
-  local expected_enabled hal_expected hal_actual
+  local expected_enabled hal_expected hal_actual stock_hash actual_hash stock_module
   expected_enabled=$(nh_snapshot_get nfc nfc_enabled) || return 1
   hal_expected=$(nh_snapshot_get nfc hal_state) || return 1
-  if [ -f "$NH_STATE_DIR/nci_raw_tool.pid" ] && kill -0 "$(cat "$NH_STATE_DIR/nci_raw_tool.pid")" 2>/dev/null; then
-    return 1
+  stock_hash=$(nh_snapshot_get nfc stock_module_sha256) || return 1
+  stock_module="${NH_NFC_VENDOR_KO:-/vendor_dlkm/lib/modules/nxp-nci.ko}"
+  actual_hash=$(sha256sum "$stock_module" 2>/dev/null | cut -d' ' -f1) || return 1
+  [ "$actual_hash" = "$stock_hash" ] || return 1
+  nh_module_loaded nxp_nci || return 1
+  if [ -f "$NH_STATE_DIR/nci_raw_tool.pid" ]; then
+    local session_pid
+    session_pid=$(cat "$NH_STATE_DIR/nci_raw_tool.pid")
+    nh_process_matches "$session_pid" nci_raw_tool && return 1
   fi
   hal_actual=$(getprop init.svc.vendor.nfc_hal_service 2>/dev/null || echo unknown)
   [ "$hal_actual" = "$hal_expected" ] || return 1

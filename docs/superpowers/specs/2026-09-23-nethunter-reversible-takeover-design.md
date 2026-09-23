@@ -239,7 +239,7 @@ Examples:
 
 - `hci_vhci.ko`.
 - Patched `qca_cld3_kiwi_v2.ko`.
-- Patched `nxp_nci.ko` if its source/build boundary permits it.
+- Patched `nxp-nci.ko` if its source/build boundary permits it.
 
 ### Level 2: In-tree vendor-driver patches
 
@@ -323,7 +323,7 @@ Release restores the original Bluetooth enabled state rather than forcing Blueto
 
 ### 9.3 NFC
 
-The first implementation uses a small native NCI tool rather than the obsolete NCIHost approach. The tool must:
+The driver source is pinned at `vendor/nxp/opensource/driver/nfc`; Kbuild produces `nxp-nci.ko`. The first implementation uses a small native NCI tool rather than the obsolete NCIHost approach. The tool must:
 
 - Open `/dev/nq-nci`.
 - Send and parse CORE_RESET and CORE_INIT.
@@ -331,7 +331,7 @@ The first implementation uses a small native NCI tool rather than the obsolete N
 - Handle SIGINT/SIGTERM.
 - Keep the device descriptor open for the complete ownership session.
 
-Because the current NXP driver allows multiple opens, userspace locking alone is not an exclusive guarantee. The preferred solution is a small `nxp_nci` driver change that tracks one owner and returns `-EBUSY` to concurrent opens. If that driver change cannot be built and loaded safely, the package must label NFC as shared/cooperative experimental mode.
+Because the current NXP driver allows multiple opens, userspace locking alone is not an exclusive guarantee. Patch per-device `struct nfc_dev` ownership under existing `dev_ref_mutex`: permit multiple descriptors from one TGID, reject another process with `-EBUSY`, and clear owner when reference count reaches zero. If that driver change cannot be built and loaded safely, the package must label NFC as shared/cooperative experimental mode.
 
 Acquire stops the NFC framework and HAL, opens the raw session, runs NCI initialization, and records the session PID/socket. Release closes the raw session, restores the prior NFC state, and verifies `dumpsys nfc`.
 
@@ -380,7 +380,7 @@ Required component names:
 - `qca_cld3_kiwi_v2.ko` for Wi-Fi takeover support.
 - `hci_vhci.ko` and bluebinder for Bluetooth support.
 - AArch64 `nci_raw_tool` for NFC support.
-- Patched `nxp_nci.ko` when exclusive NFC mode is claimed.
+- Patched `nxp-nci.ko` when exclusive NFC mode is claimed.
 
 USB and GNSS bridge scripts are included when their profile/bridge tests pass.
 

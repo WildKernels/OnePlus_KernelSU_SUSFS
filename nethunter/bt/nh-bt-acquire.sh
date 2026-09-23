@@ -99,7 +99,12 @@ vhci_loaded=1
 
 LD_LIBRARY_PATH="$BLUEBINDER_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
   "$BLUEBINDER" --hci 0 </dev/null >/dev/null 2>&1 &
-echo $! > "$NH_STATE_DIR/bluebinder.pid"
+bluebinder_pid=$!
+if ! printf '%s\n' "$bluebinder_pid" > "$NH_STATE_DIR/bluebinder.pid"; then
+  kill "$bluebinder_pid" 2>/dev/null || true
+  rollback "cannot write bluebinder PID file"
+fi
+chmod 600 "$NH_STATE_DIR/bluebinder.pid" 2>/dev/null || true
 bluebinder_started=1
 
 i=1

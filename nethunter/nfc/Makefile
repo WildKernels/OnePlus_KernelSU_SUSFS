@@ -1,11 +1,14 @@
-CC ?= gcc
-CFLAGS ?= -Wall -O2 -static
-TARGET = nci_raw_tool
+CC ?= cc
+CFLAGS ?= -Wall -Werror -O2
+NQ_NCI_DEV ?= /dev/nq-nci
+TARGET := nci_raw_tool
+
+CPPFLAGS += -DNQ_NCI_DEV='"$(NQ_NCI_DEV)"'
 
 all: $(TARGET)
 
 $(TARGET): nci_raw_tool.c
-	$(CC) $(CFLAGS) -o $@ $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
 
 clean:
 	rm -f $(TARGET)

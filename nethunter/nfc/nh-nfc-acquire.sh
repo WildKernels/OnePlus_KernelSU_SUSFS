@@ -11,9 +11,37 @@ RADIO=nfc
 NH_STATE_DIR="${NH_STATE_DIR:-/data/adb/nethunter}"
 NH_LOCK_DIR="${NH_LOCK_DIR:-$NH_STATE_DIR}"
 NCI_TOOL="$NH_PACKAGE_ROOT/system/bin/nci_raw_tool"
+NFC_KO="$NH_PACKAGE_ROOT/vendor_dlkm_override/nxp-nci.ko"
+STOCK_NFC_KO="${NH_NFC_VENDOR_KO:-/vendor_dlkm/lib/modules/nxp-nci.ko}"
+NCI_SOCKET="$NH_STATE_DIR/nci.sock"
+NCI_PID="$NH_STATE_DIR/nci_raw_tool.pid"
 MODULE_PROP="$NH_PACKAGE_ROOT/module.prop"
 
 log() { nh_log "$RADIO" "$*"; }
+
+stop_nci_session() {
+  local pid i
+  [ -f "$NCI_PID" ] || { rm -f "$NCI_SOCKET"; return 0; }
+  pid=$(cat "$NCI_PID")
+  case "$pid" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  if kill -0 "$pid" 2>/dev/null && ! nh_process_matches "$pid" nci_raw_tool; then
+    return 1
+  fi
+  kill "$pid" 2>/dev/null || true
+  i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 5 ]; do
+    sleep 1
+    i=$((i + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true
+    sleep 1
+  fi
+  if kill -0 "$pid" 2>/dev/null; then return 1; fi
+  rm -f "$NCI_PID" "$NCI_SOCKET"
+}
 
 restore_android_nfc() {
   local enabled hal_state
@@ -33,10 +61,23 @@ restore_android_nfc() {
 }
 
 touched_services=0
+stock_unloaded=0
+patched_loaded=0
 
 rollback() {
   local reason="$1"
   log "ROLLBACK: $reason"
+  if [ "$NCI_PID" != "" ] && [ -f "$NCI_PID" ]; then
+    stop_nci_session || true
+  fi
+  if [ "$patched_loaded" = 1 ]; then
+    rmmod nxp_nci 2>/dev/null || true
+    patched_loaded=0
+  fi
+  if [ "$stock_unloaded" = 1 ]; then
+    insmod "$STOCK_NFC_KO" 2>/dev/null || true
+    stock_unloaded=0
+  fi
   if [ "$touched_services" = 1 ]; then
     restore_android_nfc
     touched_services=0
@@ -58,6 +99,33 @@ else
   echo "ABORT: $result" >&2
   exit 1
 fi
+if result=$(nh_check_fingerprint "$MODULE_PROP" nxp_nci "$NFC_KO"); then
+  :
+else
+  echo "ABORT: $result" >&2
+  exit 1
+fi
+stock_sha=$(sha256sum "$STOCK_NFC_KO" 2>/dev/null | cut -d' ' -f1) || {
+  echo "ABORT: stock NXP NFC module unavailable" >&2
+  exit 1
+}
+[ -n "$stock_sha" ] || { echo "ABORT: stock NXP NFC module hash is empty" >&2; exit 1; }
+nh_module_loaded nxp_nci || { echo "ABORT: stock NXP NFC driver is not loaded" >&2; exit 1; }
+if [ -f "$NCI_PID" ]; then
+  old_pid=$(cat "$NCI_PID")
+  case "$old_pid" in
+    ''|*[!0-9]*) echo "ABORT: invalid stale NFC session PID" >&2; exit 1 ;;
+  esac
+  if kill -0 "$old_pid" 2>/dev/null; then
+    if nh_process_matches "$old_pid" nci_raw_tool; then
+      echo "ABORT: NFC session process already active" >&2
+      exit 1
+    fi
+    echo "ABORT: stale NFC PID now belongs to another process" >&2
+    exit 1
+  fi
+  rm -f "$NCI_PID" "$NCI_SOCKET"
+fi
 
 nh_begin_session "$RADIO" || { echo "ABORT: cannot begin session" >&2; exit 1; }
 log "Acquiring NFC"
@@ -66,6 +134,7 @@ if nh_is_enabled nfc; then nfc_enabled=1; else nfc_enabled=0; fi
 hal_state=$(getprop init.svc.vendor.nfc_hal_service 2>/dev/null || true)
 nh_snapshot_put "$RADIO" nfc_enabled "$nfc_enabled"
 nh_snapshot_put "$RADIO" hal_state "$hal_state"
+nh_snapshot_put "$RADIO" stock_module_sha256 "$stock_sha"
 case "$hal_state" in
   running|stopped) ;;
   *) nh_finish_session "$RADIO"; echo "ABORT: NFC HAL state is unknown" >&2; exit 1 ;;
@@ -78,9 +147,30 @@ sleep 2
 stop vendor.nfc_hal_service 2>/dev/null || true
 sleep 2
 
-"$NCI_TOOL" probe || rollback "nci_raw_tool probe failed after HAL quiesce"
-"$NCI_TOOL" init || rollback "nci_raw_tool init failed"
+if ! rmmod nxp_nci 2>/dev/null; then
+  rollback "stock nxp_nci unload failed"
+fi
+stock_unloaded=1
+insmod "$NFC_KO" || rollback "patched nxp-nci module load failed"
+patched_loaded=1
+
+"$NCI_TOOL" session --socket "$NCI_SOCKET" </dev/null >/dev/null 2>&1 &
+session_pid=$!
+if ! printf '%s\n' "$session_pid" > "$NCI_PID"; then
+  kill "$session_pid" 2>/dev/null || true
+  rollback "cannot write NCI session PID file"
+fi
+chmod 600 "$NCI_PID"
+i=0
+while [ "$i" -lt 10 ] && [ ! -e "$NCI_SOCKET" ]; do
+  pid=$(cat "$NCI_PID")
+  kill -0 "$pid" 2>/dev/null || rollback "nci session exited before socket became ready"
+  sleep 1
+  i=$((i + 1))
+done
+[ -e "$NCI_SOCKET" ] || rollback "nci session socket did not appear"
+"$NCI_TOOL" init --socket "$NCI_SOCKET" || rollback "nci_raw_tool init failed"
 
 nh_mark_takeover "$RADIO" || rollback "could not mark NFC takeover"
 log "TAKEOVER active"
-echo "NFC takeover active. /dev/nq-nci available to NetHunter."
+echo "NFC takeover active. NCI session owns /dev/nq-nci."

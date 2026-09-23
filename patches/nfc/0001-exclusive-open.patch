@@ -1,0 +1,26 @@
+diff --git a/vendor/nxp/opensource/driver/nfc/common.c b/vendor/nxp/opensource/driver/nfc/common.c
+--- a/vendor/nxp/opensource/driver/nfc/common.c
++++ b/vendor/nxp/opensource/driver/nfc/common.c
+@@ -775,0 +776 @@ int nfc_dev_open(struct inode *inode, struct file *filp)
++	int nh_set_nofreeze = 0;
+@@ -789,0 +791 @@ int nfc_dev_open(struct inode *inode, struct file *filp)
++		nh_set_nofreeze = 1;
+@@ -793,0 +796,10 @@ int nfc_dev_open(struct inode *inode, struct file *filp)
++	/* Keep descriptors from one process, but reject a second owner. */
++	if (nfc_dev->dev_ref_count > 0 &&
++	    nfc_dev->nh_owner_tgid != current->tgid) {
++		mutex_unlock(&nfc_dev->dev_ref_mutex);
++		if (nh_set_nofreeze)
++			current->flags &= ~PF_NOFREEZE;
++		return -EBUSY;
++	}
++	if (nfc_dev->dev_ref_count == 0)
++		nfc_dev->nh_owner_tgid = current->tgid;
+@@ -853,0 +866,2 @@ int nfc_dev_close(struct inode *inode, struct file *filp)
++	if (nfc_dev->dev_ref_count == 0)
++		nfc_dev->nh_owner_tgid = 0;
+diff --git a/vendor/nxp/opensource/driver/nfc/common.h b/vendor/nxp/opensource/driver/nfc/common.h
+--- a/vendor/nxp/opensource/driver/nfc/common.h
++++ b/vendor/nxp/opensource/driver/nfc/common.h
+@@ -263,0 +264 @@ struct nfc_dev {
++	int nh_owner_tgid;

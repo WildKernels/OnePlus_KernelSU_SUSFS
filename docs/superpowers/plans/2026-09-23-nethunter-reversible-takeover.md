@@ -312,7 +312,7 @@ git commit -m "feat(nethunter): harden journal recovery and package paths"
 
 **Interfaces:**
 - Consumes: target source root, common kernel output, target `.config`, full `Module.symvers`, target revision map.
-- Produces: `/tmp/nh-build/<target>/qca_cld3_kiwi_v2.ko`, `hci_vhci.ko`, optional `nxp_nci.ko`, build evidence JSON, and explicit failure codes.
+- Produces: `/tmp/nh-build/<target>/qca_cld3_kiwi_v2.ko`, `hci_vhci.ko`, optional `nxp-nci.ko`, build evidence JSON, and explicit failure codes.
 
 - [ ] **Step 1: Write failing build-contract tests.**
 
@@ -370,7 +370,7 @@ Update `build_stock_wifi.sh` to consume the explicit workspace arguments and use
 
 - [ ] **Step 5: Add the NFC driver build entrypoint.**
 
-`build_nxp_nci.sh` must accept the same target/workspace arguments, build the unmodified driver first, and reject missing `Module.symvers`. It must support a `--patched-source <path>` argument only after Task 5 supplies a driver patch. The unmodified build is the baseline artifact.
+`build_nxp_nci.sh` must accept the same target/workspace arguments, build the unmodified driver first, and reject missing `Module.symvers`. The pinned source path is `$KERNEL_SRC/vendor/nxp/opensource/driver`; its Kbuild emits `nxp-nci.ko`. With `--patched-source <patch_file>`, build stock baseline as `nxp-nci-stock.ko`, then apply the patch to a temporary source copy and build patched artifact as `nxp-nci.ko`.
 
 - [ ] **Step 6: Move takeover build into the kernel build workspace.**
 
@@ -484,7 +484,7 @@ git commit -m "feat(nethunter): complete Bluetooth VHCI production gates"
 
 **Interfaces:**
 - Consumes: Task 1 exact NFC module source and Task 3 module build workspace.
-- Produces: `nci_raw_tool probe|session|send|capture`, optional patched `nxp_nci.ko`, and an accurately labeled NFC capability.
+- Produces: `nci_raw_tool probe|session|send|capture`, optional patched `nxp-nci.ko`, and an accurately labeled NFC capability.
 
 - [ ] **Step 1: Add failing native-tool tests.**
 
@@ -514,14 +514,19 @@ nci_raw_tool capture --socket <unix-socket> <seconds>
 
 - [ ] **Step 3: Add the driver-exclusive-open patch.**
 
-After locating the exact `nxp_nci` device structure in the target source, add a per-device owner flag using the driver’s existing synchronization primitive. The open path must implement this behavior:
+Pinned source path is `vendor/nxp/opensource/driver/nfc`; Kbuild target is `nxp-nci.ko` and device structure is `struct nfc_dev` in `common.h`. Add `int nh_owner_tgid` to this per-device structure. Reuse `dev_ref_mutex` and the existing `dev_ref_count` so multiple descriptors from NFC HAL process (one TGID) remain valid, while another process gets `-EBUSY`:
 
 ```c
-if (atomic_cmpxchg(&device->nh_owner, 0, 1) != 0)
+if (nfc_dev->dev_ref_count > 0 &&
+    nfc_dev->nh_owner_tgid != current->tgid) {
+    mutex_unlock(&nfc_dev->dev_ref_mutex);
     return -EBUSY;
+}
+if (nfc_dev->dev_ref_count == 0)
+    nfc_dev->nh_owner_tgid = current->tgid;
 ```
 
-Every failed open path and the release path must clear ownership. Do not use a global flag when multiple NFC controller instances are possible. Keep the patch isolated and compile it first against the unmodified driver.
+When the second process is rejected, undo `PF_NOFREEZE` only if this open set it. In `nfc_dev_close`, clear `nh_owner_tgid` when the protected reference count reaches zero. Do not use a global flag when multiple NFC controller instances are possible. Keep the patch isolated and compile it first against the unmodified driver.
 
 - [ ] **Step 4: Build and verify the patched NFC module.**
 
@@ -531,8 +536,8 @@ Run:
 git apply --check patches/nfc/0001-exclusive-open.patch
 bash scripts/nethunter/build_nxp_nci.sh OP-ACE-5 "$KERNEL_SRC" "$COMMON_OUT" "$OUT" \
   --patched-source patches/nfc/0001-exclusive-open.patch
-modinfo "$OUT/nxp_nci.ko"
-file "$OUT/nxp_nci.ko" | grep -q 'ARM aarch64'
+modinfo "$OUT/nxp-nci.ko"
+file "$OUT/nxp-nci.ko" | grep -q 'ARM aarch64'
 ```
 
 - [ ] **Step 5: Add the two-owner device test.**
@@ -859,7 +864,7 @@ The packer must require the exact required set:
 - Bluetooth capability: `hci_vhci.ko` and bluebinder.
 - Bluetooth capability: bundled AArch64 runtime libraries in `system/lib64`, with bluebinder launched under that package library path.
 - NFC raw capability: AArch64 `nci_raw_tool`.
-- NFC exclusive capability: patched `nxp_nci.ko` or an exact-device ownership proof recorded in provenance.
+- NFC exclusive capability: patched `nxp-nci.ko` or an exact-device ownership proof recorded in provenance.
 - USB capability: USB scripts.
 - GNSS bridge capability: GNSS scripts plus a valid capability record.
 

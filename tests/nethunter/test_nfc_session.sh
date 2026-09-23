@@ -17,22 +17,30 @@ fail() { fail=$((fail + 1)); echo "  FAIL: $1"; }
 android="$tmpdir"
 nh_data="$android/data/adb/nethunter"
 mod_dir="$android/data/adb/modules/nethunter_takeover"
-mkdir -p "$nh_data" "$mod_dir/system/bin" "$mod_dir/framework"
+mkdir -p "$nh_data" "$mod_dir/system/bin" "$mod_dir/vendor_dlkm_override" "$mod_dir/framework"
 cp "$root"/nethunter/framework/*.sh "$mod_dir/framework/"
 
-# Real compiled nci_raw_tool (host build) for probe/init smoke tests.
-# The tool opens /dev/nq-nci — mock that too via a fake device the mock
-# tool replaces: use PATH-overridable wrapper instead of the real binary.
+# Mock session server for Android lifecycle tests; C protocol tests use PTY.
 cat > "$mod_dir/system/bin/nci_raw_tool" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   probe) exit 0 ;;
-  init)  echo "CORE_RESET_RSP: ok"; echo "CORE_INIT_RSP: ok"; exit 0 ;;
+  session)
+    socket_path="$3"
+    : > "$socket_path"
+    trap 'rm -f "$socket_path"; exit 0' TERM
+    while :; do read -t 1 _ || true; done
+    ;;
+  init)  [[ -e "$3" ]] || exit 1; echo "CORE_RESET_RSP: ok"; echo "CORE_INIT_RSP: ok"; exit 0 ;;
   *) exit 1 ;;
 esac
 EOF
 chmod +x "$mod_dir/system/bin/nci_raw_tool"
 tool_sha=$(sha256sum "$mod_dir/system/bin/nci_raw_tool" | cut -d' ' -f1)
+printf 'STOCK_NFC_KO' > "$android/vendor_nfc.ko"
+stock_nfc_sha=$(sha256sum "$android/vendor_nfc.ko" | cut -d' ' -f1)
+printf 'PATCHED_NFC_KO' > "$mod_dir/vendor_dlkm_override/nxp-nci.ko"
+patched_nfc_sha=$(sha256sum "$mod_dir/vendor_dlkm_override/nxp-nci.ko" | cut -d' ' -f1)
 cat > "$mod_dir/module.prop" <<EOF
 target=OP-ACE-5
 device=pineapple
@@ -40,6 +48,7 @@ model=ONEPLUS PKG110
 build_fingerprint=oneplus/PKG110/PKG110:16/TEST/release-keys
 kernel_release=6.1.174-g638ecc425319
 sha256_nci_raw_tool=$tool_sha
+sha256_nxp_nci=$patched_nfc_sha
 EOF
 
 mockbin="$tmpdir/bin"
@@ -47,6 +56,7 @@ mkdir -p "$mockbin"
 state_dir="$tmpdir/state"
 mkdir -p "$state_dir"
 echo running > "$state_dir/hal"
+printf 'nxp_nci 1 0 - Live 0x0\n' > "$state_dir/proc_modules"
 
 update_tool_hash() {
   local hash
@@ -56,10 +66,13 @@ update_tool_hash() {
 
 mk() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "$mockbin/$1"; chmod +x "$mockbin/$1"; }
 
-mk cmd      'echo "cmd $*" >> "$CALLS"; [[ "$2" == nfc ]] && printf "%s" "${3:-}" > "$STATE/nfc_cmd"; exit 0'
-mk svc      'echo "svc $*" >> "$CALLS"; [[ "$2" == nfc ]] && printf "%s" "${3:-}" > "$STATE/nfc_svc"; exit 0'
+mk cmd      'echo "cmd $*" >> "$CALLS"; if [[ "$2" == nfc ]]; then printf "%s" "${3:-}" > "$STATE/nfc_cmd"; [[ "$3" == enable-nfc ]] && touch "$STATE/nfc_on" || [[ "$3" == disable-nfc ]] && rm -f "$STATE/nfc_on"; fi; exit 0'
+mk svc      'echo "svc $*" >> "$CALLS"; if [[ "$2" == nfc ]]; then printf "%s" "${3:-}" > "$STATE/nfc_svc"; [[ "$3" == enable ]] && touch "$STATE/nfc_on" || [[ "$3" == disable ]] && rm -f "$STATE/nfc_on"; fi; exit 0'
 mk stop     'echo "stop $*" >> "$CALLS"; [[ "$2" == vendor.nfc_hal_service ]] && echo stopped > "$STATE/hal"; exit 0'
 mk start    'echo "start $*" >> "$CALLS"; [[ "$2" == vendor.nfc_hal_service ]] && echo running > "$STATE/hal"; exit 0'
+mk insmod   'echo "insmod $*" >> "$CALLS"; if [[ "$1" == "$NH_NFC_VENDOR_KO" || "$1" == *vendor_dlkm_override/nxp-nci.ko ]]; then printf "nxp_nci 1 0 - Live 0x0\\n" > "$NH_MODULES_FILE"; exit 0; fi; exit 1'
+mk rmmod    'echo "rmmod $*" >> "$CALLS"; [[ "$1" == nxp_nci ]] || exit 1; : > "$NH_MODULES_FILE"; exit 0'
+mk rmmod    'echo "rmmod $*" >> "$CALLS"; [[ "$1" == nxp_nci ]] || exit 1; : > "$NH_MODULES_FILE"; exit 0'
 mk getprop  'case "$*" in *ro.product.model*) echo "ONEPLUS PKG110";; *ro.product.device*) echo pineapple;; *ro.build.fingerprint*) echo oneplus/PKG110/PKG110:16/TEST/release-keys;; *init.svc.vendor.nfc_hal_service*) cat "$STATE/hal" 2>/dev/null || echo unknown;; *) echo stopped;; esac'
 mk dumpsys  'if [[ -f "$STATE/nfc_on" ]]; then echo "mState=on"; else echo "mState=off"; fi'
 mk uname    'echo "6.1.174-g638ecc425319"'
@@ -69,6 +82,7 @@ run_env() {
   env PATH="$mockbin:$PATH" \
       CALLS="$tmpdir/calls.log" STATE="$state_dir" \
       NH_STATE_DIR="$nh_data" NH_LOCK_DIR="$nh_data" \
+      NH_MODULES_FILE="$state_dir/proc_modules" NH_NFC_VENDOR_KO="$android/vendor_nfc.ko" \
       NH_PACKAGE_ROOT="$mod_dir" \
       "$@"
 }
@@ -85,9 +99,13 @@ else
 fi
 
 grep -q "stop vendor.nfc_hal_service" "$tmpdir/calls.log" && pass "HAL stopped" || fail "HAL not stopped"
+grep -q "insmod $mod_dir/vendor_dlkm_override/nxp-nci.ko" "$tmpdir/calls.log" && pass "patched NXP driver loaded" || fail "patched NXP driver not loaded"
 [[ "$(cat "$nh_data/nfc.journal/nfc_enabled" 2>/dev/null)" == "0" ]] \
   && pass "journal recorded nfc_enabled=0" || fail "journal nfc_enabled: $(cat "$nh_data/nfc.journal/nfc_enabled" 2>/dev/null)"
+[[ "$(cat "$nh_data/nfc.journal/stock_module_sha256" 2>/dev/null)" == "$stock_nfc_sha" ]] \
+  && pass "journal recorded stock NFC hash" || fail "journal missing stock NFC hash"
 [[ "$(cat "$nh_data/nfc.state" 2>/dev/null)" == "TAKEOVER" ]] && pass "state TAKEOVER" || fail "state not TAKEOVER"
+[[ -f "$nh_data/nci_raw_tool.pid" ]] && pass "journaled NFC session process" || fail "NFC session PID missing"
 
 # ---- Release: restores to off (snapshot), verifies, clears journal ----
 : > "$tmpdir/calls.log"
@@ -97,10 +115,12 @@ else
   fail "release failed: $(tail -3 "$tmpdir/release.out")"
 fi
 grep -q "start vendor.nfc_hal_service" "$tmpdir/calls.log" && pass "HAL restarted" || fail "HAL not restarted"
+grep -q "insmod $android/vendor_nfc.ko" "$tmpdir/calls.log" && pass "stock NXP driver reloaded" || fail "stock NXP driver not reloaded"
 grep -q "svc nfc enable" "$tmpdir/calls.log" \
   && fail "release force-enabled nfc despite off snapshot" || pass "nfc not force-enabled (snapshot off)"
 [[ ! -e "$nh_data/nfc.journal" ]] && pass "journal cleared" || fail "journal kept"
 [[ "$(cat "$nh_data/nfc.state" 2>/dev/null)" == "IDLE" ]] && pass "state IDLE" || fail "state not IDLE"
+[[ ! -e "$nh_data/nci_raw_tool.pid" ]] && pass "NFC session process stopped" || fail "NFC session PID remained"
 
 # ---- Happy path 2: NFC was on before takeover, release re-enables + verifies ----
 : > "$tmpdir/calls.log"
@@ -137,6 +157,7 @@ else
 fi
 [[ "$(cat "$nh_data/nfc.state" 2>/dev/null)" == "IDLE" ]] && pass "unknown-state rejection cleaned session" || fail "unknown-state left session active"
 echo running > "$state_dir/hal"
+printf 'nxp_nci 1 0 - Live 0x0\n' > "$state_dir/proc_modules"
 
 # ---- Failure path: nci_raw_tool init fails → rollback, journal cleaned ----
 : > "$tmpdir/calls.log"
@@ -144,6 +165,7 @@ cat > "$mod_dir/system/bin/nci_raw_tool" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   probe) exit 0 ;;
+  session) socket_path="$3"; : > "$socket_path"; trap 'rm -f "$socket_path"; exit 0' TERM; while :; do read -t 1 _ || true; done ;;
   init)  exit 1 ;;
   *) exit 1 ;;
 esac
@@ -156,13 +178,20 @@ else
   pass "acquire aborts when nci init fails"
 fi
 grep -q "start vendor.nfc_hal_service" "$tmpdir/calls.log" && pass "rollback restarted HAL" || fail "rollback missing HAL start"
+grep -q "rmmod nxp_nci" "$tmpdir/calls.log" && pass "rollback unloaded patched NXP driver" || fail "rollback missing patched driver unload"
+grep -q "insmod $android/vendor_nfc.ko" "$tmpdir/calls.log" && pass "rollback reloaded stock NXP driver" || fail "rollback missing stock driver reload"
 [[ "$(cat "$nh_data/nfc.state" 2>/dev/null)" == "IDLE" ]] && pass "rollback state IDLE" || fail "rollback state: $(cat "$nh_data/nfc.state" 2>/dev/null)"
 [[ ! -e "$nh_data/nfc.journal" ]] && pass "rollback cleaned journal" || fail "rollback kept journal"
 
 # ---- Cross-radio blocking ----
 cat > "$mod_dir/system/bin/nci_raw_tool" <<'EOF'
 #!/usr/bin/env bash
-case "$1" in probe) exit 0 ;; init) exit 0 ;; *) exit 1 ;; esac
+case "$1" in
+  probe) exit 0 ;;
+  session) socket_path="$3"; : > "$socket_path"; trap 'rm -f "$socket_path"; exit 0' TERM; while :; do read -t 1 _ || true; done ;;
+  init) [[ -e "$3" ]] && exit 0 || exit 1 ;;
+  *) exit 1 ;;
+esac
 EOF
 chmod +x "$mod_dir/system/bin/nci_raw_tool"
 update_tool_hash

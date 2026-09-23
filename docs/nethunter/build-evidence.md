@@ -35,7 +35,7 @@ The current deliverable is baseline only:
 
 The stock Wi-Fi module is for build/KMI/restore baseline. It has no injection patch and must not be labeled as injection support.
 
-`nxp_nci.ko` build is optional until exact NFC driver source path is mapped for target. Set `NH_NXP_NCI_DIR` to the target driver source directory to run its baseline Kbuild. Missing source does not fabricate an NFC module artifact.
+The pinned NXP source is `$KERNEL_SRC/vendor/nxp/opensource/driver`. Its Kbuild target is `nxp-nci.ko`. `build_nxp_nci.sh` creates an unmodified `nxp-nci.ko` baseline by default; `--patched-source patches/nfc/0001-exclusive-open.patch` emits both `nxp-nci-stock.ko` and patched `nxp-nci.ko`. Missing source or `Module.symvers` fails closed.
 
 ## Local validation
 

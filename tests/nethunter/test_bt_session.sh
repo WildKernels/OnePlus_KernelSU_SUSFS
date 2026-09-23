@@ -72,6 +72,10 @@ run_env() {
       "$@"
 }
 
+export NH_STATE_DIR="$nh_data" NH_LOCK_DIR="$nh_data" NH_PACKAGE_ROOT="$mod_dir"
+source "$root/nethunter/framework/nh-state.sh"
+source "$root/nethunter/framework/nh-runtime.sh"
+
 acquire="$root/nethunter/bt/nh-bt-acquire.sh"
 release="$root/nethunter/bt/nh-bt-release.sh"
 : > "$tmpdir/calls.log"
@@ -235,6 +239,23 @@ else
 fi
 [[ "$(cat "$nh_data/bt.state" 2>/dev/null)" == "IDLE" ]] && pass "no bt lock left behind" || fail "bt state: $(cat "$nh_data/bt.state" 2>/dev/null)"
 rmdir "$nh_data/wifi.lock"
+
+# ---- Stale PID cannot signal unrelated process ----
+nh_begin_session bt
+nh_snapshot_put bt bt_enabled 0
+nh_snapshot_put bt hal_state stopped
+nh_snapshot_put bt rfkill_state unblocked
+nh_mark_takeover bt
+printf '%s\n' "$$" > "$nh_data/bluebinder.pid"
+if run_env bash "$release" >"$tmpdir/release-unrelated-pid.out" 2>&1; then
+  fail "release accepted unrelated bluebinder PID"
+else
+  pass "release rejects unrelated bluebinder PID"
+fi
+kill -0 "$$" 2>/dev/null && pass "test process was not signaled" || fail "release signaled test process"
+[[ "$(cat "$nh_data/bt.state" 2>/dev/null)" == RECOVERY_REQUIRED ]] && pass "unrelated PID left recovery journal" || fail "unrelated PID did not require recovery"
+rm -f "$nh_data/bluebinder.pid"
+nh_finish_session bt
 
 echo ""
 echo "Results: $pass passed, $fail failed"

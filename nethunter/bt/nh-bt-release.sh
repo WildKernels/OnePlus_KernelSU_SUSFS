@@ -34,6 +34,11 @@ if [ -f "$NH_STATE_DIR/bluebinder.pid" ]; then
       exit 1
       ;;
   esac
+  if kill -0 "$BPID" 2>/dev/null && ! nh_process_matches "$BPID" bluebinder; then
+    nh_mark_recovery_required "$RADIO" "bluebinder PID does not match process command line"
+    echo "ERROR: refusing to signal unrelated PID; journal retained" >&2
+    exit 1
+  fi
   kill "$BPID" 2>/dev/null || true
   sleep 1
   if kill -0 "$BPID" 2>/dev/null; then
