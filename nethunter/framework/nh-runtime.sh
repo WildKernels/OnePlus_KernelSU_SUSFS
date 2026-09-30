@@ -62,6 +62,38 @@ nh_bt_hal_state() {
   printf '%s\n' "${state:-unknown}"
 }
 
+# Bounded wait until an Android service is fully stopped. init reports
+# `stopped` before the process is always gone, so also require its debug pid
+# to disappear. Returns 1 on timeout.
+nh_wait_service_stopped() {
+  local state_prop="$1" pid_prop="$2" timeout="${3:-10}" i=0 pid state
+  while [ "$i" -lt "$timeout" ]; do
+    state=$(getprop "$state_prop" 2>/dev/null || true)
+    pid=$(getprop "$pid_prop" 2>/dev/null || true)
+    case "$pid" in ''|*[!0-9]*) pid="" ;; esac
+    if [ "$state" = stopped ] && { [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; }; then
+      return 0
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# Return 0 when no process holds the given device node. Best effort: an
+# unreadable /proc entry is ignored so a restrictive policy cannot wedge
+# acquisition, but a visible holder fails the check.
+nh_node_is_free() {
+  local node="$1" fd
+  [ -n "$node" ] || return 1
+  for fd in /proc/[0-9]*/fd/*; do
+    [ -e "$fd" ] || continue
+    [ "$(readlink "$fd" 2>/dev/null)" = "$node" ] || continue
+    return 1
+  done
+  return 0
+}
+
 nh_module_loaded() {
   local module="$1" modules_file="${NH_MODULES_FILE:-/proc/modules}"
   case "$module" in

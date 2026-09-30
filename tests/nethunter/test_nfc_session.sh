@@ -68,8 +68,8 @@ mk() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "$mockbin/$1"; chmod +x "$mockb
 
 mk cmd      'echo "cmd $*" >> "$CALLS"; if [[ "$2" == nfc ]]; then printf "%s" "${3:-}" > "$STATE/nfc_cmd"; [[ "$3" == enable-nfc ]] && touch "$STATE/nfc_on" || [[ "$3" == disable-nfc ]] && rm -f "$STATE/nfc_on"; fi; exit 0'
 mk svc      'echo "svc $*" >> "$CALLS"; if [[ "$2" == nfc ]]; then printf "%s" "${3:-}" > "$STATE/nfc_svc"; [[ "$3" == enable ]] && touch "$STATE/nfc_on" || [[ "$3" == disable ]] && rm -f "$STATE/nfc_on"; fi; exit 0'
-mk stop     'echo "stop $*" >> "$CALLS"; [[ "$2" == vendor.nfc_hal_service ]] && echo stopped > "$STATE/hal"; exit 0'
-mk start    'echo "start $*" >> "$CALLS"; [[ "$2" == vendor.nfc_hal_service ]] && echo running > "$STATE/hal"; exit 0'
+mk stop     'echo "stop $*" >> "$CALLS"; [[ "$1" == vendor.nfc_hal_service ]] && echo stopped > "$STATE/hal"; exit 0'
+mk start    'echo "start $*" >> "$CALLS"; [[ "$1" == vendor.nfc_hal_service ]] && echo running > "$STATE/hal"; exit 0'
 mk insmod   'echo "insmod $*" >> "$CALLS"; if [[ "$1" == "$NH_NFC_VENDOR_KO" || "$1" == *vendor_dlkm_override/nxp-nci.ko ]]; then printf "nxp_nci 1 0 - Live 0x0\\n" > "$NH_MODULES_FILE"; exit 0; fi; exit 1'
 mk rmmod    'echo "rmmod $*" >> "$CALLS"; [[ "$1" == nxp_nci ]] || exit 1; : > "$NH_MODULES_FILE"; exit 0'
 mk rmmod    'echo "rmmod $*" >> "$CALLS"; [[ "$1" == nxp_nci ]] || exit 1; : > "$NH_MODULES_FILE"; exit 0'
@@ -202,6 +202,32 @@ else
   pass "acquire blocked by active wifi session"
 fi
 rmdir "$nh_data/wifi.lock"
+
+# ---- Guard: abort before rmmod when another process holds the NFC node ----
+# Simulate a stale holder by pointing NH_NFC_NODE at a FIFO kept open by a
+# background reader; the acquire must roll back without ever calling rmmod.
+holder_node="$tmpdir/nfc-holder"
+rm -f "$holder_node"
+mkfifo "$holder_node"
+# Keep the FIFO open in this shell so nh_node_is_free sees a live holder.
+exec 9<>"$holder_node"
+: > "$tmpdir/calls.log"
+echo running > "$state_dir/hal"
+printf 'nxp_nci 1 0 - Live 0x0\n' > "$state_dir/proc_modules"
+if run_env env NH_NFC_NODE="$holder_node" bash "$acquire" >"$tmpdir/acquire-hold.out" 2>&1; then
+  fail "acquire proceeded while NFC node was held"
+else
+  pass "acquire aborts while NFC node is held"
+fi
+if grep -q "rmmod nxp_nci" "$tmpdir/calls.log"; then
+  fail "acquire called rmmod while node was held"
+else
+  pass "acquire skipped rmmod while node was held"
+fi
+[[ "$(cat "$nh_data/nfc.state" 2>/dev/null)" == "IDLE" ]] \
+  && pass "held-node abort restored IDLE" || fail "held-node abort left state $(cat "$nh_data/nfc.state" 2>/dev/null)"
+exec 9>&-
+rm -f "$holder_node"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
