@@ -68,7 +68,7 @@ run_env() {
       BLUEBINDER_PID_FILE="$state_dir/bb.pid" \
       NH_MODULES_FILE="$state_dir/proc_modules" \
       NH_STATE_DIR="$nh_data" NH_LOCK_DIR="$nh_data" \
-      NH_PACKAGE_ROOT="$mod_dir" NH_VHCI_NODE="$state_dir/vhci" \
+      NH_PACKAGE_ROOT="$mod_dir" NH_KERNEL_RELEASE="6.1.174-g638ecc425319" NH_VHCI_NODE="$state_dir/vhci" \
       "$@"
 }
 

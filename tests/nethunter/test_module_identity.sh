@@ -34,6 +34,7 @@ run_customize() {
         esac
       }
       uname() { printf "%s\n" "${TEST_KERNEL:-6.1.174-g638ecc425319}"; }
+      NH_KERNEL_RELEASE="${TEST_KERNEL:-6.1.174-g638ecc425319}"; export NH_KERNEL_RELEASE
       source "$CUSTOMIZE"
     '
 }

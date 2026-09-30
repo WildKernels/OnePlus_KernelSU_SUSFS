@@ -1,11 +1,25 @@
 diff --git a/vendor/nxp/opensource/driver/nfc/common.c b/vendor/nxp/opensource/driver/nfc/common.c
+index ac26d905..59a67ea5 100755
 --- a/vendor/nxp/opensource/driver/nfc/common.c
 +++ b/vendor/nxp/opensource/driver/nfc/common.c
-@@ -775,0 +776 @@ int nfc_dev_open(struct inode *inode, struct file *filp)
+@@ -773,6 +773,7 @@ long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg)
+ int nfc_dev_open(struct inode *inode, struct file *filp)
+ {
+ 	struct nfc_dev *nfc_dev = NULL;
 +	int nh_set_nofreeze = 0;
-@@ -789,0 +791 @@ int nfc_dev_open(struct inode *inode, struct file *filp)
+ 
+ 	nfc_dev = container_of(inode->i_cdev, struct nfc_dev, c_dev);
+ 
+@@ -787,11 +788,23 @@ int nfc_dev_open(struct inode *inode, struct file *filp)
+ 	 */
+ 	if (!(current->flags & PF_NOFREEZE)) {
+ 		current->flags |= PF_NOFREEZE;
 +		nh_set_nofreeze = 1;
-@@ -793,0 +796,10 @@ int nfc_dev_open(struct inode *inode, struct file *filp)
+ 		pr_debug("NxpDrv: %s: current->flags 0x%x. \n", __func__, current->flags);
+ 	}
+ 
+ 	mutex_lock(&nfc_dev->dev_ref_mutex);
+ 
 +	/* Keep descriptors from one process, but reject a second owner. */
 +	if (nfc_dev->dev_ref_count > 0 &&
 +	    nfc_dev->nh_owner_tgid != current->tgid) {
@@ -16,11 +30,29 @@ diff --git a/vendor/nxp/opensource/driver/nfc/common.c b/vendor/nxp/opensource/d
 +	}
 +	if (nfc_dev->dev_ref_count == 0)
 +		nfc_dev->nh_owner_tgid = current->tgid;
-@@ -853,0 +866,2 @@ int nfc_dev_close(struct inode *inode, struct file *filp)
++
+ 	filp->private_data = nfc_dev;
+ 
+ 	if (nfc_dev->dev_ref_count == 0) {
+@@ -852,6 +865,9 @@ int nfc_dev_close(struct inode *inode, struct file *filp)
+ 	if (nfc_dev->dev_ref_count > 0)
+ 		nfc_dev->dev_ref_count = nfc_dev->dev_ref_count - 1;
+ 
 +	if (nfc_dev->dev_ref_count == 0)
 +		nfc_dev->nh_owner_tgid = 0;
++
+ 	filp->private_data = NULL;
+ 
+ 	mutex_unlock(&nfc_dev->dev_ref_mutex);
 diff --git a/vendor/nxp/opensource/driver/nfc/common.h b/vendor/nxp/opensource/driver/nfc/common.h
+index fd15ee48..b54eba37 100755
 --- a/vendor/nxp/opensource/driver/nfc/common.h
 +++ b/vendor/nxp/opensource/driver/nfc/common.h
-@@ -263,0 +264 @@ struct nfc_dev {
+@@ -261,6 +261,7 @@ struct nfc_dev {
+ 	uint8_t *write_kbuf;
+ 	struct mutex dev_ref_mutex;
+ 	unsigned int dev_ref_count;
 +	int nh_owner_tgid;
+ 	struct class *nfc_class;
+ 	struct device *nfc_device;
+ 	struct cdev c_dev;

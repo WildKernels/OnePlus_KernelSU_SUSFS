@@ -31,7 +31,7 @@ case "${1:-}" in
       'getprop init.svc.vendor.nfc_hal_service') printf '%s\n' 'running' ;;
       'getprop init.svc.bluetooth') printf '%s\n' 'running' ;;
       'getprop init.svc.bluetooth 2>/dev/null || true') printf '%s\n' 'running' ;;
-      'uname -r') printf '%s\n' '6.1.174-g638ecc425319' ;;
+      'cat /proc/sys/kernel/osrelease 2>/dev/null || uname -r') printf '%s\n' '6.1.174-g638ecc425319' ;;
       'cat /proc/version') printf '%s\n' 'Linux version 6.1.174 test scmversion g976cb1e13abc' ;;
       'getenforce') printf '%s\n' 'Enforcing' ;;
       'uname -m') printf '%s\n' 'aarch64' ;;

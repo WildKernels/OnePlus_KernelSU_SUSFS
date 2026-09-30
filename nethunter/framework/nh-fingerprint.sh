@@ -49,4 +49,12 @@ nh_check_fingerprint() {
 nh_get_target_model() { getprop ro.product.model 2>/dev/null || echo UNKNOWN; }
 nh_get_target_device() { getprop ro.product.device 2>/dev/null || echo UNKNOWN; }
 nh_get_build_fingerprint() { getprop ro.build.fingerprint 2>/dev/null || echo UNKNOWN; }
-nh_get_running_kernel_release() { uname -r 2>/dev/null || echo UNKNOWN; }
+# uname -r can be spoofed (e.g. SUSFS SPOOF_UNAME); osrelease is the real value.
+# NH_KERNEL_RELEASE overrides both for tests and pinned callers.
+nh_get_running_kernel_release() {
+  if [ -n "${NH_KERNEL_RELEASE:-}" ]; then
+    printf '%s\n' "$NH_KERNEL_RELEASE"
+    return 0
+  fi
+  cat /proc/sys/kernel/osrelease 2>/dev/null || uname -r 2>/dev/null || echo UNKNOWN
+}

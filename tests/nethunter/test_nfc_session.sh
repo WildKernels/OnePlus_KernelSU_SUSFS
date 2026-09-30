@@ -83,7 +83,7 @@ run_env() {
       CALLS="$tmpdir/calls.log" STATE="$state_dir" \
       NH_STATE_DIR="$nh_data" NH_LOCK_DIR="$nh_data" \
       NH_MODULES_FILE="$state_dir/proc_modules" NH_NFC_VENDOR_KO="$android/vendor_nfc.ko" \
-      NH_PACKAGE_ROOT="$mod_dir" \
+      NH_PACKAGE_ROOT="$mod_dir" NH_KERNEL_RELEASE="6.1.174-g638ecc425319" \
       "$@"
 }
 

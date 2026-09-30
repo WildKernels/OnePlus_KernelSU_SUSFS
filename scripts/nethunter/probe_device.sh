@@ -4,13 +4,14 @@ set -euo pipefail
 ADB="${ADB:-adb}"
 output="${1:-docs/nethunter/device-profile.json}"
 
-state=$("$ADB" get-state 2>/dev/null || true)
+state=$("$ADB" get-state 2>/dev/null | tr -d '\r' || true)
 [[ "$state" == device ]] || {
   printf 'ADB device not ready: %s\n' "${state:-unavailable}" >&2
   exit 1
 }
 
-capture() { "$ADB" shell "$1"; }
+redact() { sed -E 's/([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}/xx:xx:xx:xx:xx:xx/g'; }
+capture() { "$ADB" shell "$1" | tr -d '\r' | redact; }
 capture_optional() { capture "$1" 2>/dev/null || true; }
 availability() { [[ -n "$1" ]] && printf available || printf unavailable; }
 
@@ -20,7 +21,7 @@ build_fingerprint=$(capture 'getprop ro.build.fingerprint')
 vendor_fingerprint=$(capture_optional 'getprop ro.vendor.build.fingerprint')
 incremental=$(capture_optional 'getprop ro.build.version.incremental')
 slot_suffix=$(capture_optional 'getprop ro.boot.slot_suffix')
-kernel_release=$(capture 'uname -r')
+kernel_release=$(capture 'cat /proc/sys/kernel/osrelease 2>/dev/null || uname -r')
 kernel_version=$(capture 'cat /proc/version')
 selinux=$(capture_optional 'getenforce')
 architecture=$(capture 'uname -m')

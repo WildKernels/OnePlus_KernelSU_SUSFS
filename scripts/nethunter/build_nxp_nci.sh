@@ -38,6 +38,52 @@ esac
 common_src="$kernel_src/kernel_platform/common"
 build_root=$(mktemp -d "${TMPDIR:-/tmp}/nh-nxp-nci.XXXXXX")
 trap 'rm -rf "$build_root"' EXIT
+
+# The NXP driver depends on Qualcomm/OnePlus techpack headers that the
+# manifest-synced trees do not carry. Require the caller to stage them.
+for header in include/linux/ipc_logging.h include/linux/pinctrl/qcom-pinctrl.h; do
+  [[ -f "$common_src/$header" ]] || {
+    echo "ERROR: missing techpack header $common_src/$header" >&2
+    echo "       stage it from OnePlusOSS/android_kernel_oneplus_sm8650 before building" >&2
+    exit 1
+  }
+done
+if [[ ! -e "$common_src/include/soc/oplus/boot/boot_mode.h" ]]; then
+  mkdir -p "$common_src/include/soc/oplus"
+  ln -sfn ../../../../../vendor/oplus/kernel/boot/include \
+    "$common_src/include/soc/oplus/boot"
+fi
+
+normalize_driver_source() {
+  local staged_driver="$1"
+  # Vendor Kbuild contains C preprocessor #ifdef lines that break make.
+  python3 - "$staged_driver/Kbuild" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+text = text.replace(
+    "\t\tnfc/i2c_drv.o \\\n#ifdef CONFIG_NXP_NFC_VBAT_MONITOR\n               nfc_vbat_monitor.o\n#endif",
+    "\t\tnfc/i2c_drv.o \\\n\t\tnfc/nfc_vbat_monitor.o",
+)
+text = text.replace(
+    "#ifdef CONFIG_NXP_NFC_VBAT_MONITOR\nccflags-y += -DCONFIG_NXP_NFC_VBAT_MONITOR\n#endif",
+    "ccflags-y += -DCONFIG_NXP_NFC_VBAT_MONITOR",
+)
+open(path, "w").write(text)
+PY
+  # Vendor format strings pass size_t to %d; -Werror turns them into errors.
+  python3 - "$staged_driver/nfc/i2c_drv.c" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+text = text.replace('"%s of %d bytes, ret %d", __func__, count',
+                    '"%s of %zu bytes, ret %d", __func__, count')
+text = text.replace('"%s sending %d B", __func__, count',
+                    '"%s sending %zu B", __func__, count')
+open(path, "w").write(text)
+PY
+}
+
 mkdir -p "$output_dir"
 
 stage_driver() {
@@ -59,10 +105,12 @@ build_driver() {
   local stage="$1" artifact="$2" label="$3" apply_patch_file="${4:-}"
   local driver install_root ko module_name driver_revision patched_json evidence_name
   driver=$(stage_driver "$stage" "$apply_patch_file")
+  normalize_driver_source "$driver"
   install_root="$stage/install"
-  make -C "$common_src" O="$common_out" M="$driver" NFC_ROOT="$driver" modules
   make -C "$common_src" O="$common_out" M="$driver" NFC_ROOT="$driver" \
-    INSTALL_MOD_PATH="$install_root" modules_install
+    KBUILD_MODPOST_WARN=1 modules
+  make -C "$common_src" O="$common_out" M="$driver" NFC_ROOT="$driver" \
+    KBUILD_MODPOST_WARN=1 INSTALL_MOD_PATH="$install_root" modules_install
   ko=$(find "$install_root/lib/modules" -type f \( -name nxp-nci.ko -o -name nxp_nci.ko \) -print -quit 2>/dev/null || true)
   [[ -n "$ko" ]] || { echo "ERROR: installable nxp-nci.ko missing for $label build" >&2; return 1; }
   file "$ko" | grep -q 'ELF 64-bit.*ARM aarch64' || { echo "ERROR: nxp-nci.ko is not AArch64" >&2; return 1; }

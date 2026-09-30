@@ -7,40 +7,14 @@ tmpdir=$(mktemp -d)
 trap 'if [[ "${KEEP_NFC_FIXTURE:-0}" == 1 ]]; then printf "fixture=%s\\n" "$tmpdir"; else rm -rf "$tmpdir"; fi' EXIT
 
 [[ -f "$patch" ]] || { echo 'FAIL: NFC exclusive-open patch missing' >&2; exit 1; }
+fixture="$root/tests/nethunter/fixtures/nxp-nfc"
+[[ -f "$fixture/common.c" && -f "$fixture/common.h" ]] || {
+  echo 'FAIL: pinned NXP driver fixture missing' >&2; exit 1;
+}
 driver="$tmpdir/vendor/nxp/opensource/driver"
 mkdir -p "$driver/nfc"
-
-python3 - "$driver" <<'PY'
-from pathlib import Path
-import sys
-
-driver = Path(sys.argv[1])
-header = ["/* pinned-source fixture */"] * 270
-header[261] = "\tstruct mutex dev_ref_mutex;"   # line 262
-header[262] = "\tunsigned int dev_ref_count;"  # line 263
-header[263] = "\tstruct class *nfc_class;"    # line 264
-(driver / "nfc/common.h").write_text("\n".join(header) + "\n")
-
-source = ["/* pinned-source fixture */"] * 890
-source[772] = "int nfc_dev_open(struct inode *inode, struct file *filp)"  # 773
-source[773] = "{"  # 774
-source[774] = "\tstruct nfc_dev *nfc_dev = NULL;"  # 775
-source[775] = ""  # 776
-source[776] = "\tnfc_dev = container_of(inode->i_cdev, struct nfc_dev, c_dev);"  # 777
-source[777] = ""  # 778
-source[787] = "\tif (!(current->flags & PF_NOFREEZE)) {"  # 788
-source[788] = "\t\tcurrent->flags |= PF_NOFREEZE;"  # 789
-source[789] = "\t\tpr_debug(\"NxpDrv: %s: current->flags 0x%x. \\n\", __func__, current->flags);"  # 790
-source[790] = "\t}"  # 791
-source[792] = "\tmutex_lock(&nfc_dev->dev_ref_mutex);"  # 793
-source[793] = ""  # 794
-source[794] = "\tfilp->private_data = nfc_dev;"  # 795
-source[851] = "\tif (nfc_dev->dev_ref_count > 0)"  # 852
-source[852] = "\t\tnfc_dev->dev_ref_count = nfc_dev->dev_ref_count - 1;"  # 853
-source[853] = ""  # 854
-source[854] = "\tfilp->private_data = NULL;"  # 855
-(driver / "nfc/common.c").write_text("\n".join(source) + "\n")
-PY
+cp "$fixture/common.c" "$driver/nfc/common.c"
+cp "$fixture/common.h" "$driver/nfc/common.h"
 
 git -C "$tmpdir" init -q
 git -C "$tmpdir" add vendor/nxp/opensource/driver/nfc/common.h vendor/nxp/opensource/driver/nfc/common.c
@@ -51,6 +25,33 @@ grep -q 'int nh_owner_tgid;' "$driver/nfc/common.h"
 grep -q 'current->tgid' "$driver/nfc/common.c"
 grep -q 'return -EBUSY;' "$driver/nfc/common.c"
 grep -q 'nh_owner_tgid = 0;' "$driver/nfc/common.c"
+
+# Placement guard: a zero-context patch applies at arbitrary offsets and can
+# land the ownership checks outside nfc_dev_open/nfc_dev_close. Require each
+# inserted line to sit inside the right function body.
+python3 - "$driver/nfc/common.c" <<'PY'
+import re
+import sys
+
+text = open(sys.argv[1]).read()
+funcs = {}
+for name in ("nfc_dev_open", "nfc_dev_close"):
+    m = re.search(r"\nint %s\(struct inode \*inode, struct file \*filp\)\n\{" % name, text)
+    if not m:
+        raise SystemExit(f"FAIL: {name} not found after patch")
+    start = m.end()
+    end = text.index("\n}\n", start)
+    funcs[name] = text[start:end]
+
+if "nh_owner_tgid != current->tgid" not in funcs["nfc_dev_open"]:
+    raise SystemExit("FAIL: owner check not inside nfc_dev_open (patch misplaced)")
+if "nh_owner_tgid = current->tgid" not in funcs["nfc_dev_open"]:
+    raise SystemExit("FAIL: owner assignment not inside nfc_dev_open (patch misplaced)")
+if "nh_owner_tgid = 0" not in funcs["nfc_dev_close"]:
+    raise SystemExit("FAIL: owner clear not inside nfc_dev_close (patch misplaced)")
+if "int nh_set_nofreeze = 0;" not in funcs["nfc_dev_open"]:
+    raise SystemExit("FAIL: nh_set_nofreeze declaration not inside nfc_dev_open")
+PY
 echo 'NFC exclusive-open patch fixture passed'
 
 if [[ "${NH_RUN_DEVICE_TEST:-0}" != 1 ]]; then
@@ -78,7 +79,7 @@ trap 'cleanup; rm -rf "$tmpdir"' EXIT
 
 "$ADB" shell su -c "$acquire"
 acquired=1
-if output=$("$ADB" shell su -c "$tool check-open" 2>&1); then
+if output=$("$ADB" shell su -c "$tool probe" 2>&1); then
   echo 'FAIL: second process opened /dev/nq-nci while NetHunter session owns it' >&2
   exit 1
 fi
