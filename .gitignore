@@ -6,3 +6,4 @@
 *.orig
 *.rej
 nethunter/nfc/nci_raw_tool
+docs/nethunter/device-profile.json
