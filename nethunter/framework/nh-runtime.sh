@@ -80,18 +80,15 @@ nh_wait_service_stopped() {
   return 1
 }
 
-# Return 0 when no process holds the given device node. Best effort: an
-# unreadable /proc entry is ignored so a restrictive policy cannot wedge
-# acquisition, but a visible holder fails the check.
-nh_node_is_free() {
-  local node="$1" fd
-  [ -n "$node" ] || return 1
-  for fd in /proc/[0-9]*/fd/*; do
-    [ -e "$fd" ] || continue
-    [ "$(readlink "$fd" 2>/dev/null)" = "$node" ] || continue
-    return 1
-  done
-  return 0
+# Return 0 when no process holds the given device node. Uses the module
+# reference count from /proc/modules: chrdev_open takes a reference on
+# fops->owner, so a live open keeps refcount > 0. This is O(1); scanning
+# /proc/*/fd/* is unusably slow on a real device.
+nh_module_has_users() {
+  local module="$1" modules_file="${NH_MODULES_FILE:-/proc/modules}" ref
+  ref=$(awk -v m="$module" '$1 == m || $1 == (m "_") {print $3; exit}' "$modules_file" 2>/dev/null) || return 1
+  case "$ref" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$ref" -gt 0 ]
 }
 
 nh_module_loaded() {

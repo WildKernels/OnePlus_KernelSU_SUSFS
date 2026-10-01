@@ -13,7 +13,6 @@ NH_LOCK_DIR="${NH_LOCK_DIR:-$NH_STATE_DIR}"
 NCI_TOOL="$NH_PACKAGE_ROOT/system/bin/nci_raw_tool"
 NFC_KO="$NH_PACKAGE_ROOT/vendor_dlkm_override/nxp-nci.ko"
 STOCK_NFC_KO="${NH_NFC_VENDOR_KO:-/vendor_dlkm/lib/modules/nxp-nci.ko}"
-NFC_NODE="${NH_NFC_NODE:-/dev/nq-nci}"
 NCI_SOCKET="$NH_STATE_DIR/nci.sock"
 NCI_PID="$NH_STATE_DIR/nci_raw_tool.pid"
 MODULE_PROP="$NH_PACKAGE_ROOT/module.prop"
@@ -149,15 +148,15 @@ if ! nh_wait_service_stopped init.svc.vendor.nfc_hal_service \
      init.svc_debug_pid.vendor.nfc_hal_service 10; then
   rollback "NFC HAL did not stop"
 fi
-# A dead HAL may still hold /dev/nq-nci briefly; unloading under a live
-# holder is what wedged the module lock in testing.
+# A dead HAL may still hold /dev/nq-nci briefly; rmmod returns EBUSY while
+# a holder exists, so wait for the module refcount to drain before swapping.
 i=0
-while [ "$i" -lt 5 ] && ! nh_node_is_free "$NFC_NODE"; do
+while [ "$i" -lt 5 ] && nh_module_has_users nxp_nci; do
   sleep 1
   i=$((i + 1))
 done
-if ! nh_node_is_free "$NFC_NODE"; then
-  rollback "a process still holds $NFC_NODE"
+if nh_module_has_users nxp_nci; then
+  rollback "nxp_nci still has open holders"
 fi
 
 if ! rmmod nxp_nci 2>/dev/null; then

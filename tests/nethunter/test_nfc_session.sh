@@ -203,31 +203,24 @@ else
 fi
 rmdir "$nh_data/wifi.lock"
 
-# ---- Guard: abort before rmmod when another process holds the NFC node ----
-# Simulate a stale holder by pointing NH_NFC_NODE at a FIFO kept open by a
-# background reader; the acquire must roll back without ever calling rmmod.
-holder_node="$tmpdir/nfc-holder"
-rm -f "$holder_node"
-mkfifo "$holder_node"
-# Keep the FIFO open in this shell so nh_node_is_free sees a live holder.
-exec 9<>"$holder_node"
+# ---- Guard: abort before rmmod when the module still has open holders ----
+# A live /dev/nq-nci open keeps nxp_nci refcount > 0 (field 3 of
+# /proc/modules). The acquire must roll back without calling rmmod.
 : > "$tmpdir/calls.log"
 echo running > "$state_dir/hal"
-printf 'nxp_nci 1 0 - Live 0x0\n' > "$state_dir/proc_modules"
-if run_env env NH_NFC_NODE="$holder_node" bash "$acquire" >"$tmpdir/acquire-hold.out" 2>&1; then
-  fail "acquire proceeded while NFC node was held"
+printf 'nxp_nci 1 1 - Live 0x0\n' > "$state_dir/proc_modules"
+if run_env bash "$acquire" >"$tmpdir/acquire-hold.out" 2>&1; then
+  fail "acquire proceeded while nxp_nci had open holders"
 else
-  pass "acquire aborts while NFC node is held"
+  pass "acquire aborts while nxp_nci has open holders"
 fi
 if grep -q "rmmod nxp_nci" "$tmpdir/calls.log"; then
-  fail "acquire called rmmod while node was held"
+  fail "acquire called rmmod while nxp_nci had open holders"
 else
-  pass "acquire skipped rmmod while node was held"
+  pass "acquire skipped rmmod while nxp_nci had open holders"
 fi
 [[ "$(cat "$nh_data/nfc.state" 2>/dev/null)" == "IDLE" ]] \
-  && pass "held-node abort restored IDLE" || fail "held-node abort left state $(cat "$nh_data/nfc.state" 2>/dev/null)"
-exec 9>&-
-rm -f "$holder_node"
+  && pass "holder abort restored IDLE" || fail "holder abort left state $(cat "$nh_data/nfc.state" 2>/dev/null)"
 
 echo ""
 echo "Results: $pass passed, $fail failed"

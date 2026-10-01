@@ -25,6 +25,7 @@ with tempfile.TemporaryDirectory(prefix="nci-tool-contract-") as tmp:
     socket_path = os.path.join(tmp, "nci.sock")
     subprocess.run([
         "cc", "-Wall", "-Werror", f'-DNQ_NCI_DEV="{device}"',
+        "-DNQ_NCI_SKIP_POWER",
         source, "-o", tool,
     ], check=True)
     os.close(slave)

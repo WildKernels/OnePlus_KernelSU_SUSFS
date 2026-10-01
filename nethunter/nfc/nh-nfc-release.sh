@@ -10,7 +10,6 @@ RADIO=nfc
 NH_STATE_DIR="${NH_STATE_DIR:-/data/adb/nethunter}"
 NH_LOCK_DIR="${NH_LOCK_DIR:-$NH_STATE_DIR}"
 STOCK_NFC_KO="${NH_NFC_VENDOR_KO:-/vendor_dlkm/lib/modules/nxp-nci.ko}"
-NFC_NODE="${NH_NFC_NODE:-/dev/nq-nci}"
 NCI_SOCKET="$NH_STATE_DIR/nci.sock"
 NCI_PID="$NH_STATE_DIR/nci_raw_tool.pid"
 
@@ -65,13 +64,13 @@ fi
 
 if nh_module_loaded nxp_nci; then
   i=0
-  while [ "$i" -lt 5 ] && ! nh_node_is_free "$NFC_NODE"; do
+  while [ "$i" -lt 5 ] && nh_module_has_users nxp_nci; do
     sleep 1
     i=$((i + 1))
   done
-  if ! nh_node_is_free "$NFC_NODE"; then
-    nh_mark_recovery_required "$RADIO" "a process still holds $NFC_NODE on release"
-    echo "ERROR: /dev/nq-nci still held; journal retained" >&2
+  if nh_module_has_users nxp_nci; then
+    nh_mark_recovery_required "$RADIO" "nxp_nci still has open holders on release"
+    echo "ERROR: nxp_nci still held; journal retained" >&2
     exit 1
   fi
   if ! rmmod nxp_nci 2>/dev/null; then

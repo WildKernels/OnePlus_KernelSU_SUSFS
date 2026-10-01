@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -19,6 +20,14 @@
 #ifndef NQ_NCI_DEV
 #define NQ_NCI_DEV "/dev/nq-nci"
 #endif
+
+/* NXP/Qualcomm NFC UAPI: nfc/dev.c sn_uapi.h */
+#ifndef NFC_MAGIC
+#define NFC_MAGIC 0xE9
+#endif
+#define NFC_SET_PWR _IOW(NFC_MAGIC, 0x01, uint32_t)
+#define NFC_POWER_OFF 0U
+#define NFC_POWER_ON 1U
 
 #define NCI_HEADER_SIZE 3U
 #define NCI_MAX_PAYLOAD 255U
@@ -75,6 +84,43 @@ static int nci_open(void)
     }
     return 0;
 }
+
+/* Reset the NFCC with a VEN power cycle before NCI traffic.
+   A bare NFC_POWER_ON is a no-op when VEN is already high (the driver
+   skips gpio_set_ven when the value is unchanged), so the chip stays in
+   whatever state the HAL/probe left it and the first CORE_RESET write
+   fails with -ENOTCONN. Driving VEN low then high forces a real reset.
+   The driver reads the ioctl argument as the value itself, not a pointer.
+   NQ_NCI_SKIP_POWER lets the host PTY contract test exercise the socket
+   protocol without a real NFC character device. */
+#ifdef NQ_NCI_SKIP_POWER
+static int nci_power_on(void) { return 0; }
+static int nci_power_off(void) { return 0; }
+#else
+static int nci_power_on(void)
+{
+    const struct timespec settle = {0, 50000000L};
+
+    if (ioctl(nci_fd, NFC_SET_PWR, (unsigned long)NFC_POWER_OFF) < 0) {
+        perror("ioctl NFC_SET_PWR off");
+        return -1;
+    }
+    nanosleep(&settle, NULL);
+    if (ioctl(nci_fd, NFC_SET_PWR, (unsigned long)NFC_POWER_ON) < 0) {
+        perror("ioctl NFC_SET_PWR on");
+        return -1;
+    }
+    nanosleep(&settle, NULL);
+    return 0;
+}
+
+static int nci_power_off(void)
+{
+    if (nci_fd < 0) return 0;
+    if (ioctl(nci_fd, NFC_SET_PWR, (unsigned long)NFC_POWER_OFF) < 0) return -1;
+    return 0;
+}
+#endif
 
 static void nci_close(void)
 {
@@ -146,29 +192,61 @@ static int nci_write_frame(const unsigned char *frame, size_t len)
     return 0;
 }
 
-/* NXP driver's blocking read is interruptible; alarm bounds reset/init waits. */
+/* The NXP i2c driver returns exactly the requested byte count, padding with
+   0xff past the real frame, so a single large read cannot be validated as a
+   frame. Read the 3-byte NCI header first, then the payload it announces.
+   The blocking read is interruptible; the alarm bounds each wait. */
+static ssize_t nci_read_exact(unsigned char *buf, size_t want,
+                              unsigned int timeout_seconds)
+{
+    size_t got = 0;
+
+    read_timed_out = 0;
+    alarm(timeout_seconds);
+    while (got < want) {
+        ssize_t n = read(nci_fd, buf + got, want - got);
+        if (n < 0) {
+            if (errno == EINTR && read_timed_out) { errno = ETIMEDOUT; break; }
+            if (errno == EINTR && stop_requested) { alarm(0); return -1; }
+            if (errno == EINTR) continue;
+            alarm(0);
+            return -1;
+        }
+        if (n == 0) break;
+        got += (size_t)n;
+    }
+    alarm(0);
+    if (read_timed_out && got < want) { errno = ETIMEDOUT; return -1; }
+    if (got < want) { errno = EPROTO; return -1; }
+    return (ssize_t)got;
+}
+
 static ssize_t nci_read_frame(unsigned char *frame, size_t capacity,
                               unsigned int timeout_seconds)
 {
-    ssize_t received;
+    ssize_t header_len;
+    size_t payload_len, total;
 
     if (capacity < NCI_MAX_PACKET) {
         errno = EMSGSIZE;
         return -1;
     }
-    read_timed_out = 0;
-    alarm(timeout_seconds);
-    received = read(nci_fd, frame, capacity);
-    alarm(0);
-    if (received < 0) {
-        if (errno == EINTR && read_timed_out) errno = ETIMEDOUT;
+    header_len = nci_read_exact(frame, NCI_HEADER_SIZE, timeout_seconds);
+    if (header_len < 0) return -1;
+    payload_len = frame[2];
+    total = NCI_HEADER_SIZE + payload_len;
+    if (total > capacity) {
+        errno = EMSGSIZE;
         return -1;
     }
-    if (validate_frame(frame, (size_t)received) < 0) {
+    if (payload_len > 0 &&
+        nci_read_exact(frame + NCI_HEADER_SIZE, payload_len, timeout_seconds) < 0)
+        return -1;
+    if (validate_frame(frame, total) < 0) {
         errno = EPROTO;
         return -1;
     }
-    return received;
+    return (ssize_t)total;
 }
 
 static int write_all(int fd, const void *data, size_t len)
@@ -383,6 +461,13 @@ static int cmd_session(const char *path)
         listener_fd = -1;
         return 1;
     }
+    if (nci_power_on() < 0) {
+        nci_close();
+        unlink(socket_path);
+        close(listener_fd);
+        listener_fd = -1;
+        return 1;
+    }
     while (!stop_requested) {
         int client_fd = accept(listener_fd, NULL, NULL);
         if (client_fd < 0) {
@@ -395,6 +480,7 @@ static int cmd_session(const char *path)
         if (handle_client(client_fd) < 0 && !stop_requested) result = 1;
         close(client_fd);
     }
+    nci_power_off();
     nci_close();
     close(listener_fd);
     listener_fd = -1;
