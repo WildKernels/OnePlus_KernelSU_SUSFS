@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo="${WILD_REPO:-WildKernels/OnePlus_KernelSU_SUSFS}"
-resukisu_repo="${RESUKISU_REPO:-ReSukiSU/ReSukiSU}"
+bakasu_repo="${BAKASU_REPO:-Baka-SU/BakaSU}"
 nomount_repo="${NOMOUNT_REPO:-maxsteeel/nomount}"
 kernel_patches_repo="${KERNEL_PATCHES_REPO:-WildKernels/kernel_patches}"
 vpnhide_repo="${VPNHIDE_REPO:-okhsunrog/vpnhide}"
@@ -44,8 +44,8 @@ susfs_sha=$(curl --fail --silent --show-error \
 [[ "$susfs_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Cannot resolve SUSFS upstream branch gki-android14-6.1" >&2; exit 1; }
 echo "SUSFS upstream: simonpunk/susfs4ksu@gki-android14-6.1 (${susfs_sha:0:8})" >&2
 
-resukisu_sha=$(api "https://api.github.com/repos/${resukisu_repo}/commits/main" | jq -r '.sha // empty')
-[[ "$resukisu_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Cannot resolve ReSukiSU main' >&2; exit 1; }
+bakasu_sha=$(api "https://api.github.com/repos/${bakasu_repo}/commits/main" | jq -r '.sha // empty')
+[[ "$bakasu_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Cannot resolve BakaSU main' >&2; exit 1; }
 
 nomount_release=$(api "https://api.github.com/repos/${nomount_repo}/releases/latest")
 nomount_tag=$(jq -r '.tag_name // empty' <<< "$nomount_release")
@@ -111,8 +111,8 @@ manifests=$(api "https://api.github.com/repos/${repo}/git/trees/${wild_sha}?recu
   --arg wild_sha "$wild_sha" \
   --arg wild_published_at "$wild_published_at" \
   --arg susfs_sha "$susfs_sha" \
-  --arg resukisu_repo "$resukisu_repo" \
-  --arg resukisu_sha "$resukisu_sha" \
+  --arg bakasu_repo "$bakasu_repo" \
+  --arg bakasu_sha "$bakasu_sha" \
   --arg nomount_repo "$nomount_repo" \
    --arg nomount_tag "$nomount_tag" \
    --arg nomount_sha "$nomount_sha" \
@@ -134,7 +134,7 @@ manifests=$(api "https://api.github.com/repos/${repo}/git/trees/${wild_sha}?recu
   --argjson configs "$configs" \
   --argjson manifests "$manifests" \
   '{wild_repo:$wild_repo,wild_release:$wild_tag,wild_sha:$wild_sha,wild_published_at:$wild_published_at,susfs_sha:$susfs_sha,
-    resukisu_repo:$resukisu_repo,resukisu_sha:$resukisu_sha,
+    bakasu_repo:$bakasu_repo,bakasu_sha:$bakasu_sha,
       nomount_repo:$nomount_repo,nomount_tag:$nomount_tag,nomount_sha:$nomount_sha,
       nomount_asset_url:$nomount_asset_url,nomount_asset_sha256:$nomount_asset_sha256,
      kernel_patches_repo:$kernel_patches_repo,kernel_patches_sha:$kernel_patches_sha,

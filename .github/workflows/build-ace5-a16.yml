@@ -74,7 +74,7 @@ jobs:
               "https://raw.githubusercontent.com/${wild_repo}/${wild_sha}/${config_path}")
             manifest=$(jq -r '.manifest' <<< "$config")
             manifest_url="https://raw.githubusercontent.com/${wild_repo}/${wild_sha}/manifests/a16/${manifest}"
-            entry=$(jq -c --arg manifest_url "$manifest_url" '. + {manifest:$manifest_url, ksu_type:"ReSukiSU", uname:"OP-ACE5-RESUKISU", blacklist_modules:""}' <<< "$config")
+            entry=$(jq -c --arg manifest_url "$manifest_url" '. + {manifest:$manifest_url, ksu_type:"BakaSU", uname:"OP-ACE5-BAKASU", blacklist_modules:""}' <<< "$config")
             matrix=$(jq -c --argjson entry "$entry" '. + [$entry]' <<< "$matrix")
           done
           [[ $(jq 'length' <<< "$matrix") -gt 0 ]] || { echo 'Empty Ace 5 matrix' >&2; exit 1; }
@@ -206,14 +206,14 @@ jobs:
           set -euo pipefail
           mkdir -p source-snapshot
           echo '${{ needs.resolve.outputs.sources }}' > source-snapshot/resolved-sources.json
-          jq -e '.wild_sha and .susfs_sha and .resukisu_sha and .nomount_sha and .vpnhide_sha and .vpnhide_builtin_sha256 and .vpnhide_apk_sha256' source-snapshot/resolved-sources.json >/dev/null
+          jq -e '.wild_sha and .susfs_sha and .bakasu_sha and .nomount_sha and .vpnhide_sha and .vpnhide_builtin_sha256 and .vpnhide_apk_sha256' source-snapshot/resolved-sources.json >/dev/null
 
-      - name: Build kernel with ReSukiSU, SUSFS, and NoMount
+      - name: Build kernel with BakaSU, SUSFS, and NoMount
         uses: ./.github/actions/build-kernel
         with:
           op_config_json: ${{ toJSON(matrix) }}
-          ksu_type: ReSukiSU
-          ksu_branch_or_hash: ${{ fromJSON(needs.resolve.outputs.sources).resukisu_sha }}
+          ksu_type: BakaSU
+          ksu_branch_or_hash: ${{ fromJSON(needs.resolve.outputs.sources).bakasu_sha }}
           susfs_commit_hash_or_branch: ${{ fromJSON(needs.resolve.outputs.sources).susfs_sha }}
           nomount_commit: ${{ fromJSON(needs.resolve.outputs.sources).nomount_sha }}
           bbg_repo: ${{ fromJSON(needs.resolve.outputs.sources).bbg_repo }}
@@ -370,7 +370,7 @@ jobs:
             printf '| WildKernel commit | `%s` |\n' "$wild_sha"
             printf '| NoMount release | `%s` |\n' "$nomount_tag"
             printf '| NoMount commit | `%s` |\n' "$nomount_sha"
-            echo "| Root | ReSukiSU |"
+            echo "| Root | BakaSU |"
             printf '| Optimization | `%s` |\n' '${{ inputs.optimize_level }}'
             printf '| Clean build | `%s` |\n' '${{ inputs.clean_build }}'
             echo
@@ -394,7 +394,22 @@ jobs:
             echo
             echo "## Features"
             echo
-            echo "ReSukiSU, SUSFS, NoMount, BBG, BBRv1/v3, CAKE/PIE/FQ_PIE, WireGuard, IP Set, IPv6 NAT, TTL/HL, ThinLTO, Unicode fix, Droidspaces, NTSync, and TMPFS ACL/XATTR."
+            echo "- BakaSU"
+            echo "- SUSFS"
+            echo "- NoMount"
+            echo "- VPNHide"
+            echo "- BBG"
+            echo "- BBRv1/v3"
+            echo "- CAKE/PIE/FQ_PIE"
+            echo "- WireGuard"
+            echo "- IP Set"
+            echo "- IPv6 NAT"
+            echo "- TTL/HL"
+            echo "- ThinLTO"
+            echo "- Unicode fix"
+            echo "- Droidspaces"
+            echo "- NTSync"
+            echo "- TMPFS ACL/XATTR"
             echo
             echo "## Sources"
             echo

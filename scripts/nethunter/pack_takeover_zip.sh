@@ -88,7 +88,7 @@ sed -e "s/@@TARGET@@/$TARGET/g" \
     -e "s/@@SHA_BTVHCI@@/$SHA_BTVHCI/g" \
     nethunter/module/module.prop.template > "$PACK_DIR/module.prop"
 
-# Copy ReSukiSU install scripts
+# Copy KernelSU-family install scripts
 cp nethunter/module/customize.sh "$PACK_DIR/"
 cp nethunter/module/post-fs-data.sh "$PACK_DIR/"
 cp nethunter/module/service.sh "$PACK_DIR/"

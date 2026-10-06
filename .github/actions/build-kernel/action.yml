@@ -1,5 +1,5 @@
-name: 'Build OnePlus Ace 5 Kernel with ReSukiSU'
-description: 'Build an Ace 5 A16 kernel with ReSukiSU, SUSFS, and built-in NoMount'
+name: 'Build OnePlus Ace 5 Kernel with BakaSU'
+description: 'Build an Ace 5 A16 kernel with BakaSU, SUSFS, and built-in NoMount'
 
 inputs:
   op_config_json:
@@ -851,14 +851,14 @@ runs:
         sed -i 's/protected_modules = \[.*\]/protected_modules = []/' common/modules.bzl || true
         echo "::endgroup::"
 
-    - name: Add ReSukiSU
+    - name: Add BakaSU
       shell: bash
-      if: ${{ inputs.ksu_type == 'ReSukiSU' }}
+      if: ${{ inputs.ksu_type == 'BakaSU' }}
       run: |
         set -euo pipefail
-        echo "::group::Add ReSukiSU"
+        echo "::group::Add BakaSU"
         cd "$KERNEL_PLATFORM_FOLDER"
-        git clone --no-checkout https://github.com/ReSukiSU/ReSukiSU.git KernelSU
+        git clone --no-checkout https://github.com/Baka-SU/BakaSU.git KernelSU
         cd KernelSU
         git fetch origin "${{ inputs.ksu_branch_or_hash }}"
         git checkout --detach "${{ inputs.ksu_branch_or_hash }}"
@@ -897,11 +897,11 @@ runs:
         cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
         CONFIG_KSU=y
         EOF
-        echo "ReSukiSU" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
+        echo "BakaSU" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
         echo "$KSU_VERSION" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
         echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-        echo "ReSukiSU Version: $KSU_VERSION"
-        echo "✅ ReSukiSU added (commit: ${KSU_COMMIT_SHA:0:8})"
+        echo "BakaSU Version: $KSU_VERSION"
+        echo "✅ BakaSU added (commit: ${KSU_COMMIT_SHA:0:8})"
         echo "::endgroup::"
 
     - name: Apply SUSFS Patches
@@ -931,7 +931,7 @@ runs:
           echo "NEED_HOOKS=false" >> $GITHUB_ENV
         fi
         
-        echo "ReSukiSU carries SUSFS compatibility; skipping KernelSU-only patch"
+        echo "BakaSU carries SUSFS compatibility; skipping KernelSU-only patch"
         
         cd "$COMMON_KERNEL_FOLDER"
         if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
@@ -2186,8 +2186,8 @@ runs:
           echo "Kernel Uname: ${{ env.KERNEL_UNAME }}"
           echo "Build User: ${{ env.BUILD_USER }}"
           echo "Build Host: ${{ env.BUILD_HOST }}"
-          echo "ReSukiSU Version: ${KSUVER:-unknown}"
-          echo "ReSukiSU commit SHA: ${KSU_SHA:-unknown}"
+          echo "BakaSU Version: ${KSUVER:-unknown}"
+          echo "BakaSU commit SHA: ${KSU_SHA:-unknown}"
           if [ "${{ env.OP_SUSFS }}" = true ]; then
             echo "SUSFS Version: ${SUSVER:-unknown}"
             echo "SUSFS commit SHA: $SUSFS_SHA"
@@ -2232,12 +2232,12 @@ runs:
           echo "| **Kernel Uname** | \`${{ env.KERNEL_UNAME }}\` |"
           echo "| **Build User** | ${{ env.BUILD_USER }} |"
           echo "| **Build Host** | ${{ env.BUILD_HOST }} |"
-          echo "| **ReSukiSU Version** | ${KSUVER:-unknown} |"
+          echo "| **BakaSU Version** | ${KSUVER:-unknown} |"
           
           if [ "$KSU_SHA" != "unknown" ]; then
-            echo "| **ReSukiSU Commit** | [\`${KSU_SHA:0:8}\`](https://github.com/ReSukiSU/ReSukiSU/commit/$KSU_SHA) |"
+            echo "| **BakaSU Commit** | [\`${KSU_SHA:0:8}\`](https://github.com/Baka-SU/BakaSU/commit/$KSU_SHA) |"
           else
-            echo "| **ReSukiSU Commit** | unknown |"
+            echo "| **BakaSU Commit** | unknown |"
           fi
           
           if [ "${{ env.OP_SUSFS }}" = true ]; then

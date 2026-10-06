@@ -6,7 +6,7 @@ Ace 5 A16 target published by the latest stable WildKernel release, currently
 
 ## Included
 
-- ReSukiSU from current `main`, resolved to a full commit before each run.
+- BakaSU from current `main`, resolved to a full commit before each run.
 - SUSFS from the matching `android14-6.1` commit recorded in that WildKernel release.
 - NoMount built into the kernel from the latest stable upstream release tag.
 - VPNHide built-in backend from latest stable release, with full network and filesystem hiding.
