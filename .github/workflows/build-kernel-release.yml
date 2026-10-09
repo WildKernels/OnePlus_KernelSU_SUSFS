@@ -78,6 +78,11 @@ on:
         description: 'Enter SusFS Branch or commit hash for android16-6.12'
         type: string
         default: ''
+      kernel_patches_repo:
+        description: 'kernel_patches repository URL holding the feature/fix patches'
+        required: false
+        type: string
+        default: 'https://github.com/FRTI64/kernel_patches.git'
 
 jobs:
   set-op-model:
@@ -210,62 +215,8 @@ jobs:
           ksu_type=$(echo "$ksu_options_normalized" | jq -r '.[0].type')
           ksu_ref=$(echo "$ksu_options_normalized" | jq -r '.[0].hash')
           
-          if [ "$ksu_type" == "KSUN" ]; then
-            KSU_REPO_OWNER="KernelSU-Next"
-            KSU_REPO_NAME="KernelSU-Next"
-          else
-            KSU_REPO_OWNER="tiann"
-            KSU_REPO_NAME="KernelSU"
-          fi
-          
-          HEAD_REF="refs/heads/${ksu_ref}"
-          TAG_REF="refs/tags/${ksu_ref}"
-          
-          QUERY='query($owner: String!, $name: String!, $headRef: String!, $tagRef: String!, $objRef: String!) {
-            repository(owner: $owner, name: $name) {
-              hb: ref(qualifiedName: $headRef) { t: target { ... on Commit { o: oid } } }
-              ht: ref(qualifiedName: $tagRef) { t: target { ... on Commit { o: oid } } }
-              ho: object(expression: $objRef) { ... on Commit { o: oid } }
-            }
-          }'
-          
-          MAX_RETRIES=3
-          RETRY_COUNT=0
-          RETRY_DELAY=5 # Seconds to wait between retries
-          
-          echo "Resolving $ksu_type hash ($ksu_ref)..."
-          
-          until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
-            RESULT=$(gh api graphql -f query="$QUERY" -f owner="$KSU_REPO_OWNER" -f name="$KSU_REPO_NAME" -f headRef="$HEAD_REF" -f tagRef="$TAG_REF" -f objRef="$ksu_ref" 2>/dev/null)
-            EXIT_CODE=$?
-            
-            if [ $EXIT_CODE -eq 0 ] && [ ! -z "$RESULT" ]; then
-              echo "  ✅ API Success"
-              break
-            fi
-            
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            echo "::warning::API failed (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in ${RETRY_DELAY}s..."
-            sleep $RETRY_DELAY
-          done
-          
-          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-            echo "::error::GitHub API unreachable. Cannot validate $ksu_ref"
-            exit 1
-          fi
-          
-          resolved_sha=$(echo "$RESULT" | jq -r '.data.repository | (.hb.t.o // .ht.t.o // .ho.o // "unknown")')
-          
-          if [ "$resolved_sha" == "unknown" ]; then
-            echo "::error::Ref/Hash '$ksu_ref' does not exist in $KSU_REPO_OWNER/$KSU_REPO_NAME"
-            exit 1
-          fi
-          
-          echo "  ✅ Resolved: $ksu_type/$ksu_ref → $resolved_sha"
-          echo "ksu_resolved_hash=$resolved_sha" >> "$GITHUB_OUTPUT"
-          
-          # Inject ksu_resolved_hash into each device in the matrix
-          merged_matrix=$(echo "$merged_matrix" | jq  --arg resolved_sha "$resolved_sha" 'map(.ksu_resolved_hash = $resolved_sha)')
+          # KSU repo selection and hash resolution happen after the SUSFS loop
+          # below so the SUSFS versions are known first (logged per GKI key).
           
           # SUSFS hash fetch
           SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
@@ -302,15 +253,12 @@ jobs:
             default_val="${default_branches[$key]}"
             user_val="${user_inputs[$key]:-$default_val}"
             
-            # Build GraphQL query — include blob fetch only when releasing
-            HASH_QUERY="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${user_val}\") { sha } } } }"
-            RELEASE_QUERY="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${user_val}\") { sha } blobs(paths: [\"kernel_patches/include/linux/susfs.h\"], ref: \"${user_val}\") { nodes { rawBlob } } } } }"
+            # Build GraphQL query — always include the susfs.h blob so the
+            # resolved SUSFS_VERSION is logged per GKI key and validated on
+            # release builds.
+            FULL_QUERY="{ project(fullPath: \"${GITLAB_PROJECT_PATH}\") { repository { ch: commit(ref: \"${user_val}\") { sha } blobs(paths: [\"kernel_patches/include/linux/susfs.h\"], ref: \"${user_val}\") { nodes { rawBlob } } } } }"
             
-            if [ "${{ inputs.make_release }}" = "true" ]; then
-              GL_QUERY="$RELEASE_QUERY"
-            else
-              GL_QUERY="$HASH_QUERY"
-            fi
+            GL_QUERY="$FULL_QUERY"
             
             MAX_RETRIES=3
             RETRY_COUNT=0
@@ -318,19 +266,16 @@ jobs:
             resolved=""
             
             until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
-              RESPONSE=$(curl -s --fail -G "https://gitlab.com/api/graphql" --data-urlencode "query=$GL_QUERY")
-              EXIT_CODE=$?
+              RESPONSE=$(curl -s --fail -G "https://gitlab.com/api/graphql" --data-urlencode "query=$GL_QUERY") || true
               
-              if [ $EXIT_CODE -eq 0 ] && [ -n "$RESPONSE" ]; then
+              if [ -n "$RESPONSE" ]; then
                 resolved=$(echo "$RESPONSE" | jq -r '.data.project.repository.ch.sha // empty')
                 if [ -n "$resolved" ] && [ "$resolved" != "null" ]; then
                   echo "  ✅ Query for $key Success"
                   
-                  if [ "${{ inputs.make_release }}" = "true" ]; then
-                    extracted=$(echo "$RESPONSE" | jq -r '.data.project.repository.blobs.nodes[0].rawBlob // empty' | grep '#define SUSFS_VERSION' | awk -F'"' '{print $2}')
-                    susfs_versions_per_key[$key]="${extracted:-unknown}"
-                    echo "  ✅ $key → SUSFS_VERSION = ${extracted:-unknown}"
-                  fi
+                  extracted=$(echo "$RESPONSE" | jq -r '.data.project.repository.blobs.nodes[0].rawBlob // empty' | grep '#define SUSFS_VERSION' | awk -F'"' '{print $2}')
+                  susfs_versions_per_key[$key]="${extracted:-unknown}"
+                  echo "  ✅ $key → SUSFS_VERSION = ${extracted:-unknown}"
                   
                   break
                 fi
@@ -395,6 +340,64 @@ jobs:
             
             echo "susfs_base_version=$susfs_base_version" >> "$GITHUB_OUTPUT"
           fi
+          
+          # ── KernelSU(-Next) source selection and hash resolution ───────────
+          # SUSFS >= v2.3.0 uses the fix patches stored in the kernel_patches
+          # repo (next/susfs_fix_patches/v2.3.0/) on top of the upstream
+          # KernelSU-Next checkout; older SUSFS pins keep the classic enable
+          # patch + per-version fix patch flow.
+          if [ "$ksu_type" == "KSUN" ]; then
+            KSU_REPO_OWNER="KernelSU-Next"
+            KSU_REPO_NAME="KernelSU-Next"
+          else
+            KSU_REPO_OWNER="tiann"
+            KSU_REPO_NAME="KernelSU"
+          fi
+          
+          HEAD_REF="refs/heads/${ksu_ref}"
+          TAG_REF="refs/tags/${ksu_ref}"
+          
+          QUERY='query($owner: String!, $name: String!, $headRef: String!, $tagRef: String!, $objRef: String!) {
+            repository(owner: $owner, name: $name) {
+              hb: ref(qualifiedName: $headRef) { t: target { ... on Commit { o: oid } } }
+              ht: ref(qualifiedName: $tagRef) { t: target { ... on Commit { o: oid } } }
+              ho: object(expression: $objRef) { ... on Commit { o: oid } }
+            }
+          }'
+          
+          resolve_ksu_ref() {
+            local owner="$1" name="$2" resolved=""
+            local attempt=1
+            until [ $attempt -gt 3 ]; do
+              RESULT=$(gh api graphql -f query="$QUERY" -f owner="$owner" -f name="$name" -f headRef="$HEAD_REF" -f tagRef="$TAG_REF" -f objRef="$ksu_ref" 2>/dev/null) || true
+              if [ -n "$RESULT" ]; then
+                break
+              fi
+              echo "::warning::API failed (Attempt $attempt/3). Retrying in 5s..."
+              sleep 5
+              attempt=$((attempt + 1))
+            done
+            if [ $attempt -gt 3 ]; then
+              echo "::error::GitHub API unreachable. Cannot validate $ksu_ref"
+              exit 1
+            fi
+            resolved=$(echo "$RESULT" | jq -r '.data.repository | (.hb.t.o // .ht.t.o // .ho.o // "unknown")')
+            echo "$resolved"
+          }
+          
+          echo "Resolving $ksu_type hash ($ksu_ref) from $KSU_REPO_OWNER/$KSU_REPO_NAME..."
+          resolved_sha=$(resolve_ksu_ref "$KSU_REPO_OWNER" "$KSU_REPO_NAME")
+          
+          if [ "$resolved_sha" == "unknown" ]; then
+            echo "::error::Ref/Hash '$ksu_ref' does not exist in $KSU_REPO_OWNER/$KSU_REPO_NAME"
+            exit 1
+          fi
+          
+          echo "  ✅ Resolved: $ksu_type/$ksu_ref → $resolved_sha"
+          echo "ksu_resolved_hash=$resolved_sha" >> "$GITHUB_OUTPUT"
+          
+          # Inject ksu_resolved_hash into each device in the matrix
+          merged_matrix=$(echo "$merged_matrix" | jq --arg resolved_sha "$resolved_sha" 'map(.ksu_resolved_hash = $resolved_sha)')
           
           # Inject susfs_resolved_hash into each device in the matrix
           susfs_hashes_json=$(jq -n \
@@ -554,7 +557,10 @@ jobs:
         run: |
           set -uo pipefail
           echo "::group::Download ccache"
-          url="https://raw.githubusercontent.com/WildKernels/kernel_patches/refs/heads/main/ccache/ccache-x86-64"
+          kp_repo="${{ inputs.kernel_patches_repo }}"
+          kp_owner_name="${kp_repo#https://github.com/}"
+          kp_owner_name="${kp_owner_name%.git}"
+          url="https://raw.githubusercontent.com/${kp_owner_name}/refs/heads/main/ccache/ccache-x86-64"
           ok=0
           for attempt in 1 2 3 4 5 6; do
             if curl -LfsS --connect-timeout 30 --max-time 120 -H "User-Agent: Mozilla/5.0" "$url" -o ccache && [ -s ccache ]; then
@@ -698,6 +704,7 @@ jobs:
           ksu_type: ${{ matrix.ksu_type }}
           ksu_branch_or_hash: ${{ matrix.ksu_resolved_hash }}
           susfs_commit_hash_or_branch: ${{ matrix.susfs_resolved_hash }}
+          kernel_patches_repo: ${{ inputs.kernel_patches_repo }}
           optimize_level: ${{ inputs.optimize_level }}
           build_timestamp: ${{ inputs.build_timestamp }}
           clean: ${{ inputs.clean_build }}
@@ -1120,7 +1127,7 @@ jobs:
           - **Baseband Guard (BBG)** - LSM-based baseband security
           - **SUSFS Hide Features**:
             - ✅ SUS_PATH - Hide suspicious paths
-            - ✅ SUS_MOUNT - Hide mount points (No Cli Support)
+            - ✅ SUS_MOUNT - Hide mount points
             - ✅ SUS_KSTAT - Spoof kernel statistics
             - ✅ SPOOF_UNAME - Kernel version spoofing
             - ✅ SPOOF_CMDLINE - Boot parameters spoofing
