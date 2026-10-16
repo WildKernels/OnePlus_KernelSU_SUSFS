@@ -1165,18 +1165,33 @@ runs:
               cd "$KSUN_FOLDER"
               if [ "$KSUVER" -ge 33341 ]; then
                 echo "KSUVER=$KSUVER >= 33341: using high-range SUSFS v2.3.0 fix patches"
+                HIGH_DIR="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/high"
+                if [ ! -f "$HIGH_DIR/susfs_extras.patch" ]; then
+                  echo "::error::Missing $HIGH_DIR - push FRTI64/kernel_patches (main) with the high/ SUSFS v2.3.0 patch set first."
+                  exit 1
+                fi
                 patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
                 for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
+                  fix="$HIGH_DIR/fix_$file.patch"
+                  if [ ! -f "$fix" ]; then
+                    echo "::error::Missing $fix - the high/ patch set in FRTI64/kernel_patches is incomplete or outdated for this KernelSU-Next commit."
+                    exit 1
+                  fi
                   echo "Patching file: $file with fix_$file.patch (high)"
-                  patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/high/fix_$file.patch"
+                  patch -p1 --forward < "$fix"
                 done
                 echo "Patching SUSFS extras (high)!"
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/high/susfs_extras.patch"
+                patch -p1 --forward < "$HIGH_DIR/susfs_extras.patch"
               elif [ "$KSUVER" -le 33333 ]; then
                 echo "KSUVER=$KSUVER <= 33333: using era-matched enable patch and SUSFS v2.3.0 fix patches"
                 # The SUSFS archive's enable patch moved on with the Oct 12
                 # KernelSU syncs; use the era-matched one stored in kernel_patches.
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/10_enable_susfs_for_ksu.patch" || true
+                OLD_ENABLE="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/10_enable_susfs_for_ksu.patch"
+                if [ ! -f "$OLD_ENABLE" ]; then
+                  echo "::error::Missing $OLD_ENABLE - push FRTI64/kernel_patches (main) with the era-matched SUSFS v2.3.0 enable patch first."
+                  exit 1
+                fi
+                patch -p1 --forward < "$OLD_ENABLE" || true
                 for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
                   echo "Patching file: $file with fix_$file.patch"
                   patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
