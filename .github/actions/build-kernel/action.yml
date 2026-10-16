@@ -22,6 +22,11 @@ inputs:
     required: false
     type: string
     default: ""
+  kernel_patches_repo:
+    description: 'kernel_patches repository URL holding the feature/fix patches'
+    required: false
+    type: string
+    default: "https://github.com/WildKernels/kernel_patches.git"
   build_timestamp:
     description: 'Custom kernel build timestamp shown in uname -a (e.g. "Tue Feb 10 10:01:02 UTC 2026"). Leave empty to use the current build time.'
     required: false
@@ -790,11 +795,21 @@ runs:
             "--header=Connection: keep-alive"
           )
           
+          local browser_ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          
+          # aria2c (parallel) for GitHub; plain curl for GitLab.
+          # gitlab.com's web archive endpoint sits behind a Cloudflare bot
+          # challenge which 403s datacenter IPs (CI runners). The API v4
+          # archive endpoint is challenge-free, CDN-cached and accepts SHAs.
           local download_url=""
+          local dl_method="aria2c"
           if [[ "$url" == *"github.com"* ]]; then
               download_url="${url%.git}/archive/refs/heads/${branch}.tar.gz"
           elif [[ "$url" == *"gitlab.com"* ]]; then
-              download_url="${url%.git}/-/archive/${branch}/${repo_name}-${branch}.tar.gz"
+              local project_path="${url#https://gitlab.com/}"
+              project_path="${project_path%.git}"
+              download_url="https://gitlab.com/api/v4/projects/${project_path//\//%2F}/repository/archive.tar.gz?sha=${branch}"
+              dl_method="curl"
           else
               echo "::error::Unsupported host: $url"
               return 1
@@ -803,7 +818,21 @@ runs:
           while [ $attempt -le $max_attempts ]; do
               echo " Attempt $attempt/$max_attempts: High-speed fetch for $repo_name ($branch)"
               
-              if aria2c -x16 -s16 -j16 -k1M --retry-wait=2 --max-tries=5 -d "/dev/shm" -o "$archive_name" --allow-overwrite=true "${aria2_headers[@]}" $aria_log_flags "$download_url"; then
+              local dl_ok=0
+              if [ "$dl_method" = "curl" ] || ! command -v aria2c >/dev/null 2>&1; then
+                if curl -fLsS --retry 5 --retry-delay 3 --retry-all-errors \
+                     -H "User-Agent: $browser_ua" \
+                     -H "Accept: */*" \
+                     -o "$shm_path" "$download_url"; then
+                  dl_ok=1
+                fi
+              else
+                if aria2c -x16 -s16 -j16 -k1M --retry-wait=2 --max-tries=5 -d "/dev/shm" -o "$archive_name" --allow-overwrite=true "${aria2_headers[@]}" $aria_log_flags "$download_url"; then
+                  dl_ok=1
+                fi
+              fi
+              
+              if [ "$dl_ok" -eq 1 ]; then
                   mkdir -p "$repo_name"
                   if tar -I "pigz -p $nproc -b 256" -x --record-size=1M -f "$shm_path" -C "$repo_name" --strip-components=1 --no-same-owner; then
                       echo "✅ Success: $repo_name synced"
@@ -854,7 +883,7 @@ runs:
           return 1
         }
         
-        retry_clone "https://github.com/WildKernels/kernel_patches.git" "main" "1"
+        retry_clone "${{ inputs.kernel_patches_repo }}" "main" "1"
         
         if [ "${{ env.OP_SUSFS }}" = true ]; then
           echo "Using SUSFS branch/commit: $SUSFS_BRANCH"
@@ -863,6 +892,9 @@ runs:
             exit 1
           fi
           echo "SUSFS_COMMIT_SHA=$SUSFS_BRANCH" >> $GITHUB_ENV
+          SUSFS_DETECTED_VERSION=$(grep '#define SUSFS_VERSION' "susfs4ksu/kernel_patches/include/linux/susfs.h" 2>/dev/null | awk -F'"' '{print $2}')
+          echo "SUSFS_DETECTED_VERSION=$SUSFS_DETECTED_VERSION" >> $GITHUB_ENV
+          echo "Detected SUSFS version: ${SUSFS_DETECTED_VERSION:-unknown}"
         fi
         echo "✅ Dependencies cloned"
         echo "::endgroup::"
@@ -887,9 +919,9 @@ runs:
         echo "Adding KernelSU Next..."
         KSU_INPUT="${{ inputs.ksu_branch_or_hash }}"
         if [ -z "$KSU_INPUT" ]; then
-          curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
+          curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/dev/kernel/setup.sh" | bash -
         else
-          curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "$KSU_INPUT"
+          curl --fail --location --proto '=https' -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/dev/kernel/setup.sh" | bash -s "$KSU_INPUT"
         fi
         git submodule update --init --recursive
         cd KernelSU-Next/kernel
@@ -903,7 +935,11 @@ runs:
         fi
         
         KSU_VERSION=$(expr $COMMITS_COUNT "+" $BASE_VERSION)
-        sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
+        # Newer KernelSU-Next computes the version in Kbuild itself; only the
+        # legacy Makefile layout still carries a hardcoded DKSU_VERSION.
+        if grep -q "DKSU_VERSION=" Makefile 2>/dev/null; then
+          sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
+        fi
         
         if [ -f ksu.c ]; then
           sed -i 's/#if defined(CONFIG_STACKPROTECTOR) && (defined(CONFIG_ARM64) && !defined(CONFIG_STACKPROTECTOR_PER_TASK))/#if 0/' ksu.c
@@ -957,7 +993,11 @@ runs:
         cd KernelSU/kernel
         BASE_VERSION=30000
         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" $BASE_VERSION)
-        sed -i "s/DKSU_VERSION=16/DKSU_VERSION=${KSU_VERSION}/" Makefile
+        # Newer KernelSU computes the version in Kbuild itself; only the
+        # legacy Makefile layout still carries a hardcoded DKSU_VERSION.
+        if grep -q "DKSU_VERSION=" Makefile 2>/dev/null; then
+          sed -i "s/DKSU_VERSION=16/DKSU_VERSION=${KSU_VERSION}/" Makefile
+        fi
         
         if [ -f ksu.c ]; then
           sed -i 's/#if defined(CONFIG_STACKPROTECTOR) && (defined(CONFIG_ARM64) && !defined(CONFIG_STACKPROTECTOR_PER_TASK))/#if 0/' ksu.c
@@ -1108,6 +1148,69 @@ runs:
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
             fi
             ;;
+          "v2.3.0"|"v2.3"*)
+            # SUSFS v2.3.0 refactored SUS_MOUNT/SUS_KSTAT/OPEN_REDIRECT and
+            # changed the KernelSU integration. KSUN builds apply the enable
+            # patch (tolerating rejects), resolve every reject with the
+            # per-file fix patches and finish with the extras patch, all from
+            # the kernel_patches repo (next/susfs_fix_patches/v2.3.0/).
+            #
+            # KernelSU-Next dev keeps moving, so two patch eras are needed:
+            #   - KSUVER <= 33333: era-matched enable patch + fix patches
+            #     generated against dev @ 2026-10-08 (old era).
+            #   - KSUVER >= 33341: enable patch from the SUSFS archive (latest)
+            #     + regenerated fix patches in high/ (dev @ 2026-10-15).
+            #   - 33334..33340: unsupported transition window.
+            if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
+              cd "$KSUN_FOLDER"
+              if [ "$KSUVER" -ge 33341 ]; then
+                echo "KSUVER=$KSUVER >= 33341: using high-range SUSFS v2.3.0 fix patches"
+                HIGH_DIR="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/high"
+                if [ ! -f "$HIGH_DIR/susfs_extras.patch" ]; then
+                  echo "::error::Missing $HIGH_DIR - push FRTI64/kernel_patches (main) with the high/ SUSFS v2.3.0 patch set first."
+                  exit 1
+                fi
+                patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
+                for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
+                  fix="$HIGH_DIR/fix_$file.patch"
+                  if [ ! -f "$fix" ]; then
+                    echo "::error::Missing $fix - the high/ patch set in FRTI64/kernel_patches is incomplete or outdated for this KernelSU-Next commit."
+                    exit 1
+                  fi
+                  echo "Patching file: $file with fix_$file.patch (high)"
+                  patch -p1 --forward < "$fix"
+                done
+                echo "Patching SUSFS extras (high)!"
+                patch -p1 --forward < "$HIGH_DIR/susfs_extras.patch"
+              elif [ "$KSUVER" -le 33333 ]; then
+                echo "KSUVER=$KSUVER <= 33333: using era-matched enable patch and SUSFS v2.3.0 fix patches"
+                # The SUSFS archive's enable patch moved on with the Oct 12
+                # KernelSU syncs; use the era-matched one stored in kernel_patches.
+                OLD_ENABLE="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/10_enable_susfs_for_ksu.patch"
+                if [ ! -f "$OLD_ENABLE" ]; then
+                  echo "::error::Missing $OLD_ENABLE - push FRTI64/kernel_patches (main) with the era-matched SUSFS v2.3.0 enable patch first."
+                  exit 1
+                fi
+                patch -p1 --forward < "$OLD_ENABLE" || true
+                for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
+                  echo "Patching file: $file with fix_$file.patch"
+                  patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
+                done
+                echo "Patching SUSFS extras!"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/susfs_extras.patch"
+              else
+                echo "::error::KSUVER $KSUVER is in the unsupported SUSFS v2.3.0 transition range (33334-33340). Pin KernelSU-Next to KSUVER <= 33333 or >= 33341."
+                exit 1
+              fi
+              if ! grep -q 'config KSU_SUSFS' kernel/Kconfig; then
+                echo "::error::SUSFS integration incomplete: KSU_SUSFS missing from KernelSU-Next Kconfig after patching."
+                exit 1
+              fi
+            else
+              cd "$KSU_FOLDER"
+              patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+            fi
+            ;;
           *)
             echo "::error::Unsupported SUSFS version: $susfs_version"
             exit 1
@@ -1238,7 +1341,43 @@ runs:
         echo "✅ SUSFS patches applied"
         
         echo "Add SUSFS Configuration Settings"
-        cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        case "$susfs_version" in
+          "v2.1.0"|"v2.2.0"|"v2.3.0"|"v2.3"*)
+            # v2.1.0+ unified Kconfig option set
+            cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        CONFIG_KSU_SUSFS=y
+        CONFIG_KSU_SUSFS_SUS_PATH=y
+        CONFIG_KSU_SUSFS_SUS_MOUNT=y
+        CONFIG_KSU_SUSFS_SUS_KSTAT=y
+        CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+        CONFIG_KSU_SUSFS_ENABLE_LOG=y
+        CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+        CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+        CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+        CONFIG_KSU_SUSFS_SUS_MAP=y
+        EOF
+            ;;
+          "v2.0.0")
+            cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        CONFIG_KSU_SUSFS=y
+        CONFIG_KSU_SUSFS_SUS_PATH=y
+        CONFIG_KSU_SUSFS_SUS_MOUNT=y
+        CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+        CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+        CONFIG_KSU_SUSFS_SUS_KSTAT=y
+        CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+        CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
+        CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+        CONFIG_KSU_SUSFS_ENABLE_LOG=y
+        CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+        CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+        CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+        CONFIG_KSU_SUSFS_SUS_MAP=y
+        EOF
+            ;;
+          *)
+            # v1.5.x legacy option set
+            cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
         CONFIG_KSU_SUSFS=y
         CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
         CONFIG_KSU_SUSFS_SUS_PATH=y
@@ -1257,6 +1396,8 @@ runs:
         CONFIG_KSU_SUSFS_SUS_MAP=y
         CONFIG_KSU_SUSFS_SUS_SU=n
         EOF
+            ;;
+        esac
         
         echo "::endgroup::"
 
@@ -1329,6 +1470,14 @@ runs:
         else
           echo "Hmbird not enabled, skipping fengchi patch"
         fi
+
+        case "$OP_BRANCH" in
+          wild/mt6835)
+            echo "Patching mt6835 (N6): wl2868c get_PCB_Version fallback"
+            dos2unix -q drivers/regulator/wl2868c-regulator.c
+            patch -p1 -F 3 < "$KERNEL_PATCHES_FOLDER/oneplus/mt6835/0001-wl2868c-regulator-add-get_PCB_Version-fallback.patch"
+          ;;
+        esac
 
         echo "Patching module intercept and overlay mechanism"
         patch -p1 < "$KERNEL_PATCHES_FOLDER/oneplus/module_overlay/0001-module-Add-module-intercept-and-overlay-mechanism-$ANDROID_VER-$KERNEL_VER.patch"
