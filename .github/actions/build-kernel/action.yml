@@ -1154,15 +1154,39 @@ runs:
             # patch (tolerating rejects), resolve every reject with the
             # per-file fix patches and finish with the extras patch, all from
             # the kernel_patches repo (next/susfs_fix_patches/v2.3.0/).
+            #
+            # KernelSU-Next dev keeps moving, so two patch eras are needed:
+            #   - KSUVER <= 33333: era-matched enable patch + fix patches
+            #     generated against dev @ 2026-10-08 (old era).
+            #   - KSUVER >= 33341: enable patch from the SUSFS archive (latest)
+            #     + regenerated fix patches in high/ (dev @ 2026-10-15).
+            #   - 33334..33340: unsupported transition window.
             if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
               cd "$KSUN_FOLDER"
-              patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
-              for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
-                echo "Patching file: $file with fix_$file.patch"
-                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
-              done
-              echo "Patching SUSFS extras!"
-              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/susfs_extras.patch"
+              if [ "$KSUVER" -ge 33341 ]; then
+                echo "KSUVER=$KSUVER >= 33341: using high-range SUSFS v2.3.0 fix patches"
+                patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
+                for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
+                  echo "Patching file: $file with fix_$file.patch (high)"
+                  patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/high/fix_$file.patch"
+                done
+                echo "Patching SUSFS extras (high)!"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/high/susfs_extras.patch"
+              elif [ "$KSUVER" -le 33333 ]; then
+                echo "KSUVER=$KSUVER <= 33333: using era-matched enable patch and SUSFS v2.3.0 fix patches"
+                # The SUSFS archive's enable patch moved on with the Oct 12
+                # KernelSU syncs; use the era-matched one stored in kernel_patches.
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/10_enable_susfs_for_ksu.patch" || true
+                for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
+                  echo "Patching file: $file with fix_$file.patch"
+                  patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
+                done
+                echo "Patching SUSFS extras!"
+                patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/susfs_extras.patch"
+              else
+                echo "::error::KSUVER $KSUVER is in the unsupported SUSFS v2.3.0 transition range (33334-33340). Pin KernelSU-Next to KSUVER <= 33333 or >= 33341."
+                exit 1
+              fi
               if ! grep -q 'config KSU_SUSFS' kernel/Kconfig; then
                 echo "::error::SUSFS integration incomplete: KSU_SUSFS missing from KernelSU-Next Kconfig after patching."
                 exit 1
