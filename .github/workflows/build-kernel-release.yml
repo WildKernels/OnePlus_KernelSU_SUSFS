@@ -221,13 +221,20 @@ jobs:
           # SUSFS hash fetch
           SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
           GITLAB_PROJECT_PATH="simonpunk/susfs4ksu"
-          
+
+          # Default refs are PINNED to the 2026-10-15 state (before the
+          # 2026-10-18 rebases onto android12-5.10.257 / android13-5.15.211 /
+          # android15-6.6.143 / android16-6.12.92), because the rebased
+          # 50_add_susfs_* patches anchor on newer GKI bases that the OnePlus
+          # vendor kernels (5.10.236 / 5.15.180 / 6.1.118 / 6.6.89 / 6.12.x)
+          # do not match. Override per GKI key with the corresponding
+          # workflow input to track the branches again.
           declare -A default_branches=(
-            ["android12-5.10"]="gki-android12-5.10"
-            ["android13-5.15"]="gki-android13-5.15"
-            ["android14-6.1"]="gki-android14-6.1"
-            ["android15-6.6"]="gki-android15-6.6"
-            ["android16-6.12"]="gki-android16-6.12"
+            ["android12-5.10"]="ca7093a1a26f7911987110c34a1352d74cfb1d09"
+            ["android13-5.15"]="2ad297356931ba06b4edc0860f42fdd143b02ffd"
+            ["android14-6.1"]="5369359dbd10f6dd8cbdd59d1df7b788b29b168c"
+            ["android15-6.6"]="2d11d711de80f0f749b3055f8da8f7b9682454e4"
+            ["android16-6.12"]="acb92d4abc922cac384a207744b2db40281a7c7f"
           )
           
           declare -A user_inputs=(
