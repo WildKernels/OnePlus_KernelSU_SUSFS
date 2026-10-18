@@ -362,6 +362,15 @@ if [ "$fake_patched" = 1 ]; then
       echo "#include <linux/swap_slots.h> Line not found. Adding missing header"
       sed -i '/#include <linux\/vmalloc.h>/a #include <linux\/swap_slots.h>' ./mm/memory.c
     fi
+
+    # OnePlus 5.15 vendor kernels ship include/trace/hooks/block.h, not
+    # blk.h. The fake blk.h include inserted above exists only to anchor
+    # the rebased 50_add_susfs patch hunks; leaving it in makes
+    # fs/namespace.o fail with "trace/hooks/blk.h: file not found".
+    if grep -qxF '#include <trace/hooks/blk.h>' ./fs/namespace.c; then
+      echo "Removing fake trace/hooks/blk.h anchor include from fs/namespace.c"
+      sed -i '/#include <trace\/hooks\/blk.h>/d' ./fs/namespace.c
+    fi
   fi
   if [ "$ANDROID_VER" = "android14" ] && [ "$KERNEL_VER" = "6.1" ]; then
     if grep -qxF $'\t\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
