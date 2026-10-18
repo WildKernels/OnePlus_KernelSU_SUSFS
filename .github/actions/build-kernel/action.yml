@@ -1292,6 +1292,39 @@ runs:
             sed -i '/#include <linux\/swap_slots.h>/d' ./mm/memory.c
             fake_patched=1
           fi
+          
+          # The gki-android13-5.15 susfs patch was rebased onto
+          # android13-5.15.211 (2026-10-18); its anchors are the GKI
+          # trace-hook includes that the OnePlus 5.15 vendor kernels lack.
+          if ! grep -qxF '#include <trace/hooks/mm.h>' ./fs/proc/task_mmu.c; then
+            echo "#include <trace/hooks/mm.h> Line not found. Fake Patching!"
+            sed -i '/#include <linux\/pkeys.h>/a #include <trace\/hooks\/mm.h>' ./fs/proc/task_mmu.c
+            fake_patched=1
+          fi
+          if ! grep -qxF '#include <trace/hooks/blk.h>' ./fs/namespace.c; then
+            echo "#include <trace/hooks/blk.h> Line not found. Fake Patching!"
+            sed -i '/#include "internal.h"/a #include <trace\/hooks\/blk.h>' ./fs/namespace.c
+            fake_patched=1
+          fi
+        fi
+        if [ "${{ env.ANDROID_VER }}" = "android16" ] && [ "${{ env.KERNEL_VER }}" = "6.12" ]; then
+          # The gki-android16-6.12 susfs patch was rebased onto
+          # android16-6.12.92 (2026-10-18). OnePlus 6.12 vendor kernels:
+          # - exec.c lacks the dma-buf.h include the patch anchors on;
+          # - task_mmu.c's show_smap/show_smaps_rollup use a different
+          #   structure than 6.12.92, so the SUS_MAP hunks cannot match.
+          #   Insert the SUS_MAP blocks ourselves; the patch's remaining
+          #   hunks apply normally (their failures are tolerated below).
+          if ! grep -qxF '#include <linux/dma-buf.h>' ./fs/exec.c; then
+            echo "#include <linux/dma-buf.h> Line not found in exec.c. Fake Patching!"
+            sed -i '/#include <linux\/ksm.h>/a #include <linux\/dma-buf.h>' ./fs/exec.c
+          fi
+          if ! grep -q 'SUSFS_IS_INODE_SUS_MAP' ./fs/proc/task_mmu.c; then
+            echo "SUS_MAP blocks missing in task_mmu.c. Fake Patching!"
+            perl -i -0pe 's/(static int show_smap\(struct seq_file \*m, void \*v\)\n\{\n\tstruct vm_area_struct \*vma = v;\n\tstruct mem_size_stats mss = \{\};\n)/$1#ifdef CONFIG_KSU_SUSFS_SUS_MAP\n\tif (vma->vm_file) {\n\t\tif (SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))\n\t\t\treturn 0;\n\t}\n#endif \/\/ #ifdef CONFIG_KSU_SUSFS_SUS_MAP\n\n/' ./fs/proc/task_mmu.c
+            perl -i -0pe 's/(\tdo \{\n\t\tsmap_gather_stats\(vma, &mss, 0\);\n\t\tlast_vma_end = vma->vm_end;)/\tdo {\n#ifdef CONFIG_KSU_SUSFS_SUS_MAP\n\t\tif (vma->vm_file \&\& SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))\n\t\t\tgoto bypass_orig_flow;\n#endif\n\t\tsmap_gather_stats(vma, \&mss, 0);\n\t\tlast_vma_end = vma->vm_end;\n#ifdef CONFIG_KSU_SUSFS_SUS_MAP\nbypass_orig_flow:\n#endif/' ./fs/proc/task_mmu.c
+            fake_patched=1
+          fi
         fi
         
         if [ "${{ env.ANDROID_VER }}" = "android14" ] && [ "${{ env.KERNEL_VER }}" = "6.1" ]; then
@@ -1306,7 +1339,17 @@ runs:
           fi
         fi
         
-        patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch"
+        # android16-6.12 vendor kernels pre-insert the SUS_MAP blocks via the
+        # fake patches above, so the rebased patch's corresponding hunks are
+        # expected to reject; tolerate the failure there and verify instead.
+        if [ "${{ env.ANDROID_VER }}" = "android16" ] && [ "${{ env.KERNEL_VER }}" = "6.12" ]; then
+          patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch" || true
+          grep -q 'SUSFS_IS_INODE_SUS_MAP' ./fs/proc/task_mmu.c || { echo "::error::6.12 SUS_MAP fake patches did not apply to task_mmu.c."; exit 1; }
+          grep -q 'bypass_orig_flow' ./fs/proc/task_mmu.c || { echo "::error::6.12 SUS_MAP rollup fake patch did not apply to task_mmu.c."; exit 1; }
+          grep -q '#include <linux/dma-buf.h>' ./fs/exec.c || { echo "::error::6.12 exec.c dma-buf.h fake patch did not apply."; exit 1; }
+        else
+          patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch"
+        fi
         
         # SUSFS's OPEN_REDIRECT code unconditionally calls VMA_PAD_START(), which
         # only exists on GKI branches that carry Google's page-size-migration
