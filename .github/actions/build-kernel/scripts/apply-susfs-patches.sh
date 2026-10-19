@@ -15,14 +15,32 @@ version_lte() {
   [ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" = "$1" ]
 }
 
-# The 2026-10-19 susfs4ksu update ("Sync with the official KernelSU
-# main repo") regenerated 10_enable_susfs_for_ksu.patch against
-# KernelSU main and changed sucompat.c/preinit.c/sulog.  Detect that
-# variant by the preinit helpers it adds, so each fix-patch era uses a
-# matching set instead of overwriting the previous one.
-susfs_enable_is_kmain() {
-  grep -q 'ksu_setup_preinit_file' \
-    "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+# Select the fix set by the exact enable-patch contents.  susfs4ksu
+# force-pushes its branches, so the same KSUVER can see several SUSFS
+# revisions; each revision must keep its own directory instead of
+# overwriting the previous one.  The mapping lives in
+# next/susfs_fix_patches/<version>/fix-patch-manifest.
+susfs_fix_era() {
+  local enable_patch="$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+  local manifest="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix-patch-manifest"
+  local hash era=""
+
+  hash=$(sha256sum "$enable_patch" | awk '{print $1}')
+  if [ -f "$manifest" ]; then
+    era=$(awk -v h="$hash" '$1 == h { print $2; exit }' "$manifest")
+  fi
+  if [ -z "$era" ]; then
+    # Compatibility fallback for kernel_patches checkouts that predate
+    # the manifest.  Never use this as the primary selector: a new
+    # SUSFS revision can share the same heuristic.
+    if grep -q 'ksu_setup_preinit_file' "$enable_patch"; then
+      era="high-kmain"
+    else
+      era="high"
+    fi
+    echo "::warning::No fix-patch manifest entry for enable patch $hash; falling back to $era" >&2
+  fi
+  printf '%s\n' "$era"
 }
 
 # The "Add KernelSU Next" workflow step rewrites Kbuild for 6.12
@@ -172,11 +190,7 @@ case "$susfs_version" in
       ksun_kbuild_normalize
       cd "$KSUN_FOLDER"
       if [ "$KSUVER" -ge 33397 ]; then
-        if susfs_enable_is_kmain; then
-          SUSFS_FIX_ERA="high-kmain"
-        else
-          SUSFS_FIX_ERA="high"
-        fi
+        SUSFS_FIX_ERA=$(susfs_fix_era)
         echo "KSUVER=$KSUVER >= 33397: using $SUSFS_FIX_ERA/ SUSFS v2.3.0 fix patches"
         HIGH_DIR="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/$SUSFS_FIX_ERA"
         if [ ! -f "$HIGH_DIR/susfs_extras.patch" ]; then
@@ -196,10 +210,12 @@ case "$susfs_version" in
         echo "Patching SUSFS extras ($SUSFS_FIX_ERA)!"
         patch -p1 --forward < "$HIGH_DIR/susfs_extras.patch"
       elif [ "$KSUVER" -ge 33341 ] && [ "$KSUVER" -le 33390 ]; then
-        if susfs_enable_is_kmain; then
-          echo "::error::KSUVER $KSUVER is too old for the KernelSU-main SUSFS sync. Pin SUSFS to a pre-2026-10-19 ref for this KernelSU-Next version, or move to KSUVER >= 33397."
-          exit 1
-        fi
+        case "$(susfs_fix_era)" in
+          high-kmain*)
+            echo "::error::KSUVER $KSUVER is too old for the KernelSU-main SUSFS sync. Pin SUSFS to a pre-2026-10-19 ref for this KernelSU-Next version, or move to KSUVER >= 33397."
+            exit 1
+            ;;
+        esac
         echo "KSUVER=$KSUVER in 33341..33390: using high-33341/ SUSFS v2.3.0 fix patches"
         HIGH_DIR="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/high-33341"
         if [ ! -f "$HIGH_DIR/susfs_extras.patch" ]; then
@@ -219,10 +235,12 @@ case "$susfs_version" in
         echo "Patching SUSFS extras (high-33341)!"
         patch -p1 --forward < "$HIGH_DIR/susfs_extras.patch"
       elif [ "$KSUVER" -le 33333 ]; then
-        if susfs_enable_is_kmain; then
-          echo "::error::KSUVER $KSUVER is too old for the KernelSU-main SUSFS sync. Pin SUSFS to a pre-2026-10-19 ref for this KernelSU-Next version, or move to KSUVER >= 33397."
-          exit 1
-        fi
+        case "$(susfs_fix_era)" in
+          high-kmain*)
+            echo "::error::KSUVER $KSUVER is too old for the KernelSU-main SUSFS sync. Pin SUSFS to a pre-2026-10-19 ref for this KernelSU-Next version, or move to KSUVER >= 33397."
+            exit 1
+            ;;
+        esac
         echo "KSUVER=$KSUVER <= 33333: using era-matched enable patch and SUSFS v2.3.0 fix patches"
         # The SUSFS archive's enable patch moved on with the Oct 12
         # KernelSU syncs; use the era-matched one stored in kernel_patches.
