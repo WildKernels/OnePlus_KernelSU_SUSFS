@@ -15,6 +15,33 @@ version_lte() {
   [ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" = "$1" ]
 }
 
+# The "Add KernelSU Next" workflow step rewrites Kbuild for 6.12
+# (KSUVER > 33095): it expands $(src) to $(abspath $(src)) and adds
+# -I$(KSU_KERNEL_DIR)/include/uapi. The SUSFS fix patches were generated
+# against the pristine upstream Kbuild, so hunk matching fails while
+# those edits are present. Temporarily restore the upstream lines while
+# patching and re-apply the workflow edits afterwards.
+ksun_kbuild_normalize() {
+  local kbuild="$KSUN_FOLDER/kernel/Kbuild"
+  [ -f "$kbuild" ] || return 0
+  KSU_KBUILD_SED_APPLIED=0
+  if [ "$KERNEL_VER" = "6.12" ] && [ "$KSUVER" -gt 33095 ]; then
+    if grep -qF '$(abspath $(src))' "$kbuild" || grep -qF ' -I$(KSU_KERNEL_DIR)/include/uapi' "$kbuild"; then
+      sed -i 's|$(abspath $(src))|$(src)|g; s| -I$(KSU_KERNEL_DIR)/include/uapi||g' "$kbuild"
+      KSU_KBUILD_SED_APPLIED=1
+    fi
+  fi
+}
+
+ksun_kbuild_finalize() {
+  local kbuild="$KSUN_FOLDER/kernel/Kbuild"
+  [ "${KSU_KBUILD_SED_APPLIED:-0}" = "1" ] || return 0
+  sed -i 's|ccflags-y += -I$(KSU_KERNEL_DIR) -I$(KSU_KERNEL_DIR)/include|ccflags-y += -I$(KSU_KERNEL_DIR) -I$(KSU_KERNEL_DIR)/include -I$(KSU_KERNEL_DIR)/include/uapi|' "$kbuild"
+  sed -i 's|$(src)|$(abspath $(src))|' "$kbuild"
+  sed -i 's|$(srctree)/$(src)|$(abspath $(srctree)/$(src))|' "$kbuild"
+  KSU_KBUILD_SED_APPLIED=0
+}
+
 if version_lte "${susfs_version:1}" "1.5.12"; then
   echo "NEED_HOOKS=true" >> $GITHUB_ENV
 else
@@ -132,6 +159,7 @@ case "$susfs_version" in
     #     + fix patches in high/ (dev @ 2026-10-17, compile-verified).
     #   - 33334..33340 and 33391..33396: unsupported transition windows.
     if [ "$KSU_TYPE" = "KSUN" ]; then
+      ksun_kbuild_normalize
       cd "$KSUN_FOLDER"
       if [ "$KSUVER" -ge 33397 ]; then
         echo "KSUVER=$KSUVER >= 33397: using high/ SUSFS v2.3.0 fix patches"
@@ -191,6 +219,7 @@ case "$susfs_version" in
         echo "::error::KSUVER $KSUVER is in an unsupported SUSFS v2.3.0 transition window (33334-33340 or 33391-33396). Pin KernelSU-Next to KSUVER <= 33333, 33341..33390, or >= 33397."
         exit 1
       fi
+      ksun_kbuild_finalize
       if ! grep -q 'config KSU_SUSFS' kernel/Kconfig; then
         echo "::error::SUSFS integration incomplete: KSU_SUSFS missing from KernelSU-Next Kconfig after patching."
         exit 1
