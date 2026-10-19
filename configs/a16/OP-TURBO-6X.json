@@ -2,7 +2,7 @@
   "model": "OP-TURBO-6X",
   "soc": "dimensity7300ultra",
   "branch": "wild/mt6878",
-  "manifest": "oneplus_turbo_6v_w.xml",
+  "manifest": "oneplus_turbo_6x_w.xml",
   "android_version": "android14",
   "kernel_version": "6.1",
   "os_version": "A16",
