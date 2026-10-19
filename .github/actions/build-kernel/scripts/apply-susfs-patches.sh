@@ -15,6 +15,16 @@ version_lte() {
   [ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" = "$1" ]
 }
 
+# The 2026-10-19 susfs4ksu update ("Sync with the official KernelSU
+# main repo") regenerated 10_enable_susfs_for_ksu.patch against
+# KernelSU main and changed sucompat.c/preinit.c/sulog.  Detect that
+# variant by the preinit helpers it adds, so each fix-patch era uses a
+# matching set instead of overwriting the previous one.
+susfs_enable_is_kmain() {
+  grep -q 'ksu_setup_preinit_file' \
+    "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+}
+
 # The "Add KernelSU Next" workflow step rewrites Kbuild for 6.12
 # (KSUVER > 33095): it expands $(src) to $(abspath $(src)) and adds
 # -I$(KSU_KERNEL_DIR)/include/uapi. The SUSFS fix patches were generated
@@ -162,10 +172,15 @@ case "$susfs_version" in
       ksun_kbuild_normalize
       cd "$KSUN_FOLDER"
       if [ "$KSUVER" -ge 33397 ]; then
-        echo "KSUVER=$KSUVER >= 33397: using high/ SUSFS v2.3.0 fix patches"
-        HIGH_DIR="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/high"
+        if susfs_enable_is_kmain; then
+          SUSFS_FIX_ERA="high-kmain"
+        else
+          SUSFS_FIX_ERA="high"
+        fi
+        echo "KSUVER=$KSUVER >= 33397: using $SUSFS_FIX_ERA/ SUSFS v2.3.0 fix patches"
+        HIGH_DIR="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/$SUSFS_FIX_ERA"
         if [ ! -f "$HIGH_DIR/susfs_extras.patch" ]; then
-          echo "::error::Missing $HIGH_DIR - push FRTI64/kernel_patches (main) with the high/ SUSFS v2.3.0 patch set first."
+          echo "::error::Missing $HIGH_DIR - push FRTI64/kernel_patches (main) with the $SUSFS_FIX_ERA/ SUSFS v2.3.0 patch set first."
           exit 1
         fi
         patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
@@ -175,12 +190,16 @@ case "$susfs_version" in
             echo "::error::Missing $fix - the high/ patch set in FRTI64/kernel_patches is incomplete or outdated for this KernelSU-Next commit."
             exit 1
           fi
-          echo "Patching file: $file with fix_$file.patch (high)"
+          echo "Patching file: $file with fix_$file.patch ($SUSFS_FIX_ERA)"
           patch -p1 --forward < "$fix"
         done
-        echo "Patching SUSFS extras (high)!"
+        echo "Patching SUSFS extras ($SUSFS_FIX_ERA)!"
         patch -p1 --forward < "$HIGH_DIR/susfs_extras.patch"
       elif [ "$KSUVER" -ge 33341 ] && [ "$KSUVER" -le 33390 ]; then
+        if susfs_enable_is_kmain; then
+          echo "::error::KSUVER $KSUVER is too old for the KernelSU-main SUSFS sync. Pin SUSFS to a pre-2026-10-19 ref for this KernelSU-Next version, or move to KSUVER >= 33397."
+          exit 1
+        fi
         echo "KSUVER=$KSUVER in 33341..33390: using high-33341/ SUSFS v2.3.0 fix patches"
         HIGH_DIR="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/high-33341"
         if [ ! -f "$HIGH_DIR/susfs_extras.patch" ]; then
@@ -200,6 +219,10 @@ case "$susfs_version" in
         echo "Patching SUSFS extras (high-33341)!"
         patch -p1 --forward < "$HIGH_DIR/susfs_extras.patch"
       elif [ "$KSUVER" -le 33333 ]; then
+        if susfs_enable_is_kmain; then
+          echo "::error::KSUVER $KSUVER is too old for the KernelSU-main SUSFS sync. Pin SUSFS to a pre-2026-10-19 ref for this KernelSU-Next version, or move to KSUVER >= 33397."
+          exit 1
+        fi
         echo "KSUVER=$KSUVER <= 33333: using era-matched enable patch and SUSFS v2.3.0 fix patches"
         # The SUSFS archive's enable patch moved on with the Oct 12
         # KernelSU syncs; use the era-matched one stored in kernel_patches.
