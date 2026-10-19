@@ -248,6 +248,7 @@ fi
 # Fake kernel patch to fix failures
 fake_patched=0
 fake_patched_expand=0
+fake_blk_hook_added=0
 if [ "$ANDROID_VER" = "android15" ] && [ "$KERNEL_VER" = "6.6" ]; then
   if ! grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
     echo "nr_subpages Line not found. Fake Patching!"
@@ -333,6 +334,17 @@ if [ "$ANDROID_VER" = "android14" ] && [ "$KERNEL_VER" = "6.1" ]; then
     echo "#include <linux/dma-buf.h> Line not found. Adding missing header"
     sed -i '/#include <linux\/cpufreq_times.h>/a #include <linux\/dma-buf.h>' ./fs/proc/base.c
   fi
+
+  # The gki-android14-6.1 50_add_susfs patch anchors its first
+  # fs/namespace.c hunk on <trace/hooks/blk.h>, a GKI-only include that
+  # the OnePlus mt6897 vendor tree does not ship. Insert a temporary
+  # anchor so the hunk matches, then drop it again after patching so the
+  # build does not fail on the missing header.
+  if ! grep -qxF '#include <trace/hooks/blk.h>' ./fs/namespace.c; then
+    echo "#include <trace/hooks/blk.h> Line not found. Fake Patching!"
+    sed -i '/#include "internal.h"/a #include <trace\/hooks\/blk.h>' ./fs/namespace.c
+    fake_blk_hook_added=1
+  fi
 fi
 
 # android16-6.12 vendor kernels pre-insert the SUS_MAP blocks via the
@@ -406,6 +418,16 @@ if [ "$fake_patched" = 1 ]; then
       echo "vma_pages Line found. Revert Fake Patching!"
       sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
     fi
+  fi
+fi
+
+# Drop the temporary blk.h anchor added for the android14-6.1 vendor tree.
+# OnePlus kernels do not provide include/trace/hooks/blk.h, so leaving it
+# in place would break the fs/namespace.o compile.
+if [ "$fake_blk_hook_added" = 1 ]; then
+  if grep -qxF '#include <trace/hooks/blk.h>' ./fs/namespace.c; then
+    echo "Removing fake trace/hooks/blk.h anchor include from fs/namespace.c"
+    sed -i '/#include <trace\/hooks\/blk.h>/d' ./fs/namespace.c
   fi
 fi
 echo "✅ SUSFS patches applied"
