@@ -2051,7 +2051,7 @@ runs:
             ;;
         esac
         
-        if [ "$OP_MODEL" = "OP-N6X" ] || [ "$OP_MODEL" = "OP-N6" ]; then
+        if [ "$OP_MODEL" = "OP-N6X" ] || [ "$OP_MODEL" = "OP-N6" ] || [ "$OP_MODEL" = "OP-N6-5.15.180" ]; then
           scripts/config --file "$OUT/.config" -d OPLUS_NFC
         fi
 
