@@ -1,5 +1,5 @@
 {
-  "model": "OP-NORD-CE4-LITE",
+  "model": "OP-NORD-CE4-LITE-6.1.118",
   "soc": "blair",
   "branch": "wild/sm6375",
   "manifest": "oneplus_nord_ce4_lite_5g_6.1.118_w.xml",
