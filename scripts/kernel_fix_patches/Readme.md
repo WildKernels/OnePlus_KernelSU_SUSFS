@@ -973,3 +973,39 @@ much) would leave code that compiles but behaves wrong.
 7. Add it to `RULES`.
 8. Run with `--dry-run` once against a real checkout to confirm the log
    output matches expectations before letting it write files.
+---
+
+## 10. `susfs_patch_fixes/` — when the upstream patch itself is wrong
+
+Everything above reshapes the **kernel tree** so an upstream patch fits it.
+Occasionally the problem is the other way round: SUSFS regenerates
+`50_add_susfs_in_<branch>.patch` against a kernel that is not the one the
+branch name claims, and some hunks then cannot apply to *any* tree on that
+KMI — AOSP's own branch tip included. Reshaping the tree for that would mean
+faking a kernel we don't build, then rewriting SUSFS' own code back into the
+real shape in stage 2.
+
+For that case, drop a diff **against the patch file** in
+`scripts/kernel_fix_patches/susfs_patch_fixes/`, named after the patch it
+repairs:
+
+```
+scripts/kernel_fix_patches/susfs_patch_fixes/50_add_susfs_in_gki-android16-6.12.patch
+```
+
+The build action dry-runs it against `$MAIN_PATCH` before stage 1 and applies
+it only if it still applies cleanly; otherwise it logs a notice and uses the
+shipped patch untouched. So the repair retires itself the moment upstream
+fixes the hunks, and it never half-applies.
+
+Rules of thumb:
+
+- Use a `Rule` when the mismatch tracks the **kernel** (KMI + sublevel).
+  Use `susfs_patch_fixes/` when it tracks the **SUSFS revision** — the same
+  breakage on every sublevel of a KMI is the tell.
+- Keep the repair as small as the breakage. Prefer restoring hunks verbatim
+  from a SUSFS revision/branch where they are correct over hand-writing them,
+  and leave every other byte of the upstream patch alone.
+- Regenerate with `diff -u old.patch new.patch`; verify with
+  `patch -p1 --dry-run --forward --batch` against a real checkout of every
+  sublevel on that KMI before committing.

@@ -1144,6 +1144,20 @@ runs:
 
         echo "KMI=$KMI SUBLEVEL=$SUBLEVEL"
 
+        # SUSFS sometimes regenerates 50_add_susfs_in_<branch>.patch against a
+        # kernel that is not the one the branch name claims, leaving hunks that
+        # cannot apply to any tree on that KMI. Re-aim those hunks if we carry a
+        # fix for this branch, and only for as long as upstream still needs it.
+        SUSFS_PATCH_FIX="${GITHUB_WORKSPACE}/scripts/kernel_fix_patches/susfs_patch_fixes/50_add_susfs_in_${SUSFS_KERNEL_BRANCH}.patch"
+        if [ -f "$SUSFS_PATCH_FIX" ]; then
+          if patch --dry-run --forward --batch --fuzz=0 "$MAIN_PATCH" < "$SUSFS_PATCH_FIX" >/dev/null 2>&1; then
+            echo "Re-aiming $(basename "$MAIN_PATCH") with susfs_patch_fixes/$(basename "$SUSFS_PATCH_FIX")"
+            patch --forward --batch --fuzz=0 "$MAIN_PATCH" < "$SUSFS_PATCH_FIX"
+          else
+            echo "::notice::susfs_patch_fixes/$(basename "$SUSFS_PATCH_FIX") no longer applies - using the SUSFS patch as shipped"
+          fi
+        fi
+
         python3 "$COMPAT_PY" --stage 1 --root "$COMMON_KERNEL_FOLDER" --kmi "$KMI" --sublevel "$SUBLEVEL" --state "$COMPAT_STATE"
 
         # Stays in the workflow: Python never invokes `patch`.

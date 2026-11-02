@@ -1,0 +1,76 @@
+--- a/kernel_patches/50_add_susfs_in_gki-android16-6.12.patch
++++ b/kernel_patches/50_add_susfs_in_gki-android16-6.12.patch
+@@ -93,10 +93,9 @@
+ index 965fdc593..80d5ff9b2 100644
+ --- a/fs/exec.c
+ +++ b/fs/exec.c
+-@@ -70,6 +70,9 @@
++@@ -70,5 +70,8 @@
+  #include <linux/rseq.h>
+  #include <linux/ksm.h>
+- #include <linux/dma-buf.h>
+ +#ifdef CONFIG_KSU_SUSFS
+ +#include <linux/susfs_def.h>
+ +#endif
+@@ -1465,7 +1464,7 @@
+  	}
+  
+  	start = vma->vm_start;
+-@@ -1549,6 +1591,13 @@ static int show_smap(struct seq_file *m, void *v)
++@@ -1329,6 +1371,13 @@ static int show_smap(struct seq_file *m, void *v)
+  	struct vm_area_struct *vma = v;
+  	struct mem_size_stats mss = {};
+  
+@@ -1476,31 +1475,40 @@
+ +	}
+ +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+ +
+- 	if (!vma_data_pages(vma))
++ 	if (!vma_pages(vma))
+  		goto show_pad;
+  
+-@@ -1618,6 +1667,11 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
+- 			goto out_unlock;
+- 		}
++@@ -1388,7 +1437,14 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
+  
++ 	vma_start = vma->vm_start;
++ 	do {
+ +#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+ +		if (vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+ +			goto bypass_orig_flow;
+ +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+-+
+- 		if (vma->vm_start < last_vma_end) {
+- 			/*
+- 			 * After retaking the lock, already reported VMA grew
+-@@ -1630,6 +1684,9 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
+- 			/* Found next unreported VMA, start from its beginning */
+- 			smap_gather_stats(priv, vma, &mss);
+- 		}
++ 		smap_gather_stats(vma, &mss, 0);
+ +#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+ +bypass_orig_flow:
+ +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+  		last_vma_end = vma->vm_end;
+  
+  		/*
++@@ -1454,8 +1510,15 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
++ 
++ 			/* Case 4 above */
++ 			if (vma->vm_end > last_vma_end) {
+++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+++				if (!vma->vm_file || !(SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))) {
+++					smap_gather_stats(vma, &mss, last_vma_end);
+++					last_vma_end = vma->vm_end;
+++				}
+++#else
++ 				smap_gather_stats(vma, &mss, last_vma_end);
++ 				last_vma_end = vma->vm_end;
+++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
++ 			}
++ 		}
++ 	} for_each_vma(vmi, vma);
+ @@ -2449,6 +2506,9 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
+  	while (count && (start_vaddr < end_vaddr)) {
+  		int len;
