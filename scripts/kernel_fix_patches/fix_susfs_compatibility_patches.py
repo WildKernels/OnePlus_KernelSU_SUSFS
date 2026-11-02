@@ -924,6 +924,59 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
 
+    Rule(
+        rule_id="mtk-tfa98xx-firmware-dotdot-exception",
+        stage=1,
+        targets=(Target("android12-5.10", min_sublevel=226, soc=("dimensity*", "helio*")),),
+        when=lambda ctx: (
+            has_regex(ctx, "drivers/base/firmware_loader/main.c", r"\bname_contains_dotdot\b")
+            and lacks_regex(ctx, "drivers/base/firmware_loader/main.c", r"\bname_is_confined_vendor_firmware\b")
+        ),
+        description="Allow MTK tfa98xx codec to load ../../odm/firmware without tripping dotdot check",
+        edit=Composite(
+            edits=(
+                InsertRelative(
+                    relative_path="drivers/base/firmware_loader/main.c",
+                    anchors=(r"^static bool name_contains_dotdot\(",),
+                    before=True,
+                    payload=(
+                        "static bool name_is_confined_vendor_firmware(const char *name)",
+                        "{",
+                        "\tstatic const char * const allowed_roots[] = {",
+                        '\t\t"../../odm/firmware/",',
+                        '\t\t"../odm/firmware/",',
+                        "\t};",
+                        "\tsize_t i;",
+                        "",
+                        "\tfor (i = 0; i < ARRAY_SIZE(allowed_roots); i++) {",
+                        "\t\tsize_t len = strlen(allowed_roots[i]);",
+                        "",
+                        "\t\tif (strncmp(name, allowed_roots[i], len) != 0)",
+                        "\t\t\tcontinue;",
+                        '\t\tif (strstr(name + len, "..") != NULL)',
+                        "\t\t\treturn false;",
+                        "\t\treturn true;",
+                        "\t}",
+                        "",
+                        "\treturn false;",
+                        "}",
+                        "",
+                    ),
+                ),
+                ReplaceRegex(
+                    relative_path="drivers/base/firmware_loader/main.c",
+                    pattern=r"\tif \(name_contains_dotdot\(name\)\) \{",
+                    replacement=(
+                        "\tif (name_contains_dotdot(name) &&\n"
+                        "\t    !name_is_confined_vendor_firmware(name)) {"
+                    ),
+                    must_find=True,
+                    expected_count=1,
+                ),
+            ),
+        ),
+    ),
+
     # --- Version-agnostic, purely reactive rule ----------------------------
     Rule(
         rule_id="vma-pad-start-fallback",
