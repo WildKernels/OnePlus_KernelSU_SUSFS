@@ -388,6 +388,37 @@ runs:
         echo "${KERNEL_PLATFORM_FOLDER}/prebuilts/kernel-build-tools/linux-x86/bin/" >> $GITHUB_PATH
         echo "${KERNEL_PLATFORM_FOLDER}/prebuilts/kernel-build-tools/linux_musl-x86/bin/" >> $GITHUB_PATH
 
+    - name: 📸 Snapshot pristine gki_defconfig (stock baseline for the spoof)
+      continue-on-error: true
+      shell: bash
+      run: |
+        set -uo pipefail
+        # `make gki_defconfig` on the UNMODIFIED tree, i.e. before the KSU / SUSFS / BBR /
+        # BBG / ip_set appends further down. The result is the OEM GKI config to within a
+        # couple of percent (measured: 6.6.118 stock vs pristine 6.6 gki_defconfig = 81 of
+        # 6212 symbols, 98.7%), and it carries none of the build's own options.
+        # It is produced out-of-tree (O=) so the real build is untouched, and this step
+        # never patches anything: kernel/Makefile stays exactly as the tree ships it, so it
+        # can feed the existing fake_config.patch instead of fighting it.
+        OUT_DIR="$CONFIG_FOLDER/stock_config"
+        mkdir -p "$OUT_DIR"
+        if ! make -C "$COMMON_KERNEL_FOLDER" ARCH=arm64 O="$OUT_DIR" gki_defconfig > "$OUT_DIR/make.log" 2>&1; then
+          echo "::warning title=stock-config::make gki_defconfig failed"
+          tail -5 "$OUT_DIR/make.log" || true
+          exit 0
+        fi
+        if [ ! -f "$OUT_DIR/.config" ]; then
+          echo "::warning title=stock-config::make gki_defconfig produced no .config"
+          exit 0
+        fi
+        cp "$OUT_DIR/.config" "$OUT_DIR/stock_defconfig"
+        SYMS=$(grep -cE '^(CONFIG_|# CONFIG_)' "$OUT_DIR/stock_defconfig" || true)
+        BAD=$(grep -cE '^CONFIG_(KSU|KSU_SUSFS|SCHED_BORE|BBG)' "$OUT_DIR/stock_defconfig" || true)
+        echo "[+] pristine gki_defconfig: ${SYMS} symbols, ${BAD:-0} KSU/SUSFS/BORE/BBG lines"
+        cp "$OUT_DIR/stock_defconfig" "$ARTIFACTS_FOLDER/stock_defconfig" 2>/dev/null || true
+        echo "STOCK_DEFCONFIG=$OUT_DIR/stock_defconfig" >> "$GITHUB_ENV"
+        echo "::notice title=stock-config::pristine gki_defconfig captured (${SYMS} symbols) for ${OP_MODEL}_${OP_OS_VERSION}"
+
     - name: Get Kernel Version Info
       shell: bash
       run: |
