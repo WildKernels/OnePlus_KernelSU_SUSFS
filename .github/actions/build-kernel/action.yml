@@ -380,13 +380,6 @@ runs:
         DEBUG_ZIP_NAME="debug_${OP_MODEL}_${OP_OS_VERSION}.zip"
         echo "DEBUG_ZIP_NAME=$DEBUG_ZIP_NAME" >> "$GITHUB_ENV"
 
-    - name: 🧪 Spoof /proc/config.gz with stock config
-      uses: ./action-source/.github/actions/stock-config
-      with:
-        kernel_dir: ${{ env.COMMON_KERNEL_FOLDER }}
-        model: ${{ env.OP_MODEL }}
-        os_version: ${{ env.OP_OS_VERSION }}
-
     - name: Set Kernel build-tools to Path
       shell: bash
       run: |
