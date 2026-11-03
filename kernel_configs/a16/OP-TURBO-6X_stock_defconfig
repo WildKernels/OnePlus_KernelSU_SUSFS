@@ -1,7 +1,4 @@
-# PLACEHOLDER - no stock firmware found for this device (OP-TURBO-6X, a16).
-# Copied from kernel_configs/a16/OP-NORD-CE6-LITE (kernel 6.1.157-android14-11-o-gc2dad16af736).
-# Reason: closest MTK 6.1 config available (MT6878 vs MT6835); Turbo 6X model code unpublished.
-# Replace with a real pull (/proc/config.gz from the device, or boot.img IKCFG) once available.
+# PLACEHOLDER - no stock firmware found; copied from a16/OP-NORD-CE6-LITE.
 #
 # Automatically generated file; DO NOT EDIT.
 # Linux/arm64 6.1.157 Kernel Configuration

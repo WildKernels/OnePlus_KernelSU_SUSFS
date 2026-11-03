@@ -1,7 +1,4 @@
-# PLACEHOLDER - no stock firmware found for this device (OP-NORD-N30-SE, a15).
-# Copied from kernel_configs/a16/OP-NORD-6 (kernel 6.6.118-android15-8-gc4127a25dcf3-ab15863337-4k).
-# Reason: closest 6.6 / android15 Qualcomm config without HMBIRD; Nord-family sibling.
-# Replace with a real pull (/proc/config.gz from the device, or boot.img IKCFG) once available.
+# PLACEHOLDER - no stock firmware found; copied from a16/OP-NORD-6.
 #
 # Automatically generated file; DO NOT EDIT.
 # Linux/arm64 6.6.118 Kernel Configuration

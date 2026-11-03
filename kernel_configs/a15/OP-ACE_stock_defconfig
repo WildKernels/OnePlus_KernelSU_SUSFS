@@ -1,7 +1,4 @@
-# PLACEHOLDER - no stock firmware found for this device (OP-ACE, a15).
-# Copied from kernel_configs/a15/OP-ACE-RACE (kernel 5.10.236-android12-9-o-g38e2c85bc7af).
-# Reason: MTK 5.10 a15 sibling, same reasoning as a14.
-# Replace with a real pull (/proc/config.gz from the device, or boot.img IKCFG) once available.
+# PLACEHOLDER - no stock firmware found; copied from a15/OP-ACE-RACE.
 #
 # Automatically generated file; DO NOT EDIT.
 # Linux/arm64 5.10.236 Kernel Configuration

@@ -1,7 +1,4 @@
-# PLACEHOLDER - no stock firmware found for this device (OP-ACE, a14).
-# Copied from kernel_configs/a14/OP-ACE-RACE (kernel 5.10.209-android12-9-o-g149ffe97838f).
-# Reason: MTK 5.10 a14 sibling; the original Ace (PGBM10) ships a 4.14.186 kernel, so no 5.10 stock exists for it.
-# Replace with a real pull (/proc/config.gz from the device, or boot.img IKCFG) once available.
+# PLACEHOLDER - no stock firmware found; copied from a14/OP-ACE-RACE.
 #
 # Automatically generated file; DO NOT EDIT.
 # Linux/arm64 5.10.209 Kernel Configuration

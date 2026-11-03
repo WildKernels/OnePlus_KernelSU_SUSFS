@@ -1,7 +1,4 @@
-# PLACEHOLDER - no stock firmware found for this device (OP-N6X, a16).
-# Copied from kernel_configs/a16/OP-N6 (kernel 5.15.197-android13-8-o-g00d4e8e246c3).
-# Reason: same SoC (MT6835); OnePlusOSS defconfig for n6x is byte-identical to n6.
-# Replace with a real pull (/proc/config.gz from the device, or boot.img IKCFG) once available.
+# PLACEHOLDER - no stock firmware found; copied from a16/OP-N6.
 #
 # Automatically generated file; DO NOT EDIT.
 # Linux/arm64 5.15.197 Kernel Configuration
