@@ -977,6 +977,18 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
 
+    Rule(
+        rule_id="dont-export-test-task-ux",
+        stage=1,
+        targets=(Target("android14-6.1", min_sublevel=141),),
+        description="Don't export test_task_ux, vendor module already exports it",
+        edit=RemoveExactLines(
+            relative_path="block/blk-mq.c",
+            lines_to_remove=("EXPORT_SYMBOL_GPL(test_task_ux);",),
+            expected_count=1,
+        ),
+    ),
+
     # --- Version-agnostic, purely reactive rule ----------------------------
     Rule(
         rule_id="vma-pad-start-fallback",
