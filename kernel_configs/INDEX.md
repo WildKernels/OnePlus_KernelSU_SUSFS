@@ -1,6 +1,6 @@
 # Stock kernel config index
 
-_Updated 2026-11-03 · 104 configs across a14/a15/a16 · ⚠ = placeholder (see PLACEHOLDERS.md)_
+_Updated 2026-11-03 · 104 configs across a14/a15/a16 · ⚠ = no stock firmware found, uses the closest available config (source shown in the last column)_
 
 ## 5.10 — 26 configs
 
