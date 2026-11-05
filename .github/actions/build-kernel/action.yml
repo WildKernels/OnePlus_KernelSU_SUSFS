@@ -1204,43 +1204,43 @@ runs:
         
         echo "::endgroup::"
 
-    - name: Revert vendor F2FS patches (if present)
-      shell: bash
-      if: ${{ env.KERNEL_VER == '6.1' }}
-      run: |
-        cd "$COMMON_KERNEL_FOLDER"
+    # - name: Revert vendor F2FS patches (if present)
+    #   shell: bash
+    #   if: ${{ env.KERNEL_VER == '6.1' }}
+    #   run: |
+    #     cd "$COMMON_KERNEL_FOLDER"
 
-        REVERT_PATCHES=(
-          "f2fs_ignore_compressed.patch"
-          "boost_priority_of_F2FS_checkpoint_flush_thread.patch"
-        )
+    #     REVERT_PATCHES=(
+    #       "f2fs_ignore_compressed.patch"
+    #       "boost_priority_of_F2FS_checkpoint_flush_thread.patch"
+    #     )
 
-        SUBLEVEL="${TKERNEL_VER##*.}"
+    #     SUBLEVEL="${TKERNEL_VER##*.}"
 
-        if ! [[ "$SUBLEVEL" =~ ^[0-9]+$ ]]; then
-          echo "ERROR: could not parse SUBLEVEL from TKERNEL_VER=$TKERNEL_VER" >&2
-          exit 1
-        fi
+    #     if ! [[ "$SUBLEVEL" =~ ^[0-9]+$ ]]; then
+    #       echo "ERROR: could not parse SUBLEVEL from TKERNEL_VER=$TKERNEL_VER" >&2
+    #       exit 1
+    #     fi
 
-        if [[ "$SUBLEVEL" -ge 141 ]]; then 
-          for patch_name in "${REVERT_PATCHES[@]}"; do
-            patch_file="$KERNEL_PATCHES_FOLDER/oneplus/reverts/$patch_name"
+    #     if [[ "$SUBLEVEL" -ge 141 ]]; then 
+    #       for patch_name in "${REVERT_PATCHES[@]}"; do
+    #         patch_file="$KERNEL_PATCHES_FOLDER/oneplus/reverts/$patch_name"
 
-            if [ ! -f "$patch_file" ]; then
-              echo "Notice: $patch_file not found, skipping."
-              continue
-            fi
+    #         if [ ! -f "$patch_file" ]; then
+    #           echo "Notice: $patch_file not found, skipping."
+    #           continue
+    #         fi
 
-            echo "Checking if $patch_name is present in tree..."
-            # Test if the patch can be cleanly reverted (-R)
-            if patch -p1 -R --dry-run --batch --forward --force < "$patch_file" >/dev/null 2>&1; then
-              echo "  -> Vendor modification found; applying reverse patch: $patch_name"
-              patch -p1 -R --batch --forward --force < "$patch_file"
-            else
-              echo "  -> Not present or already reverted; skipping $patch_name."
-            fi
-          done
-        fi
+    #         echo "Checking if $patch_name is present in tree..."
+    #         # Test if the patch can be cleanly reverted (-R)
+    #         if patch -p1 -R --dry-run --batch --forward --force < "$patch_file" >/dev/null 2>&1; then
+    #           echo "  -> Vendor modification found; applying reverse patch: $patch_name"
+    #           patch -p1 -R --batch --forward --force < "$patch_file"
+    #         else
+    #           echo "  -> Not present or already reverted; skipping $patch_name."
+    #         fi
+    #       done
+    #     fi
 
     - name: Add BBG
       if: ${{ env.OP_BBG == 'true' }}
