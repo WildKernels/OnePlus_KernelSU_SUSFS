@@ -169,6 +169,14 @@ def temporary_pagemap_locals_are_unused(ctx: Context) -> bool:
         and re.search(r"\bres\b", stripped) is None
     )
 
+def needs_nord5_kabi_alignment(ctx: Context) -> bool:
+    content = ctx.read_text("include/linux/sched.h")
+    # Only match if Nord 5's buggy split-slot layout is present
+    return (
+        "CONFIG_SLIM_SCHED" in content
+        and "ANDROID_KABI_USE(2, unsigned long sched_prop);" in content
+        and "ANDROID_KABI_USE(4, struct task_dma_buf_info *dmabuf_info);" in content
+    )
 
 # =============================================================================
 # Brace-depth scanner (comment/string-aware)
@@ -985,6 +993,42 @@ RULES: tuple[Rule, ...] = (
         edit=RemoveExactLines(
             relative_path="block/blk-mq.c",
             lines_to_remove=("EXPORT_SYMBOL_GPL(test_task_ux);",),
+            expected_count=1,
+        ),
+    ),
+
+    Rule(
+        rule_id="oneplus-nord5-align-kabi-ce5",
+        stage=1,
+        targets=(Target("android14-6.1", min_sublevel=157),),
+        when=needs_nord5_kabi_alignment,
+        description="Align OnePlus Nord 5 task_struct KABI slots in sched.h to CE 5 layout",
+        edit=ReplaceRegex(
+            relative_path="include/linux/sched.h",
+            pattern=(
+                r"(\tANDROID_KABI_USE\(1, unsigned int saved_state\);\n)"
+                r"#ifdef CONFIG_SLIM_SCHED\n"
+                r"\tANDROID_KABI_USE\(2, unsigned long sched_prop\);\n"
+                r"\tANDROID_KABI_USE\(3, struct sched_ext_entity \*scx\);\n"
+                r"\tANDROID_KABI_USE\(4, struct task_dma_buf_info \*dmabuf_info\);\n"
+                r"#else\n"
+                r"\tANDROID_KABI_USE\(2, struct task_dma_buf_info \*dmabuf_info\);\n"
+                r"\tANDROID_KABI_RESERVE\(3\);\n"
+                r"\tANDROID_KABI_RESERVE\(4\);\n"
+                r"#endif"
+            ),
+            replacement=(
+                r"\1"
+                "\tANDROID_KABI_USE(2, struct task_dma_buf_info *dmabuf_info);\n"
+                "#ifdef CONFIG_SLIM_SCHED\n"
+                "\tANDROID_KABI_USE(3, unsigned long sched_prop);\n"
+                "\tANDROID_KABI_USE(4, struct sched_ext_entity *scx);\n"
+                "#else\n"
+                "\tANDROID_KABI_RESERVE(3);\n"
+                "\tANDROID_KABI_RESERVE(4);\n"
+                "#endif"
+            ),
+            must_find=True,
             expected_count=1,
         ),
     ),
