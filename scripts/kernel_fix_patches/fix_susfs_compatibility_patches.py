@@ -986,7 +986,7 @@ RULES: tuple[Rule, ...] = (
     ),
 
    Rule(
-        rule_id="dont-export-test-task-ux"
+        rule_id="dont-export-test-task-ux",
         stage=1,
         targets=(Target("android14-6.1", min_sublevel=141),),
         description="Don't export test_task_ux, vendor module already exports it",
