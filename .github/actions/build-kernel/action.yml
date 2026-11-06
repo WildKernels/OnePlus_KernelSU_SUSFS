@@ -1,4 +1,5 @@
 name: 'Build OnePlus Kernel with KernelSU Next'
+description: build kernels
 
 inputs:
   op_config_json:
@@ -32,6 +33,11 @@ inputs:
     required: false
     type: string
     default: O2
+  mlgo:
+    description: 'Do you want to enable mlgo? [Machine Learning Guided Optimization]'
+    required: false
+    type: boolean
+    default: true
   clean:
     description: 'Force clean build without ccache acceleration'
     required: false
@@ -146,6 +152,7 @@ runs:
         ntsync="$OP_NTSYNC"
         blacklist_modules="$OP_BLACKLIST_MODULES"
         optimize='${{ inputs.optimize_level }}'
+        mlgo='${{ inputs.mlgo }}'
         
         errors=()
         
@@ -300,6 +307,11 @@ runs:
         case "$optimize" in
           O2|O3) ;;
           *) errors+=("optimize_level must be O2 or O3. Got: '$optimize'"); ;;
+        esac
+
+        case "${mlgo}" in
+          true|false) ;;
+          *) errors+=("mlgo must be 'true' or 'false'. Got: '${mlgo}'"); ;;
         esac
         
         if [ ${#errors[@]} -ne 0 ]; then
@@ -1947,6 +1959,26 @@ runs:
         MPMAP="-fmacro-prefix-map=${WORKSPACE}=."
         FPMAP="-ffile-prefix-map=${WORKSPACE}=."
         
+        # 
+        # add_kcflag() - append kcflags without failing build in case flag is not supported
+        # @args - flags to be appended
+        # 
+        # usage : 
+        #       add_kcflag flag1 flag2 ...
+        #
+        function add_kcflag() {                                    
+          if printf 'int g(int a){return a+1;} int f(int a){return g(a)*2;}\n' \
+            | clang --target=aarch64-linux-gnu -O2 "$@" -x c - -c -o /dev/null 2>/dev/null; then
+            KCFLAGS="${KCFLAGS:+$KCFLAGS }$*"
+          else
+            echo "::warning::clang rejected flag(s), skipping: $*"
+          fi
+        }
+
+        if [[ "${{ inputs.mlgo }}" = "true" ]]; then
+          add_kcflag -mllvm -regalloc-enable-advisor=release
+        fi
+
         export KCFLAGS="${KCFLAGS:-} $MAP $MPMAP $FPMAP -no-canonical-prefixes -fdiagnostics-color=never -Qunused-arguments -Wno-unused-command-line-argument -D__ANDROID_COMMON_KERNEL__"
         export KCPPFLAGS="${KCPPFLAGS:-} $MAP $MPMAP $FPMAP"
         
