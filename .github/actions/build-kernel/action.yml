@@ -1289,6 +1289,8 @@ runs:
           fi
         fi
 
+        patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/hide_adb_jdwp_sockets.patch"
+
         echo "✅ SUSFS patches applied"
         
         echo "Add SUSFS Configuration Settings"
