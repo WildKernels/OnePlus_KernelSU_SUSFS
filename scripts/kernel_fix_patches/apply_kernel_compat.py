@@ -902,6 +902,31 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
 
+    Rule(
+        rule_id="a16-6-12-dma-buf-header-temp",
+        stage=1,
+        targets=(Target("android16-6.12", max_sublevel=91),),
+        description="Old android16-6.12 fs/exec.c does not include dma-buf",
+        track_pre_change=True,
+        edit=InsertRelative(
+            relative_path="fs/exec.c",
+            anchors=(r"^#include <linux/ksm\.h>$",),
+            payload=("#include <linux/dma-buf.h>",),
+        ),
+    ),
+    Rule(
+        rule_id="a16-6-12-dma-buf-header-revert",
+        stage=2,
+        targets=(Target("android16-6.12", max_sublevel=91),),
+        requires_pre_change="a16-6-12-dma-buf-header-temp",
+        description="Remove temporary linux/dma-buf.h if the patch did not consume it",
+        edit=RemoveExactLines(
+            relative_path="fs/exec.c",
+            lines_to_remove=("#include <linux/dma-buf.h>",),
+            expected_count=1,
+        ),
+    ),
+
     # --- API signature differences across kernel versions -----------------
     Rule(
         rule_id="namei-set-nameidata-3arg",
