@@ -1168,25 +1168,63 @@ runs:
         fi
 
         can_apply() {
-          patch --dry-run --forward --batch -p1 < "$1" >/tmp/susfs-patch-dryrun.log 2>&1
-        }
-        apply_patch() {
-          patch --forward --batch -p1 < "$1"
+          patch --dry-run --forward --batch -p1 < "$1" >/tmp/susfs-dryrun.log 2>&1
         }
 
+        # 1. Clean any stale reject or backup files
+        find . -name "*.rej" -o -name "*.orig" -delete
+
+        # 2. Try applying MAIN_PATCH cleanly
         if can_apply "$MAIN_PATCH"; then
-          apply_patch "$MAIN_PATCH"
+          echo "Main SUSFS patch applies cleanly."
+          patch --forward --batch --no-backup-if-mismatch -p1 < "$MAIN_PATCH"
         else
-          echo "ERROR: main SUSFS patch does not apply cleanly (fuzz=0)" >&2
-          cat /tmp/susfs-patch-dryrun.log >&2
-          # If a full alternate patch exists for this branch, dry-run it and
-          # apply ONLY that file instead — never apply main then patch .rej output.
-          FIX_PATCH="$SUSFS_FOLDER/kernel_patches/fix_50_add_susfs_in_${SUSFS_KERNEL_BRANCH}.patch"
-          if [ -f "$FIX_PATCH" ] && can_apply "$FIX_PATCH"; then
-            apply_patch "$FIX_PATCH"
-          else
+          echo "Main SUSFS patch has conflicts; checking for companion fix patch..."
+          cat /tmp/susfs-dryrun.log >&2
+
+          FIX_PATCH="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_50_add_susfs_in_${SUSFS_KERNEL_BRANCH}.patch"
+
+          if [ ! -f "$FIX_PATCH" ]; then
+            echo "ERROR: Main SUSFS patch failed and no companion fix patch found at: $FIX_PATCH" >&2
             exit 1
           fi
+
+          echo "Found companion fix patch: $FIX_PATCH"
+          echo "Applying main SUSFS patch (applying successful hunks)..."
+          patch --forward --batch --no-backup-if-mismatch -p1 < "$MAIN_PATCH" || true
+
+          echo "Applying companion fix patch to resolve rejected hunks..."
+          if ! patch --forward --batch --no-backup-if-mismatch -p1 < "$FIX_PATCH"; then
+            echo "ERROR: Companion fix patch failed to apply!" >&2
+            exit 1
+          fi
+
+          # 3. Extract the list of files modified by FIX_PATCH
+          FIXED_FILES=$(grep -E '^\+\+\+ ' "$FIX_PATCH" | awk '{print $2}' | sed -E 's/^[ab]\///')
+
+          # 4. Verify that every .rej file created by MAIN_PATCH was resolved by FIX_PATCH
+          UNRESOLVED=0
+          while IFS= read -r rej_file; do
+            [ -z "$rej_file" ] && continue
+            target_file="${rej_file#./}"
+            target_file="${target_file%.rej}"
+
+            if echo "$FIXED_FILES" | grep -Fxq "$target_file"; then
+              echo "  -> Reject in $target_file resolved by fix patch; removing $rej_file"
+              rm -f "$rej_file"
+            else
+              echo "ERROR: Unresolved reject in $target_file was NOT covered by fix patch!" >&2
+              cat "$rej_file" >&2
+              UNRESOLVED=1
+            fi
+          done < <(find . -name "*.rej")
+
+          if [ "$UNRESOLVED" -ne 0 ]; then
+            echo "ERROR: Build aborted due to unhandled patch rejections." >&2
+            exit 1
+          fi
+
+          echo "All rejected hunks successfully resolved by companion fix patch!"
         fi
 
         python3 "$COMPAT_PY" --stage 2 --root "$COMMON_KERNEL_FOLDER" --kmi "$KMI" --sublevel "$SUBLEVEL" --soc "$OP_SOC" --state "$COMPAT_STATE"
