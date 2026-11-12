@@ -1229,6 +1229,8 @@ runs:
 
         python3 "$COMPAT_PY" --stage 2 --root "$COMMON_KERNEL_FOLDER" --kmi "$KMI" --sublevel "$SUBLEVEL" --soc "$OP_SOC" --state "$COMPAT_STATE"
 
+        patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/hide_adb_jdwp_sockets.patch"
+
         echo "✅ SUSFS patches applied"
         
         echo "Add SUSFS Configuration Settings"
