@@ -1420,6 +1420,8 @@ runs:
 
         ccache --set-config=extra_files_to_hash="$copied_modules"
         
+        patch -p1 -d "$KSUN_FOLDER" < "$KERNEL_PATCHES_FOLDER/oneplus/0001-kernel-inject-init.rc-triggers-for-auto-ADB-on-Oplus.patch"
+
         echo "✅ Other patches applied"
         echo "::endgroup::"
 
