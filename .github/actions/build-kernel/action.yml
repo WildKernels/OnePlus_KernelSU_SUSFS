@@ -1418,7 +1418,7 @@ runs:
 
         ccache --set-config=extra_files_to_hash="$copied_modules"
         
-        patch -p1 < "$KERNEL_PATCHES_FOLDER/experimental/oneplus/0001-misc-oplus-sdp-900ma.patch"
+        patch -p1 < "$KERNEL_PATCHES_FOLDER/oneplus/0001-misc-oplus-sdp-900ma.patch"
 
         echo "✅ Other patches applied"
         echo "::endgroup::"
