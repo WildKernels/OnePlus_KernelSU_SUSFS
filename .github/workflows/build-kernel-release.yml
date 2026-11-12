@@ -895,6 +895,24 @@ jobs:
           merge-multiple: true
           skip-decompress: true
 
+      - name: Download KSUN Manager
+        uses: nullptr-t-oss/composite_actions/fetch_ksu_manager@main
+        if: ${{ fromJSON(needs.set-op-model.outputs.ksu_options_normalized)[0].type  == 'KSUN' }}
+        with:
+          ksu-type: ksun
+          dist-dir: ./downloaded-artifacts
+          commit-hash: ${{ needs.set-op-model.outputs.ksu_resolved_hash }}
+          github-token: ${{ inputs.github_token }}
+
+      - name: Download KSU Manager
+        uses: nullptr-t-oss/composite_actions/fetch_ksu_manager@main
+        if: ${{ fromJSON(needs.set-op-model.outputs.ksu_options_normalized)[0].type  == 'KSU' }}
+        with:
+          ksu-type: ksu
+          dist-dir: ./downloaded-artifacts
+          commit-hash: ${{ needs.set-op-model.outputs.ksu_resolved_hash }}
+          github-token: ${{ inputs.github_token }}
+
       - name: 📝 Generate Device List and Final Release Notes
         id: generate-notes
         run: |
@@ -1260,6 +1278,13 @@ jobs:
       - name: 📤 Upload Release Assets Dynamically
         run: |
           for file in ./downloaded-artifacts/*.zip; do
+            if [ -f "$file" ]; then
+              echo "Uploading $file..."
+              gh release upload "${{ env.NEW_TAG }}" "$file" --clobber
+            fi
+          done
+
+          for file in ./downloaded-artifacts/*.apk; do
             if [ -f "$file" ]; then
               echo "Uploading $file..."
               gh release upload "${{ env.NEW_TAG }}" "$file" --clobber
