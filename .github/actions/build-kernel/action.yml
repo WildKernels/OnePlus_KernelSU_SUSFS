@@ -151,6 +151,7 @@ runs:
         ds="$OP_DS"
         ntsync="$OP_NTSYNC"
         sdp900ma="$OP_SDP900MA"
+        usbadb_gate="$OP_USBADB_GATE"
         blacklist_modules="$OP_BLACKLIST_MODULES"
         optimize='${{ inputs.optimize_level }}'
         mlgo='${{ inputs.mlgo }}'
@@ -309,6 +310,12 @@ runs:
           errors+=("Input 'sdp900ma' cannot be empty")
         elif [[ "$sdp900ma" != "true" && "$sdp900ma" != "false" ]]; then
           errors+=("Input 'sdp900ma' contains invalid characters. Allowed: 'true' or 'false'. Got: '$sdp900ma'")
+        fi
+
+        if [[ -z "$usbadb_gate" ]]; then
+          errors+=("Input 'usbadb_gate' cannot be empty")
+        elif [[ "$usbadb_gate" != "true" && "$usbadb_gate" != "false" ]]; then
+          errors+=("Input 'usbadb_gate' contains invalid characters. Allowed: 'true' or 'false'. Got: '$usbadb_gate'")
         fi
         
         case "$optimize" in
@@ -1441,6 +1448,37 @@ runs:
         echo "✅ Faster SDP Charging support patch applied"
         echo "::endgroup::"
 
+    - name: Add USB based ADB gating support
+      if: ${{ env.OP_USBADB_GATE == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Add USB based ADB gating support"
+        cd "$COMMON_KERNEL_FOLDER"
+
+        chmod +x "$KERNEL_PATCHES_FOLDER/common/usbadb-gate/patches/apply.sh"
+        "$KERNEL_PATCHES_FOLDER/common/usbadb-gate/patches/apply.sh" "$COMMON_KERNEL_FOLDER" "$KSUN_FOLDER"
+
+        cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        CONFIG_USBADB_GATE=y
+        EOF
+
+        case "$OP_BRANCH" in
+          wild/sm*)
+            printf 'CONFIG_USBADB_GATE_UDC_STATE="%s"\n' \
+                "/sys/class/udc/a600000.dwc3/state" \
+                >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
+          ;;
+          *)
+            printf 'CONFIG_USBADB_GATE_UDC_STATE="%s"\n' \
+                "/sys/class/udc/11200000.usb/state" \
+                >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
+          ;;
+        esac
+
+        echo "✅ USB based ADB gating support patch applied"
+        echo "::endgroup::"
+
     - name: Apply Optimisation Patches
       if: ${{ env.OP_OPT == 'true' }}
       shell: bash
@@ -2360,6 +2398,7 @@ runs:
           echo "NTSync: ${{ env.OP_NTSYNC }}"
           echo "Droidspaces: ${{ env.OP_DS }}"
           echo "Faster SDP Charging Support: ${{ env.OP_SDP900MA }}"
+          echo "USB based ADB gating support: ${{ env.OP_USBADB_GATE }}"
           echo ""
           echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "AnyKernel3 ZIP SHA256: ${{ steps.create_zip.outputs.zip_sha256 }}"
@@ -2428,6 +2467,7 @@ runs:
           echo "| **NTSync** | ${{ env.OP_NTSYNC }} |"
           echo "| **Droidspaces** | ${{ env.OP_DS }} |"
           echo "| **Faster SDP Charging Support** | ${{ env.OP_SDP900MA }} |"
+          echo "| **USB based ADB gating support** | ${{ env.OP_USBADB_GATE }} |"
           
           echo ""
           echo "### 📊 Build Metrics"

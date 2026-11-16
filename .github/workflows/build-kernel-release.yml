@@ -996,7 +996,7 @@ jobs:
             feature_flags=$(jq -r --arg MODEL "$model" --arg ORIG_MODEL "$possible_orig_model" --arg OS "$os_ver" '
               ([ .[] | select(.model == $ORIG_MODEL and .os_version == $OS) ][0]) //
               ([ .[] | select(.model == $MODEL      and .os_version == $OS) ][0]) |
-              "\(.hmbird // false)\t\(.susfs // false)\t\(.bbr // false)\t\(.bbr3 // false)\t\(.bbg // false)\t\(.ttl // false)\t\(.ip_set // false)\t\(.unicode // false)\t\(.ds // false)\t\(.ntsync // false)\t\(.sdp900ma // false)"
+              "\(.hmbird // false)\t\(.susfs // false)\t\(.bbr // false)\t\(.bbr3 // false)\t\(.bbg // false)\t\(.ttl // false)\t\(.ip_set // false)\t\(.unicode // false)\t\(.ds // false)\t\(.ntsync // false)\t\(.sdp900ma // false)\t\(.usbadb_gate // false)"
             ' <<< "$JSON_BUILD_DATA")
             
             features=()
@@ -1005,7 +1005,7 @@ jobs:
               echo "Warning: No JSON entry found for model: $model" >&2
               features_str="N/A"
             else
-              IFS=$'\t' read -r hmbird susfs bbr bbr3 bbg ttl ip_set unicode ds ntsync sdp900ma <<< "$feature_flags"
+              IFS=$'\t' read -r hmbird susfs bbr bbr3 bbg ttl ip_set unicode ds ntsync <<< "$feature_flags"
               
               # Build features string based on boolean values
               [[ "$hmbird" == "true" ]] && features+=("🐦 HMBIRD")
@@ -1019,6 +1019,7 @@ jobs:
               [[ "$ds" == "true" ]] && features+=("💻 Droidspaces")
               [[ "$ntsync" == "true" ]] && features+=("🔃 NTSync")
               [[ "$sdp900ma" == "true" ]] && features+=("🔌 Faster SDP Charging")
+              [[ "$usbadb_gate" == "true" ]] && features+=("♆♆ USB-ADB Gate")
               
               total=${#features[@]}
               if [ $total -eq 0 ]; then
@@ -1157,6 +1158,7 @@ jobs:
             - ✅ AVC_SPOOF - Spoof Procfs avc denial logs
           - **Ptrace Leak Fix** - For kernels < 5.16
           - **Unicode Fix** - Prevent path traversal and other detections using non-printable Unicode codepoints [Experimental]
+          - **USB-ADB Gating** - Control adb state based on USB connection state
           
           ### 🚀 Performance & Networking
           - **BBRv1** - Improved TCP congestion control
@@ -1248,6 +1250,7 @@ jobs:
           - Droidspaces Support
           - NTSync Support
           - Allow 900mA instead of 500mA for (SDP) USB data ports.
+          - USB-ADB Gating
           
           ### Previous Releases
           See [Releases Page](${{ github.server_url }}/${{ github.repository }}/releases)

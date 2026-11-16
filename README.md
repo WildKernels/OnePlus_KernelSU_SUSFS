@@ -85,6 +85,7 @@ Flashing this kernel will not void your warranty, but there is always a risk of 
 - 🖥️ **Droidspaces Support**: Support Portable Linux containers to run full Linux environments
 - 🔃 **NTSync**: Provide high-performance, low-latency synchronization primitives compatible with the Windows NT kernel API
 - 🔌 **Faster SDP charging**: Allow 900mA instead of 500mA for (SDP) USB data ports. (Host data port must support 900ma[USB 3.0 ports])
+- ♆♆ **USB-ADB Gating**: Control adb state based on USB connection state
 
 ---
 
