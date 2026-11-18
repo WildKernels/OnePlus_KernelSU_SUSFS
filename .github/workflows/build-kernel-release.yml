@@ -1166,6 +1166,7 @@ jobs:
           - **IP Set & IPv6 NAT Support** - Advanced firewall capabilities and IPv6 NAT Support
           - **TTL Target Support** - Network packet manipulation
           - **LTO (Link Time Optimization)** - Optimized binary size and performance
+          - **MGLO** - Machine Learning-Guided Optimization to generate better optimisated images
           - **ccache-accelerated builds** - Faster compilation times
           - **Optimisation Patches** - Memory, I/O, CPU scheduler, network and other general tunings
           
@@ -1234,13 +1235,13 @@ jobs:
           
           ### This Release
           - Updated SUSFS to $SUSFS_BASE_VERSION.
-          - Added HMBIRD support for all SM8750/MT6991 devices.
+          - Added HMBIRD support for all SM8735/SM8750/MT6991 devices.
           - Improved ccache build system.
           - Enhanced SUSFS hiding capabilities.
           - Added IP_SET, IPv6 NAT and TTL support.
           - Added TMPFS_XATTR and TMPFS_POSIX_ACL support for Mountify.
           - Added Ptrace leak fix for kernels < 5.16.
-          - Compiler optimizations (${{ inputs.optimize_level }}).
+          - Compiler optimizations (${{ inputs.optimize_level }} & MGLO).
           - Additional General Optimisations.
           - Wild_KSU Manager Support.
           - Unicode Bypass Fix
