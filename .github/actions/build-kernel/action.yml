@@ -1238,6 +1238,15 @@ runs:
 
         patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/hide_adb_jdwp_sockets.patch"
 
+        # Optional opt-in overlay: mask DirtySepolicy probe pairs in
+        # /sys/fs/selinux/access (Duck Detector / kknd). Enable via
+        # op_config_json: "ksu_susfs_hide_dirty_sepolicy_marks": true
+        if [ "${{ env.OP_KSU_SUSFS_HIDE_DIRTY_SEPOLICY_MARKS }}" = "true" ] && [ "$susfs_version" = "v2.4.0" ]; then
+          echo "Applying optional DirtySepolicy-marks overlay"
+          patch -p1 --forward --batch \
+            < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/hide_dirty_sepolicy_marks.patch"
+        fi
+
         echo "✅ SUSFS patches applied"
         
         echo "Add SUSFS Configuration Settings"
