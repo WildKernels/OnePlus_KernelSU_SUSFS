@@ -150,6 +150,7 @@ runs:
         bindgen="$OP_BINDGEN"
         ds="$OP_DS"
         ntsync="$OP_NTSYNC"
+        sdp900ma="$OP_SDP900MA"
         blacklist_modules="$OP_BLACKLIST_MODULES"
         optimize='${{ inputs.optimize_level }}'
         mlgo='${{ inputs.mlgo }}'
@@ -302,6 +303,12 @@ runs:
           errors+=("Input 'ntsync' cannot be empty")
         elif [[ "$ntsync" != "true" && "$ntsync" != "false" ]]; then
           errors+=("Input 'ntsync' contains invalid characters. Allowed: 'true' or 'false'. Got: '$ntsync'")
+        fi
+
+        if [[ -z "$sdp900ma" ]]; then
+          errors+=("Input 'sdp900ma' cannot be empty")
+        elif [[ "$sdp900ma" != "true" && "$sdp900ma" != "false" ]]; then
+          errors+=("Input 'sdp900ma' contains invalid characters. Allowed: 'true' or 'false'. Got: '$sdp900ma'")
         fi
         
         case "$optimize" in
@@ -1419,8 +1426,19 @@ runs:
         done
 
         ccache --set-config=extra_files_to_hash="$copied_modules"
-        
+
         echo "✅ Other patches applied"
+        echo "::endgroup::"
+
+    - name: Add Faster SDP Charging support
+      if: ${{ env.OP_SDP900MA == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Add Faster SDP Charging support"
+        cd "$COMMON_KERNEL_FOLDER"
+        patch -p1 < "$KERNEL_PATCHES_FOLDER/oneplus/0001-misc-oplus-sdp-900ma.patch"
+        echo "✅ Faster SDP Charging support patch applied"
         echo "::endgroup::"
 
     - name: Apply Optimisation Patches
@@ -2341,6 +2359,7 @@ runs:
           echo "Unicode Fix: ${{ env.OP_UNICODE }}"
           echo "NTSync: ${{ env.OP_NTSYNC }}"
           echo "Droidspaces: ${{ env.OP_DS }}"
+          echo "Faster SDP Charging Support: ${{ env.OP_SDP900MA }}"
           echo ""
           echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "AnyKernel3 ZIP SHA256: ${{ steps.create_zip.outputs.zip_sha256 }}"
@@ -2408,6 +2427,7 @@ runs:
           echo "| **Unicode Fix** | ${{ env.OP_UNICODE }} |"
           echo "| **NTSync** | ${{ env.OP_NTSYNC }} |"
           echo "| **Droidspaces** | ${{ env.OP_DS }} |"
+          echo "| **Faster SDP Charging Support** | ${{ env.OP_SDP900MA }} |"
           
           echo ""
           echo "### 📊 Build Metrics"

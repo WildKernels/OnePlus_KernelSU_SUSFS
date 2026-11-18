@@ -996,7 +996,7 @@ jobs:
             feature_flags=$(jq -r --arg MODEL "$model" --arg ORIG_MODEL "$possible_orig_model" --arg OS "$os_ver" '
               ([ .[] | select(.model == $ORIG_MODEL and .os_version == $OS) ][0]) //
               ([ .[] | select(.model == $MODEL      and .os_version == $OS) ][0]) |
-              "\(.hmbird // false)\t\(.susfs // false)\t\(.bbr // false)\t\(.bbr3 // false)\t\(.bbg // false)\t\(.ttl // false)\t\(.ip_set // false)\t\(.unicode // false)\t\(.ds // false)\t\(.ntsync // false)"
+              "\(.hmbird // false)\t\(.susfs // false)\t\(.bbr // false)\t\(.bbr3 // false)\t\(.bbg // false)\t\(.ttl // false)\t\(.ip_set // false)\t\(.unicode // false)\t\(.ds // false)\t\(.ntsync // false)\t\(.sdp900ma // false)"
             ' <<< "$JSON_BUILD_DATA")
             
             features=()
@@ -1005,7 +1005,7 @@ jobs:
               echo "Warning: No JSON entry found for model: $model" >&2
               features_str="N/A"
             else
-              IFS=$'\t' read -r hmbird susfs bbr bbr3 bbg ttl ip_set unicode ds ntsync <<< "$feature_flags"
+              IFS=$'\t' read -r hmbird susfs bbr bbr3 bbg ttl ip_set unicode ds ntsync sdp900ma <<< "$feature_flags"
               
               # Build features string based on boolean values
               [[ "$hmbird" == "true" ]] && features+=("🐦 HMBIRD")
@@ -1018,6 +1018,7 @@ jobs:
               [[ "$unicode" == "true" ]] && features+=("🔧 Unicode Fix")
               [[ "$ds" == "true" ]] && features+=("💻 Droidspaces")
               [[ "$ntsync" == "true" ]] && features+=("🔃 NTSync")
+              [[ "$sdp900ma" == "true" ]] && features+=("🔌 Faster SDP Charging")
               
               total=${#features[@]}
               if [ $total -eq 0 ]; then
@@ -1174,6 +1175,7 @@ jobs:
           - **HMBIRD SCX** - Scheduler extensions for all SM8750/MT6991 devices
           - **Droidspaces** - Support Portable Linux containers to run full Linux environments.
           - **NTSync** - Provide high-performance, low-latency synchronization primitives compatible with the Windows NT kernel API
+          - **Faster SDP charging** - Allow 900mA instead of 500mA for (SDP) USB data ports. (Host data port must support 900ma[USB 3.0 ports])
           
           ---
           
@@ -1244,6 +1246,7 @@ jobs:
           - Unicode Bypass Fix
           - Droidspaces Support
           - NTSync Support
+          - Allow 900mA instead of 500mA for (SDP) USB data ports.
           
           ### Previous Releases
           See [Releases Page](${{ github.server_url }}/${{ github.repository }}/releases)
