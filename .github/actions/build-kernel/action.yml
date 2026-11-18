@@ -150,6 +150,7 @@ runs:
         bindgen="$OP_BINDGEN"
         ds="$OP_DS"
         ntsync="$OP_NTSYNC"
+        sdp900ma="$OP_SDP900MA"
         blacklist_modules="$OP_BLACKLIST_MODULES"
         optimize='${{ inputs.optimize_level }}'
         mlgo='${{ inputs.mlgo }}'
@@ -302,6 +303,12 @@ runs:
           errors+=("Input 'ntsync' cannot be empty")
         elif [[ "$ntsync" != "true" && "$ntsync" != "false" ]]; then
           errors+=("Input 'ntsync' contains invalid characters. Allowed: 'true' or 'false'. Got: '$ntsync'")
+        fi
+
+        if [[ -z "$sdp900ma" ]]; then
+          errors+=("Input 'sdp900ma' cannot be empty")
+        elif [[ "$sdp900ma" != "true" && "$sdp900ma" != "false" ]]; then
+          errors+=("Input 'sdp900ma' contains invalid characters. Allowed: 'true' or 'false'. Got: '$sdp900ma'")
         fi
         
         case "$optimize" in
@@ -1123,7 +1130,7 @@ runs:
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
             fi
             ;;
-          "v2.2.0"|"v2.3.0")
+          "v2.2.0"|"v2.3.0"|"v2.4.0")
             if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
               cd "$KSUN_FOLDER"
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
@@ -1145,168 +1152,98 @@ runs:
             exit 1
             ;;
         esac
-        
+
         cd "$COMMON_KERNEL_FOLDER"
-        if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
-          if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
-            sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
-          fi
-          if ! grep -qxF 'extern void __fold_filemap_fixup_entry(struct vma_iterator *iter, unsigned long *end);' ./include/linux/page_size_compat.h; then
-            patch -p1 < "$KERNEL_PATCHES_FOLDER/common/backports/fold_fixup_entries.patch"
+
+        COMPAT_PY="${GITHUB_WORKSPACE}/action-source/scripts/kernel_fix_patches/apply_kernel_compat.py"
+        # Outside the kernel tree so git clean / repo sync cannot wipe it.
+        COMPAT_STATE="${RUNNER_TEMP}/susfs-compat-state-${ANDROID_VER}-${KERNEL_VER}.json"
+
+        KMI="${ANDROID_VER}-${KERNEL_VER}"
+        SUBLEVEL="${TKERNEL_VER##*.}"
+        MAIN_PATCH="$SUSFS_FOLDER/kernel_patches/50_add_susfs_in_${SUSFS_KERNEL_BRANCH}.patch"
+
+        if ! [[ "$SUBLEVEL" =~ ^[0-9]+$ ]]; then
+          echo "ERROR: could not parse SUBLEVEL from TKERNEL_VER=$TKERNEL_VER" >&2
+          exit 1
+        fi
+
+        echo "KMI=$KMI SUBLEVEL=$SUBLEVEL"
+
+        python3 "$COMPAT_PY" --stage 1 --root "$COMMON_KERNEL_FOLDER" --kmi "$KMI" --sublevel "$SUBLEVEL" --soc "$OP_SOC" --state "$COMPAT_STATE"
+
+        # Stays in the workflow: Python never invokes `patch`.
+        if [ "$ANDROID_VER" = "android15" ] && [ "$KERNEL_VER" = "6.6" ]; then
+          if ! grep -qxF 'extern void __fold_filemap_fixup_entry(struct vma_iterator *iter, unsigned long *end);' \
+              ./include/linux/page_size_compat.h; then
+            patch -p1 --forward --batch --fuzz=0 \
+              < "$KERNEL_PATCHES_FOLDER/common/backports/fold_fixup_entries.patch"
           fi
         fi
-        
-        # Fake kernel patch to fix failures
-        fake_patched=0
-        fake_patched2=0
-        fake_patched_expand=0
-        if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
-          if ! grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
-            echo "nr_subpages Line not found. Fake Patching!"
-            sed -i -e '/int ret = 0, copied = 0;/a \\tunsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;' -e '/int ret = 0, copied = 0;/a \\tpagemap_entry_t \*res = NULL;' ./fs/proc/task_mmu.c
-            fake_patched=1
-          fi
-          
-          if ! grep -qxF '#include <linux/dma-buf.h>' ./fs/proc/base.c; then
-            echo "#include <linux/dma-buf.h> Line not found. Adding missing header"
-            sed -i '/#include <linux\/cpufreq_times.h>/a #include <linux\/dma-buf.h>' ./fs/proc/base.c
-          fi
-          
-          if ! grep -qxF '#include <linux/zswap.h>' ./mm/memory.c; then
-            echo "#include <linux/zswap.h> Line not found. Adding missing header"
-            sed -i '/#include <linux\/sched\/sysctl.h>/a #include <linux\/zswap.h>' ./mm/memory.c
-          fi
-          
-          if grep -qF 'if (vma->vm_end > last_vma_end)' ./fs/proc/task_mmu.c && ! grep -qxF 'SUSFS_IS_INODE_SUS_MAP' ./fs/proc/task_mmu.c; then
-            echo "Temporarily expand the last_vma_end if block to fix a matching issue."
-            perl -i -0pe 's/\t\t\tif \(vma->vm_end > last_vma_end\)\n\t\t\t\tsmap_gather_stats\(vma, &mss, last_vma_end\);/\t\t\tif (vma->vm_end > last_vma_end) {\n\t\t\t\tsmap_gather_stats(vma, \&mss, last_vma_end);\n\t\t\t\tlast_vma_end = vma->vm_end;\n\t\t\t}/' ./fs/proc/task_mmu.c
-            fake_patched_expand=1
-          fi
-        fi
-        if [ "${{ env.ANDROID_VER }}" = "android12" ] && [ "${{ env.KERNEL_VER }}" = "5.10" ]; then
-          if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
-            echo "vma_pages Line not found. Fake Patching!"
-            fake_patched=1
-          fi
-        fi
-        if [ "${{ env.ANDROID_VER }}" = "android13" ] && [ "${{ env.KERNEL_VER }}" = "5.15" ]; then
-          if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
-            echo "vma_pages Line not found. Fake Patching!"
-            fake_patched=1
-          fi
-          
-          if grep -qxF '#include <linux/swap_slots.h>' ./mm/memory.c; then
-            echo "#include swap_slots.h> Line found. Deleting header."
-            sed -i '/#include <linux\/swap_slots.h>/d' ./mm/memory.c
-            fake_patched=1
+
+        can_apply() {
+          patch --dry-run --forward --batch -p1 < "$1" >/tmp/susfs-dryrun.log 2>&1
+        }
+
+        # 1. Clean any stale reject or backup files
+        find . -name "*.rej" -o -name "*.orig" -delete
+
+        # 2. Try applying MAIN_PATCH cleanly
+        if can_apply "$MAIN_PATCH"; then
+          echo "Main SUSFS patch applies cleanly."
+          patch --forward --batch --no-backup-if-mismatch -p1 < "$MAIN_PATCH"
+        else
+          echo "Main SUSFS patch has conflicts; checking for companion fix patch..."
+          cat /tmp/susfs-dryrun.log >&2
+
+          FIX_PATCH="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_50_add_susfs_in_${SUSFS_KERNEL_BRANCH}.patch"
+
+          if [ ! -f "$FIX_PATCH" ]; then
+            echo "ERROR: Main SUSFS patch failed and no companion fix patch found at: $FIX_PATCH" >&2
+            exit 1
           fi
 
-          if ! grep -qxF '#include <trace/hooks/blk.h>' ./fs/namespace.c; then
-            echo "#include <trace/hooks/blk.h> Line not found. Adding missing header"
-            sed -i '/#include "internal.h"/a #include <trace\/hooks\/blk.h>' ./fs/namespace.c
-            fake_patched2=1
+          echo "Found companion fix patch: $FIX_PATCH"
+          echo "Applying main SUSFS patch (applying successful hunks)..."
+          patch --forward --batch --no-backup-if-mismatch -p1 < "$MAIN_PATCH" || true
+
+          echo "Applying companion fix patch to resolve rejected hunks..."
+          if ! patch --forward --batch --no-backup-if-mismatch -p1 < "$FIX_PATCH"; then
+            echo "ERROR: Companion fix patch failed to apply!" >&2
+            exit 1
           fi
 
+          # 3. Extract the list of files modified by FIX_PATCH
+          FIXED_FILES=$(grep -E '^\+\+\+ ' "$FIX_PATCH" | awk '{print $2}' | sed -E 's/^[ab]\///')
 
-          if ! grep -qxF '#include <trace/hooks/mm.h>' ./fs/proc/task_mmu.c; then
-            echo "#include <trace/hooks/mm.h> Line not found. Adding missing header"
-            sed -i '/#include <linux\/pkeys.h>/a #include <trace\/hooks\/mm.h>' ./fs/proc/task_mmu.c
-            fake_patched2=1
-          fi
-        fi
-        
-        if [ "${{ env.ANDROID_VER }}" = "android14" ] && [ "${{ env.KERNEL_VER }}" = "6.1" ]; then
-          if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
-            echo "vma_pages Line not found. Fake Patching!"
-            fake_patched=1
-          fi
-          
-          if ! grep -qxF '#include <linux/dma-buf.h>' ./fs/proc/base.c; then
-            echo "#include <linux/dma-buf.h> Line not found. Adding missing header"
-            sed -i '/#include <linux\/cpufreq_times.h>/a #include <linux\/dma-buf.h>' ./fs/proc/base.c
-          fi
+          # 4. Verify that every .rej file created by MAIN_PATCH was resolved by FIX_PATCH
+          UNRESOLVED=0
+          while IFS= read -r rej_file; do
+            [ -z "$rej_file" ] && continue
+            target_file="${rej_file#./}"
+            target_file="${target_file%.rej}"
 
-          if ! grep -qxF '#include <trace/hooks/blk.h>' ./fs/namespace.c; then
-            echo "#include <trace/hooks/blk.h> Line not found. Adding missing header"
-            sed -i '/#include "internal.h"/a #include <trace\/hooks\/blk.h>' ./fs/namespace.c
-            fake_patched2=1
-          fi
-        fi
-        
-        patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/50_add_susfs_in_${{ env.SUSFS_KERNEL_BRANCH }}.patch"
-        
-        # SUSFS's OPEN_REDIRECT code unconditionally calls VMA_PAD_START(), which
-        # only exists on GKI branches that carry Google's page-size-migration
-        # feature (added to each android version's kernel/common branch at a
-        # different, sometime later, os_patch_level). Older os_patch_levels in
-        # our build matrix predate it, so fall back to a no-padding definition
-        # when the real header/macro isn't present. This is version-agnostic and
-        # a no-op wherever the real header already provides it.
-        if grep -q 'VMA_PAD_START(' ./fs/proc/task_mmu.c && ! grep -qE '#include <linux/pgsize_migration(_inline)?\.h>|define VMA_PAD_START' ./fs/proc/task_mmu.c; then
-          sed -i '\|#include "internal.h"|a\\n#undef VMA_PAD_START\n#ifndef VMA_PAD_START\n#define VMA_PAD_START(vma) ((vma)->vm_end)\n#endif' fs/proc/task_mmu.c
-          echo "Added VMA_PAD_START fallback definition to fs/proc/task_mmu.c"
-        fi
-        
-        # Revert Fake kernel patch
-        if [ "$fake_patched_expand" = 1 ]; then
-          if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
-            if grep -qF 'if (vma->vm_end > last_vma_end) {' ./fs/proc/task_mmu.c && ! grep -qxF 'SUSFS_IS_INODE_SUS_MAP' ./fs/proc/task_mmu.c; then
-              perl -i -0pe 's/\t\t\tif \(vma->vm_end > last_vma_end\) \{\n\t\t\t\tsmap_gather_stats\(vma, &mss, last_vma_end\);\n\t\t\t\tlast_vma_end = vma->vm_end;\n\t\t\t\}/\t\t\tif (vma->vm_end > last_vma_end)\n\t\t\t\tsmap_gather_stats(vma, \&mss, last_vma_end);/' ./fs/proc/task_mmu.c
+            if echo "$FIXED_FILES" | grep -Fxq "$target_file"; then
+              echo "  -> Reject in $target_file resolved by fix patch; removing $rej_file"
+              rm -f "$rej_file"
+            else
+              echo "ERROR: Unresolved reject in $target_file was NOT covered by fix patch!" >&2
+              cat "$rej_file" >&2
+              UNRESOLVED=1
             fi
-          fi
-        fi
-        
-        if [ "$fake_patched" = 1 ]; then
-          if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
-            if grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
-              echo "nr_subpages Line found. Revert Fake Patching!"
-              sed -i -e '/unsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;/d' -e '/pagemap_entry_t \*res = NULL;/d' ./fs/proc/task_mmu.c
-            fi
-          fi
-          if [ "${{ env.ANDROID_VER }}" = "android12" ] && [ "${{ env.KERNEL_VER }}" = "5.10" ]; then
-            if grep -qxF $'\t\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
-              echo "vma_pages Line found. Revert Fake Patching!"
-              sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-            fi
-          fi
-          if [ "${{ env.ANDROID_VER }}" = "android13" ] && [ "${{ env.KERNEL_VER }}" = "5.15" ]; then
-            if grep -qxF $'\t\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
-              echo "vma_pages Line found. Revert Fake Patching!"
-              sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-            fi
-            
-            if ! grep -qxF '#include <linux/swap_slots.h>' ./mm/memory.c; then
-              echo "#include <linux/swap_slots.h> Line not found. Adding missing header"
-              sed -i '/#include <linux\/vmalloc.h>/a #include <linux\/swap_slots.h>' ./mm/memory.c
-            fi
-          fi
-          if [ "${{ env.ANDROID_VER }}" = "android14" ] && [ "${{ env.KERNEL_VER }}" = "6.1" ]; then
-            if grep -qxF $'\t\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
-              echo "vma_pages Line found. Revert Fake Patching!"
-              sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-            fi
-          fi
-        fi
-        
-        if [ "$fake_patched2" = 1 ]; then
-          if [ "${{ env.ANDROID_VER }}" = "android14" ] && [ "${{ env.KERNEL_VER }}" = "6.1" ]; then
-            if grep -qxF '#include <trace/hooks/blk.h>' ./fs/namespace.c; then
-              echo "#include <trace/hooks/blk.h> Line found. Revert Fake Patching"
-              sed -i '/#include <trace\/hooks\/blk.h>/d' ./fs/namespace.c
-            fi
+          done < <(find . -name "*.rej")
+
+          if [ "$UNRESOLVED" -ne 0 ]; then
+            echo "ERROR: Build aborted due to unhandled patch rejections." >&2
+            exit 1
           fi
 
-          if [ "${{ env.ANDROID_VER }}" = "android13" ] && [ "${{ env.KERNEL_VER }}" = "5.15" ]; then
-            if grep -qxF '#include <trace/hooks/blk.h>' ./fs/namespace.c; then
-              echo "#include <trace/hooks/blk.h> Line found. Revert Fake Patching"
-              sed -i '/#include <trace\/hooks\/blk.h>/d' ./fs/namespace.c
-            fi
-            if grep -qxF '#include <trace/hooks/mm.h>' ./fs/proc/task_mmu.c; then
-              echo "#include <trace/hooks/mm.h> Line found. Revert Fake Patching"
-              sed -i '/#include <trace\/hooks\/mm.h>/d' ./fs/proc/task_mmu.c
-            fi
-          fi
+          echo "All rejected hunks successfully resolved by companion fix patch!"
         fi
+
+        python3 "$COMPAT_PY" --stage 2 --root "$COMMON_KERNEL_FOLDER" --kmi "$KMI" --sublevel "$SUBLEVEL" --soc "$OP_SOC" --state "$COMPAT_STATE"
+
+        patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/common/hide_adb_jdwp_sockets.patch"
 
         echo "✅ SUSFS patches applied"
         
@@ -1328,6 +1265,7 @@ runs:
         CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
         CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
         CONFIG_KSU_SUSFS_SUS_MAP=y
+        CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER=y
         CONFIG_KSU_SUSFS_SUS_SU=n
         EOF
         
@@ -1495,8 +1433,19 @@ runs:
         done
 
         ccache --set-config=extra_files_to_hash="$copied_modules"
-        
+
         echo "✅ Other patches applied"
+        echo "::endgroup::"
+
+    - name: Add Faster SDP Charging support
+      if: ${{ env.OP_SDP900MA == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Add Faster SDP Charging support"
+        cd "$COMMON_KERNEL_FOLDER"
+        patch -p1 < "$KERNEL_PATCHES_FOLDER/oneplus/0001-misc-oplus-sdp-900ma.patch"
+        echo "✅ Faster SDP Charging support patch applied"
         echo "::endgroup::"
 
     - name: Apply Optimisation Patches
@@ -1780,7 +1729,8 @@ runs:
         CONFIG_DEVTMPFS=y
         CONFIG_PID_NS=y
         CONFIG_POSIX_MQUEUE=y
-        CONFIG_NETFILTER_XT_TARGET_REJECT=y
+        CONFIG_IP_NF_TARGET_REJECT=y
+        CONFIG_IP6_NF_TARGET_REJECT=y
         CONFIG_NETFILTER_XT_TARGET_LOG=y
         CONFIG_NETFILTER_XT_MATCH_RECENT=y
         CONFIG_USER_NS=y
@@ -2441,6 +2391,7 @@ runs:
           echo "Unicode Fix: ${{ env.OP_UNICODE }}"
           echo "NTSync: ${{ env.OP_NTSYNC }}"
           echo "Droidspaces: ${{ env.OP_DS }}"
+          echo "Faster SDP Charging Support: ${{ env.OP_SDP900MA }}"
           echo ""
           echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "AnyKernel3 ZIP SHA256: ${{ steps.create_zip.outputs.zip_sha256 }}"
@@ -2508,6 +2459,7 @@ runs:
           echo "| **Unicode Fix** | ${{ env.OP_UNICODE }} |"
           echo "| **NTSync** | ${{ env.OP_NTSYNC }} |"
           echo "| **Droidspaces** | ${{ env.OP_DS }} |"
+          echo "| **Faster SDP Charging Support** | ${{ env.OP_SDP900MA }} |"
           
           echo ""
           echo "### 📊 Build Metrics"

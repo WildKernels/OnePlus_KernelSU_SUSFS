@@ -62,7 +62,7 @@ Flashing this kernel will not void your warranty, but there is always a risk of 
 ## 📱 OnePlusOSS Repositories Tracking
 
 - 📊 **Live Dashboard**: [OnePlus Repos Tracking & Changes](https://github.com/WildKernels/OnePlus_KernelSU_SUSFS/blob/status-page/README.md)
-- ⏱️ **Update Frequency**: Every 2 hours (Automated)
+- ⏱️ **Update Frequency**: Every 12 hours (Automated)
 ---
 
 ## ✨ Features
@@ -70,19 +70,21 @@ Flashing this kernel will not void your warranty, but there is always a risk of 
 - 🔐 **KernelSU / KernelSU-Next**: A root solution for Android GKI devices that works in kernel mode and grants root permission to userspace applications directly in kernel space
 - 🔥 **WildKSU Manager Support**: Support for the Root Manager developed by our team with lots of customisations
 - 🥷 **SUSFS**: An addon root hiding kernel patches and userspace module for KernelSU
-- 🛡️ **BBG**: LSM-based Baseband Guard security to protect critical device partitions. abl/efisp can be added to whitelist for efisp exploit devices.
-- 🛠️ **HMBIRD SCX**: Scheduler extensions for SM8750/MT6991 devices
+- 🛡️ **BBG**: LSM-based Baseband Guard security to protect critical device partitions. abl/efisp can be added to whitelist for efisp exploit devices
+- 🛠️ **HMBIRD SCX**: Scheduler extensions for SM8735/SM8750/MT6991 devices
 - 🖧 **BBRv1**: Improved TCP congestion control
 - 🖧 **BBRv3**: Improved TCP congestion control
 - 🚦 **CAKE and PIE qdisc Support**: Better Net Schedulers
 - ✅ **LTO**: Link Time Optimisation enabled
+- ✅ **MGLO** - Machine Learning-Guided Optimization to generate better optimisated images
 - 🚀 **Optimisation patches**: Memory, I/O, CPU scheduler, network and other general tunings
 - 🌐 **TTL Target Support**: Network packet manipulation
 - 🧱 **IP Set & IPv6 NAT Support**: Advanced firewall capabilities and IPv6 NAT Support
 - ⚡️ **TMPFS XATTR / POSIX ACL**: Extended TMPFS support for meta modules and Mountify
-- </> **Unicode Bypass Fix**: Prevent path traversal and other detections using non-printable Unicode codepoints [Experimental]
-- 🖥️ **Droidspaces Support**: Support Portable Linux containers to run full Linux environments.
+- </> **Unicode Bypass Fix**: Prevent path traversal and other detections using non-printable Unicode codepoints
+- 🖥️ **Droidspaces Support**: Support Portable Linux containers to run full Linux environments
 - 🔃 **NTSync**: Provide high-performance, low-latency synchronization primitives compatible with the Windows NT kernel API
+- 🔌 **Faster SDP charging**: Allow 900mA instead of 500mA for (SDP) USB data ports. (Host data port must support 900ma[USB 3.0 ports])
 
 ---
 
