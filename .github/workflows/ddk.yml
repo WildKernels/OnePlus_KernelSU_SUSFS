@@ -1,0 +1,132 @@
+name: OnePlus DDK
+description: Build and Release OnePlus Kernel Modules
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Select the ddk target for module build'
+        required: true
+        type: choice
+        options:
+          - sm8550
+          - sm8650
+          - sm8750
+          - A14+15+16
+          - A15+16
+          - A14+15
+          - A16
+          - A15
+          - A14
+          - android16-6.12
+          - android15-6.6
+          - android14-6.1
+          - android13-5.15
+          - android12-5.10
+        default: sm8550
+      optimize_level:
+        description: 'Compiler optimization level (O2 or O3)'
+        required: false
+        type: string
+        default: O2
+      build_config:
+        description: 'raw build config link to hook build process'
+        required: false
+        type: string
+        default: ''
+      debug:
+        description: 'Enable debugging'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  ddk-matrix-setup:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.build-ddk-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            configs/
+            manifests/
+          sparse-checkout-cone-mode: false
+
+      - name: Build DDK matrix
+        id: build-ddk-matrix
+        shell: bash
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          av=""; kv=""
+
+          case "${TARGET}" in
+            sm*)          f='map(select(.platform == $t))' ;;
+            A14+15+16)    f='.' ;;
+            A15+16)       f='map(select(.os_version == "A15" or .os_version == "A16"))' ;;
+            A14+15)       f='map(select(.os_version == "A14" or .os_version == "A15"))' ;;
+            A14|A15|A16)  f='map(select(.os_version == $t))' ;;
+            android*-*.*)
+              IFS='-' read -r av kv <<< "${TARGET}"
+              f='map(select(.android_version == $av and .kernel_version == $kv))' ;;
+            *) echo "::error::Unknown target '${TARGET}'"; exit 1 ;;
+          esac
+
+          find configs -name '*.json' -print0 | xargs -0 jq -s '.' > all.json
+
+          matrix=$(jq -c --arg t "${TARGET}" --arg av "${av}" --arg kv "${kv}" \
+            "map(select(.ddk == true)) | $f" all.json \
+            | jq -c 'map(. + {manifest_path: ("manifests/" + (.os_version | ascii_downcase) + "/ddk/" + .manifest)})
+                    | sort_by((.os_version | ltrimstr("A") | tonumber) * -1, .model)')
+
+          count=$(jq length <<< "${matrix}")
+          if [ "${count}" -eq 0 ]; then
+            echo "::error::No ddk-enabled configs match '${TARGET}'"
+            exit 1
+          fi
+
+          # fail early if a ddk manifest is missing
+          missing=0
+          while read -r p; do
+            [ -f "$p" ] || { echo "::error::missing manifest: ${p}"; missing=1; }
+          done < <(jq -r '.[].manifest_path' <<< "${matrix}")
+          [ "${missing}" -eq 0 ] || exit 1
+
+          echo "${count} DDK target(s)"
+          jq -r '.[] | "  - \(.model) (\(.os_version), \(.platform), \(.manifest_path))"' <<< "${matrix}"
+          echo "matrix=$(jq -c '{include: .}' <<< "${matrix}")" >> "${GITHUB_OUTPUT}"
+
+  ddk-build:
+    name: ddk (${{ matrix.model }}, ${{ matrix.platform }}, ${{ matrix.os_version }}, ${{ matrix.android_version }}-${{ matrix.kernel_version }})
+    needs: ddk-matrix-setup
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.ddk-matrix-setup.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Prepare config
+        id: cfg
+        shell: bash
+        env:
+          MATRIX_JSON: ${{ toJSON(matrix) }}
+        run: |
+          set -euo pipefail
+          echo "json=$(jq -c . <<< "${MATRIX_JSON}")" >> "${GITHUB_OUTPUT}"
+
+      - name: Build kernel modules
+        uses: ./.github/actions/build-ddk
+        with:
+          ddk_config_json: ${{ steps.cfg.outputs.json }}
+          optimize_level: ${{ inputs.optimize_level }}
+          build_config: ${{ inputs.build_config }}
+          debug: ${{ inputs.debug }}

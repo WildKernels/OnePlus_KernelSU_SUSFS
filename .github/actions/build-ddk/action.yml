@@ -1,0 +1,460 @@
+name: 'Build OnePlus Kernel modules'
+description: build kernel modules
+
+inputs:
+  ddk_config_json:
+    description: 'Matrix entry as JSON'
+    required: true
+  optimize_level:
+    required: false
+    default: O2
+  build_config:
+    required: false
+    default: ''
+  debug:
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Parse ddk_config_json
+      shell: bash
+      env:
+        CONFIG_JSON: ${{ inputs.ddk_config_json }}
+      run: |
+        set -euo pipefail
+        [ -n "${CONFIG_JSON}" ] || { echo "::error::ddk_config_json is empty"; exit 1; }
+
+        printf '%s' "${CONFIG_JSON}" > /tmp/config.json
+        jq -e 'has("model")' /tmp/config.json >/dev/null \
+          || { echo "::error::config has no 'model' key"; exit 1; }
+        jq -r 'to_entries[] | "\(.key | ascii_upcase)=\(.value)"' /tmp/config.json >> "${GITHUB_ENV}"
+
+    - name: Install Minimal Dependencies
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Install deps"
+        sudo apt-get -o Acquire::Retries=3 update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          git curl ca-certificates build-essential clang lld flex bison \
+          libelf-dev libssl-dev libncurses-dev zlib1g-dev lz4 \
+          libxml2-utils rsync unzip dwarves file python3 device-tree-compiler attr ccache
+        sudo apt-get clean
+        echo "::endgroup::"
+
+    - name: Setup SWAP
+      if: ${{ env.lto == 'full' }}
+      uses: pierotofy/set-swap-space@master
+      with:
+        swap-size-gb: 16
+
+    - name: Setup Environment
+      id: setup_env
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        ANDROID_BUILD_TOP="${GITHUB_WORKSPACE}/${MODEL}"
+        KERNEL_PLATFORM="${ANDROID_BUILD_TOP}/kernel_platform"
+        ROOT_DIR="${KERNEL_PLATFORM}"
+        OUT_DIR="${ROOT_DIR}/out"
+        DIST_DIR="${ROOT_DIR}/dist"
+        MODULES_ARCHIVE="modules.tar.gz"
+
+        mkdir -p "${ANDROID_BUILD_TOP}" "${ROOT_DIR}" "${OUT_DIR}" "${DIST_DIR}"
+
+        echo "ANDROID_BUILD_TOP=${ANDROID_BUILD_TOP}" >> "${GITHUB_ENV}"
+        echo "KERNEL_PLATFORM=${KERNEL_PLATFORM}" >> "${GITHUB_ENV}"
+        echo "ROOT_DIR=${ROOT_DIR}" >> "${GITHUB_ENV}"
+        echo "OUT_DIR=${OUT_DIR}" >> "${GITHUB_ENV}"
+        echo "DIST_DIR=${DIST_DIR}" >> "${GITHUB_ENV}"
+        echo "MODULES_ARCHIVE=${MODULES_ARCHIVE}" >> "${GITHUB_ENV}"
+
+        # Install repo tool if missing
+        git config --global user.name "ci"
+        git config --global user.email "ci@users.noreply.github.com"
+
+        REPO="/usr/local/bin/repo"
+        if [ ! -x "${REPO}" ]; then
+          curl -s https://storage.googleapis.com/git-repo-downloads/repo -o "${REPO}"
+          chmod +x "${REPO}"
+        fi
+        echo "REPO=${REPO}" >> "${GITHUB_ENV}"
+    
+    - name: Restore ddk cache
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ env.DIST_DIR }}
+        key: ddk-${{ env.MODEL }}-${{ env.OS_VERSION }}-${{ inputs.optimize_level }}
+
+    - name: Verify ddk cache
+      id: verify_ddk_cache
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [ -z "$(ls -A "${DIST_DIR}")" ]; then
+          echo "::error:: ddk cache is empty!"
+          echo "::error:: HINT: did you forget to run kernel workflow first?"
+
+          exit 1
+        fi
+
+         FILES=(
+          arch/arm64/boot/Image
+          vmlinux
+          vmlinux.symvers
+          System.map
+          modules.builtin
+          modules.builtin.modinfo
+        )
+
+        echo "Checking for ddk artifacts in ${DIST_DIR}"
+        for FILE in "${FILES[@]}"; do
+          set -x
+          if [[ ! -f "${DIST_DIR}/${FILE}" ]]; then
+            echo "WARNING: ${FILE} not found in ${DIST_DIR}" >&2
+          fi
+          set +x
+        done
+
+    - name: Sync sources
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "Using manifest: ${GITHUB_WORKSPACE}/${MANIFEST_PATH}"
+
+        # git optimization
+        git config --global feature.manyFiles true
+        git config --global pack.sparse true
+        git config --global core.compression 0
+        git config --global http.postBuffer 524288000
+        git config --global core.fsmonitor false
+        git config --global index.threads $(nproc)
+
+        DDK_MANIFEST="${GITHUB_WORKSPACE}/${MANIFEST_PATH}"
+        [ -f "${DDK_MANIFEST}" ] || { echo "::error::missing ${DDK_MANIFEST}"; exit 1; }
+
+        cd "${ANDROID_BUILD_TOP}"
+
+        mkdir -p .repo/manifests
+        cp -f "${DDK_MANIFEST}" .repo/manifests/ddk_manifest.xml
+
+        "${REPO}" init -u https://github.com/OnePlusOSS/kernel_manifest.git \
+          -b "oneplus/sm8650" -m ddk_manifest.xml \
+          --repo-rev=stable --depth=1 --no-clone-bundle --no-tags
+
+        "${REPO}" --version
+        success=false
+        for i in 1 2 3; do
+          if "${REPO}" sync -c --no-clone-bundle --no-tags --optimized-fetch \
+            -j"$(nproc --all)" --fail-fast; then
+            success=true
+            break
+          fi
+          echo "repo sync attempt ${i} failed; retrying..."
+          sleep 30
+        done
+        ${success} || { echo "repo sync failed after 3 attempts"; exit 1; }
+
+    - name: set clang path
+      id: set_clang_path
+      shell: bash
+      run: |
+        set -euo pipefail
+        CLANG_DIR=""
+        if [[ -n "${C_COMPILER}" && -d "${ANDROID_BUILD_TOP}/${C_COMPILER}" ]]; then
+          CLANG_DIR="${ANDROID_BUILD_TOP}/${C_COMPILER}"
+        else
+          for base in "${KERNEL_PLATFORM}/prebuilts" "${KERNEL_PLATFORM}/prebuilts-master"; do
+            latest=$(ls -d "${base}"/clang/host/linux-x86/clang-r*/ 2>/dev/null | sort -V | tail -n1 || true)
+            if [[ -n "${latest}" && -x "${latest}/bin/clang" ]]; then
+              CLANG_DIR="${latest}/bin"
+            fi
+          done
+        fi
+        [[ -n "${CLANG_DIR}" ]] || { echo "::error::No clang toolchain found"; exit 1; }
+        echo "${CLANG_DIR}" >> "${GITHUB_PATH}"
+        echo "::notice::using clang: ${CLANG_DIR}/clang"
+
+    - name: Build kernel modules
+      id: build
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        function _line() {
+          # printf '%*s\n' "$(tput cols)" '' | tr ' ' '='
+          printf '%*s\n' "80" '' | tr ' ' '='
+        }
+
+        function _configs() {
+
+          local -a CONFIGS
+
+          # normally, the logic in the else block should always resolve to the correct configs required
+          # to build modules from msm-kernel, but if it failes to do so, we can add a field in the device json
+          # where we specify the required configs manually
+          # like this:
+          #   ...
+          #   "ddk_configs": "foo bar baz",
+          #   ...
+          # alternatively you can define it in build config too
+          #
+          if [[ -n "${DDK_CONFIGS:-}" ]]; then
+            echo "${DDK_CONFIGS}"
+          else
+
+            if [[ -z "${BASE_DEFCONFIG:-}" ]]; then
+              CONFIGS=("gki_defconfig")
+            else
+              CONFIGS=("${BASE_DEFCONFIG}")
+            fi
+
+            if [[ -n "${CODENAME:-}" && -f "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/vendor/${CODENAME:-}_GKI.config" ]]; then
+              CONFIGS+=("vendor/${CODENAME:-}_GKI.config")
+            elif [[ -f "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/vendor/${SOC}_GKI.config" ]]; then
+              CONFIGS+=("vendor/${SOC}_GKI.config")
+            fi
+
+            if [[ -f "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/vendor/oplus/${SOC}_GKI.config" ]]; then
+              CONFIGS+=("vendor/oplus/${SOC}_GKI.config")
+            fi
+
+            if [[ -f "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/vendor/${SOC}_perf.config" ]]; then
+              CONFIGS+=("vendor/${SOC}_perf.config")
+            fi
+
+            if [[ -f "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/vendor/${SOC}_oplus_common.config" ]]; then
+              CONFIGS+=("vendor/${SOC}_oplus_common.config")
+            fi
+
+            if [[ -f "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/vendor/debugfs.config" ]]; then
+              CONFIGS+=("vendor/debugfs.config")
+            fi
+
+            echo "${CONFIGS[@]}"
+          fi
+
+        }
+
+        function set_lto() {
+          echo "Modifying LTO mode to '${{ env.lto }}'"
+
+          if [[ "${{ env.lto }}" == "none" ]]; then
+            ${KERNEL_DIR}/scripts/config --file ${OUT}/.config \
+              -d LTO_CLANG \
+              -e LTO_NONE \
+              -d LTO_CLANG_THIN \
+              -d LTO_CLANG_FULL \
+              -d THINLTO \
+              --set-val FRAME_WARN 0
+          elif [[ "${{ env.lto }}" == "thin" ]]; then
+            ${KERNEL_DIR}/scripts/config --file ${OUT}/.config \
+              -e LTO_CLANG \
+              -d LTO_NONE \
+              -e LTO_CLANG_THIN \
+              -d LTO_CLANG_FULL \
+              -e THINLTO
+          else
+            ${KERNEL_DIR}/scripts/config --file ${OUT}/.config \
+              -e LTO_CLANG \
+              -d LTO_NONE \
+              -d LTO_CLANG_THIN \
+              -e LTO_CLANG_FULL \
+              -d THINLTO
+          fi
+
+          # Optimize level config and flags
+          if [[ "${{ inputs.optimize_level }}" == "O3" ]]; then
+            ${KERNEL_DIR}/scripts/config --file ${OUT}/.config \
+              -d CC_OPTIMIZE_FOR_PERFORMANCE \
+              -e CC_OPTIMIZE_FOR_PERFORMANCE_O3
+          else
+            ${KERNEL_DIR}/scripts/config --file ${OUT}/.config \
+              -e CC_OPTIMIZE_FOR_PERFORMANCE \
+              -d CC_OPTIMIZE_FOR_PERFORMANCE_O3
+          fi
+
+          ( cd ${OUT} && make "${MAKE_FLAGS[@]}" O="${OUT}" olddefconfig )
+        }
+
+        # end of utility functions
+
+        if [[ -n "${{ inputs.build_config }}" ]]; then
+          BUILD_CONFIG=$(mktemp)
+          curl -sfL ${{ inputs.build_config }} | sed 's/\r$//' > ${BUILD_CONFIG}
+
+          echo "inheriting build config (at ${BUILD_CONFIG})"
+          . ${BUILD_CONFIG}
+        fi
+
+
+        cd "${ROOT_DIR}"
+        export KERNEL_DIR="msm-kernel"
+
+        if [[ ! -v MAKE_FLAGS ]]; then
+          MAKE_FLAGS+=(
+            -j$(nproc --all)
+            LLVM=1
+            ARCH=arm64
+            DTC=$(which dtc)
+            DEPMOD=depmod
+            HOSTCC="ccache clang"
+            HOSTCXX="ccache clang++"
+            CC="ccache clang"
+            KBUILD_MIXED_TREE="${DIST_DIR}"
+          )
+        fi
+
+        if [[ "${{ inputs.debug }}" = "true" ]]; then
+          MAKE_FLAGS+=( V=1 )
+        fi
+
+        OUT="${OUT_DIR}/msm-kernel"
+
+        MAKE_GOALS=()
+
+        # buid config hook to ovveride target modules to be built
+        if [[ ! -v MODULE_TARGETS ]]; then
+          MODULE_TARGETS=(
+            drivers/firmware/qcom-scm.ko
+            drivers/virt/gunyah/gh_rm_drv.ko
+            drivers/virt/gunyah/gh_dbl.ko
+            drivers/virt/gunyah/gh_msgq.ko
+            arch/arm64/gunyah/gh_arm_drv.ko
+          )
+        fi
+
+        for TARGET in "${MODULE_TARGETS[@]}"; do
+          TARGET_DIR="${KERNEL_DIR}/$(dirname "${TARGET}")"
+          set -x
+          if [[ -d "${TARGET_DIR}" ]]; then
+            MAKE_GOALS+=( ${TARGET} )
+          else
+            echo "WARNING: ${TARGET} not present!" >&2
+          fi
+          set +x
+        done
+
+        if [[ ${#MAKE_GOALS[@]} -eq 0 ]]; then
+          echo "::error::none of the requested modules exist; refusing to run make with no goals"
+          exit 1
+        fi
+
+        if [[ "${{ inputs.debug }}" = "true" ]]; then
+          echo "make goals: ${MAKE_GOALS[@]}"
+        fi
+
+        _line
+
+        # build config hook to evaluate any requried commands before executing defconfig commands
+        # in build config; usage :
+        #   PRE_DEFCONFIG_CMDS="some_function"
+        # for multiple functions:
+        #   PRE_DEFCONFIG_CMDS="function1; function2"
+        if [[ -n "${PRE_DEFCONFIG_CMDS:-}" ]]; then
+            echo -e "::info:: Evaluating PRE_DEFCONFIG_CMDS inside $(pwd)"
+            set -x
+            eval "${PRE_DEFCONFIG_CMDS}"
+            set +x
+        fi
+
+        echo " Setting up for build"
+        set -x
+        ( cd "${KERNEL_DIR}" && make "${MAKE_FLAGS[@]}" O="${OUT}" $(_configs) )
+        set +x
+        _line
+
+        # idk use for summary if required ; just copy pasted from my ci as is
+        ( cd "${OUT}" && echo "msm_kernel_release=$(make "${MAKE_FLAGS[@]}" O="${OUT}" -s kernelrelease)" >> "${GITHUB_ENV}" )
+
+        set_lto
+        _line
+
+        if [[ -n "${POST_DEFCONFIG_CMDS:-}" ]]; then
+          echo -e "::info:: Evaluating POST_DEFCONFIG_CMDS inside $(pwd)"
+          set -x
+          eval "${POST_DEFCONFIG_CMDS}"
+          set +x
+        fi
+
+        echo " Building Kernel"
+        set -x
+        ( cd "${OUT}" && make "${MAKE_FLAGS[@]}" O="${OUT}" ${MAKE_GOALS[@]} )
+        set +x
+        _line
+
+        # MAKE_GOALS=("modules_install")
+        MODULES_STAGING_DIR="${OUT}/modules_staging"
+        mkdir -p "${MODULES_STAGING_DIR}"
+
+        # echo " Installing kernel modules to staging directory"
+        # set -x
+        # ( cd "${OUT}" && make "${MAKE_FLAGS[@]}" O="${OUT}" INSTALL_MOD_STRIP=1 INSTALL_MOD_PATH="${MODULES_STAGING_DIR}" ${MAKE_GOALS[@]} )
+        # set +x
+        # _line
+
+        echo " Staging built modules"
+        for GOAL in "${MAKE_GOALS[@]}"; do
+          KO="${OUT}/${GOAL}"
+          [[ -f "${KO}" ]] || { echo "::error::${GOAL} was not built"; exit 1; }
+          # same as INSTALL_MOD_STRIP=1
+          llvm-strip --strip-debug -o "${MODULES_STAGING_DIR}/$(basename "${KO}")" "${KO}"
+        done
+        _line
+
+
+        # buld config hook , define EXT_MODULES as an array of out of tree module paths
+        # make sure the path is relative to kernel_platform dir
+        # example:
+        #   ../vendor/oplus/kernel/explorer
+        if [[ -v EXT_MODULES ]]; then
+
+          # Exports for external kernel modules
+          export BOARD_PLATFORM="${SOC}"
+          export TARGET_BOARD_PLATFORM="${SOC}"
+
+          MAKE_FLAGS+=(
+            KERNEL_SRC="${ROOT_DIR}/${KERNEL_DIR}"
+          )
+
+          echo "Compiling vendor modules (qcom)"
+
+          for EXT_MOD in "${EXT_MODULES[@]}"; do
+              if [[ ! -d "${ROOT_DIR}/${EXT_MOD}" ]]; then
+                echo "WARNING: The following module path does not exist : ${EXT_MOD}" >&2
+                continue
+              fi
+              set -x
+
+              #  The path that we pass in via the variable M needs to be a relative path relative to the kernel source directory
+              EXT_MOD_REL=$(realpath -s --relative-to="${KERNEL_DIR}" "${ROOT_DIR}/${EXT_MOD}")
+
+              # The object files will be stored here
+              mkdir -p ${OUT}/${EXT_MOD_REL}
+
+              make -C "${EXT_MOD}" M="${EXT_MOD_REL}" "${MAKE_FLAGS[@]}" O=${OUT}
+              make -C "${EXT_MOD}" M="${EXT_MOD_REL}" "${MAKE_FLAGS[@]}" O=${OUT} INSTALL_MOD_STRIP=1 INSTALL_MOD_PATH="${MODULES_STAGING_DIR}" INSTALL_MOD_DIR="extra/${EXT_MOD}" modules_install
+              set +x
+          done
+          _line
+
+        fi
+
+
+        # Create modules archive
+        (
+          MODULES=$(find ${MODULES_STAGING_DIR} -type f -name "*.ko")
+          echo " Archiving modules to ${MODULES_ARCHIVE}"
+          tar --transform="s,.*/,," -czf ${DIST_DIR}/${MODULES_ARCHIVE} ${MODULES[@]}
+        )
+
+    - name: upload ddk artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.MODEL }}-${{ env.OS_VERSION }}
+        path: ${{ env.DIST_DIR }}/${{ env.MODULES_ARCHIVE }}
+

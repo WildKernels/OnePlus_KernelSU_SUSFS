@@ -372,6 +372,7 @@ runs:
         CONFIG_DIR="$GITHUB_WORKSPACE/$CONFIG"
         ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
         KERNEL_PLATFORM_DIR="$CONFIG_DIR/kernel_platform"
+        DIST_DIR="${KERNEL_PLATFORM_DIR}/dist"
         COMMON_KERNEL_DIR="$KERNEL_PLATFORM_DIR/common"
         MSM_KERNEL_DIR="$KERNEL_PLATFORM_DIR/msm-kernel"
         AK3_DIR="$CONFIG_DIR/AnyKernel3"
@@ -382,11 +383,13 @@ runs:
         KSUN_DIR="$KERNEL_PLATFORM_DIR/KernelSU-Next"
         mkdir -p "$ARTIFACTS_DIR"
         mkdir -p "$DEBUG_ARTIFACTS_DIR"
+        mkdir -p "${DIST_DIR}"
         
         # Save to environment for later steps
         echo "CONFIG_FOLDER=$CONFIG_DIR" >> "$GITHUB_ENV"
         echo "ARTIFACTS_FOLDER=$ARTIFACTS_DIR" >> "$GITHUB_ENV"
         echo "KERNEL_PLATFORM_FOLDER=$KERNEL_PLATFORM_DIR" >> "$GITHUB_ENV"
+        echo "DIST_DIR=${DIST_DIR}" >> "${GITHUB_ENV}"
         echo "COMMON_KERNEL_FOLDER=$COMMON_KERNEL_DIR" >> "$GITHUB_ENV"
         echo "MSM_KERNEL_FOLDER=$MSM_KERNEL_DIR" >> "$GITHUB_ENV"
         echo "AK3_FOLDER=$AK3_DIR" >> "$GITHUB_ENV"
@@ -395,6 +398,10 @@ runs:
         echo "SUSFS_FOLDER=$SUSFS_DIR" >> "$GITHUB_ENV"
         echo "KSU_FOLDER=$KSU_DIR" >> "$GITHUB_ENV"
         echo "KSUN_FOLDER=$KSUN_DIR" >> "$GITHUB_ENV"
+
+        if [[ "${OP_DDK:-false}" != "true" ]]; then
+          echo "OP_DDK=false" >> "${GITHUB_ENV}"
+        fi
         
         DEBUG_ZIP_NAME="debug_${OP_MODEL}_${OP_OS_VERSION}.zip"
         echo "DEBUG_ZIP_NAME=$DEBUG_ZIP_NAME" >> "$GITHUB_ENV"
@@ -2087,6 +2094,31 @@ runs:
         else
           make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" CONFIG_FAKE_DISABLE="$CONFIG_FAKE_DISABLE" Image 2>&1 | tee build.log
         fi
+
+        if [[ "${OP_DDK:-}" == "true" ]]; then
+          # copy ddk artifacts to DIST_DIR
+          FILES=(
+            arch/arm64/boot/Image
+            arch/arm64/boot/Image.gz
+            arch/arm64/boot/Image.lz4
+            vmlinux
+            vmlinux.symvers
+            System.map
+            modules.builtin
+            modules.builtin.modinfo
+          )
+
+          echo "Copying ddk artifacts to ${DIST_DIR}"
+          for FILE in "${FILES[@]}"; do
+            set -x
+            if [[ -f "${OUT}/${FILE}" ]]; then
+              cp -p "${OUT}/${FILE}" "${DIST_DIR}"
+            else
+              echo "WARNING: ${FILE} not found in ${OUT}" >&2
+            fi
+            set +x
+          done
+        fi
         
         BUILD_END=$(date +%s)
         BUILD_TIME=$((BUILD_END - BUILD_START))
@@ -2497,3 +2529,22 @@ runs:
         github_token: ${{ inputs.github_token }}
         working_dir: "./main-source"
         compression_level: 6
+
+    - name: purge old ddk cache
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        gh cache delete ddk-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ inputs.optimize_level }} || true
+
+    - name: ddk cache debug
+      shell: bash
+      run: |
+        echo -n "ddk artifacts: \n $(ls ${DIST_DIR})"
+
+    - name: save ddk cache
+      if: always() && steps.build_kernel_step.conclusion == 'success' && env.OP_DDK == 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ env.DIST_DIR }}
+        key: ddk-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ inputs.optimize_level }}
