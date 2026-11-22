@@ -1425,7 +1425,7 @@ runs:
           fi
         done
 
-        ccache --set-config=extra_files_to_hash="$copied_modules"
+        echo "CCACHE_EXTRAFILES=$copied_modules" >> "$GITHUB_ENV"
 
         echo "✅ Other patches applied"
         echo "::endgroup::"
